@@ -176,13 +176,9 @@ impl HnswIndex {
 
     /// Deserialize the index from bytes using bincode
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
-        let (state, _): (HnswState, usize) =
-            serde_json::from_slice(bytes).map_err(|e| {
-                RuvectorError::SerializationError(format!(
-                    "Failed to deserialize HNSW index: {}",
-                    e
-                ))
-            })?;
+        let (state, _): (HnswState, usize) = serde_json::from_slice(bytes).map_err(|e| {
+            RuvectorError::SerializationError(format!("Failed to deserialize HNSW index: {}", e))
+        })?;
 
         let config = HnswConfig {
             m: state.config.m,

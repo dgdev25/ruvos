@@ -428,9 +428,8 @@ impl AgenticDB {
                 if let Some(skill_id) = metadata.get("skill_id") {
                     let id = skill_id.as_str().unwrap();
                     if let Some(data) = table.get(id)? {
-                        let skill: Skill =
-                            serde_json::from_slice(data.value())
-                                .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
+                        let skill: Skill = serde_json::from_slice(data.value())
+                            .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
                         skills.push(skill);
                     }
                 }
@@ -629,9 +628,8 @@ impl AgenticDB {
             .get(session_id)?
             .ok_or_else(|| RuvectorError::VectorNotFound(session_id.to_string()))?;
 
-        let (mut session, _): (LearningSession, usize) =
-            serde_json::from_slice(data.value())
-                .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
+        let (mut session, _): (LearningSession, usize) = serde_json::from_slice(data.value())
+            .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         drop(table);
         drop(read_txn);
@@ -669,9 +667,8 @@ impl AgenticDB {
             .get(session_id)?
             .ok_or_else(|| RuvectorError::VectorNotFound(session_id.to_string()))?;
 
-        let (session, _): (LearningSession, usize) =
-            serde_json::from_slice(data.value())
-                .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
+        let (session, _): (LearningSession, usize) = serde_json::from_slice(data.value())
+            .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         // Simple prediction based on similar states (would use actual RL model in production)
         let mut similar_actions = Vec::new();
@@ -725,9 +722,8 @@ impl AgenticDB {
         let table = read_txn.open_table(LEARNING_TABLE)?;
 
         if let Some(data) = table.get(session_id)? {
-            let (session, _): (LearningSession, usize) =
-                serde_json::from_slice(data.value())
-                    .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
+            let (session, _): (LearningSession, usize) = serde_json::from_slice(data.value())
+                .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             Ok(Some(session))
         } else {
             Ok(None)

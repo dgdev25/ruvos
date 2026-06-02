@@ -213,9 +213,8 @@ impl VectorStorage {
             return Ok(None);
         };
 
-        let vector: Vec<f32> =
-            serde_json::from_slice(vector_data.value())
-                .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
+        let vector: Vec<f32> = serde_json::from_slice(vector_data.value())
+            .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         // Try to get metadata
         let meta_table = read_txn.open_table(METADATA_TABLE)?;

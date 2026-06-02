@@ -327,9 +327,8 @@ impl HybridIndex {
         let mut all_data: Vec<(Vec<f32>, VectorId)> = self.learned.data.clone();
 
         for (key_bytes, value) in &self.dynamic_buffer {
-            let key: Vec<f32> =
-                serde_json::from_slice(key_bytes)
-                    .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
+            let key: Vec<f32> = serde_json::from_slice(key_bytes)
+                .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             all_data.push((key, value.clone()));
         }
 
