@@ -3,12 +3,12 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub mod rvf;
 pub mod fork;
+pub mod rvf;
 pub mod verify;
 
-pub use rvf::{write_session, read_session};
 pub use fork::fork_session;
+pub use rvf::{read_session, write_session};
 pub use verify::verify_signature;
 
 /// Session metadata.

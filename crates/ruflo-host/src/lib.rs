@@ -2,8 +2,8 @@
 //!
 //! Normalized event streams across Claude Code, Codex CLI, and Gemini CLI.
 
-pub mod host;
 pub mod adapters;
+pub mod host;
 
-pub use host::{CliHost, ModelSpec, AgentRequest, AgentEvent};
 pub use adapters::{ClaudeHost, CodexHost};
+pub use host::{AgentEvent, AgentRequest, CliHost, ModelSpec};

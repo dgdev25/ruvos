@@ -1,12 +1,12 @@
 //! Tool registry for all 20 MCP tools.
 
-pub mod memory;
-pub mod session;
 pub mod agent;
+pub mod gov;
 pub mod hooks;
 pub mod intel;
+pub mod memory;
 pub mod plugin;
-pub mod gov;
+pub mod session;
 pub mod workflow;
 
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,8 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         // Memory (4)
         ToolMetadata {
             name: "memory.search".to_string(),
-            description: "Semantic search across namespaces with MMR diversity + recency weighting".to_string(),
+            description: "Semantic search across namespaces with MMR diversity + recency weighting"
+                .to_string(),
             domain: "memory".to_string(),
         },
         ToolMetadata {
@@ -62,7 +63,8 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         // Agent (3)
         ToolMetadata {
             name: "agent.spawn".to_string(),
-            description: "Spawn a host agent: {host, archetype, prompt, traits, model, budget}".to_string(),
+            description: "Spawn a host agent: {host, archetype, prompt, traits, model, budget}"
+                .to_string(),
             domain: "agent".to_string(),
         },
         ToolMetadata {
@@ -78,7 +80,8 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         // Hooks (3)
         ToolMetadata {
             name: "hooks.pre".to_string(),
-            description: "Unified pre-hook (task|edit|command) — returns routing + context".to_string(),
+            description: "Unified pre-hook (task|edit|command) — returns routing + context"
+                .to_string(),
             domain: "hooks".to_string(),
         },
         ToolMetadata {
@@ -127,7 +130,9 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         // Workflow (1)
         ToolMetadata {
             name: "workflow.run".to_string(),
-            description: "Execute an orchestration template (feature / bugfix / refactor / security)".to_string(),
+            description:
+                "Execute an orchestration template (feature / bugfix / refactor / security)"
+                    .to_string(),
             domain: "workflow".to_string(),
         },
     ]

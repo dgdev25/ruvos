@@ -9,11 +9,11 @@
 //! 4. session — Boot/shutdown (restore/persist .rvf)
 
 pub mod hooks;
-pub mod pre;
 pub mod post;
+pub mod pre;
 pub mod route;
 
 pub use hooks::{HookKind, HookPayload};
-pub use pre::pre_hook;
 pub use post::post_hook;
-pub use route::{RouteRecommendation, route_task};
+pub use pre::pre_hook;
+pub use route::{route_task, RouteRecommendation};

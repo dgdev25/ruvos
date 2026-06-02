@@ -1,6 +1,6 @@
 //! Codex CLI host adapter.
 
-use crate::host::{CliHost, ModelSpec, AgentRequest, AgentEvent};
+use crate::host::{AgentEvent, AgentRequest, CliHost, ModelSpec};
 use async_trait::async_trait;
 
 /// Adapter for Codex CLI.

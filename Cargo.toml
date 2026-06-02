@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 # Phase 0: Substrate crates copied but not yet integrated into workspace.
 # The 62 curated RuVector crates are copied to substrate/ for future integration.
 # See docs/spec/ruvector-curation.md for the complete audit.

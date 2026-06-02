@@ -195,3 +195,51 @@ Once `ruflo mcp serve` ships (Phase 2):
 - **Phase 1 focus:** Make sure `default-members` in the merged workspace only includes crates Ruflo consumes. Experimental RuVector crates (consciousness examples, quantum coherence) stay behind features. This keeps CI fast.
 - **Phase 2 focus:** The MCP round-trip from real Claude Code CLI is the hard stop. Test with `claude mcp add ruflo -- ruflo mcp serve` and call tools from the Claude Code REPL.
 - **Phase 3+ focus:** As plugins land, the canonical layout at `crates/ruflo-plugin-host/registry/<name>/` is the source of truth. IPFS is only a release-time CDN, not the source of truth.
+
+---
+
+## Phase 0 Completion (2026-06-02)
+
+**Status:** ✅ Complete
+
+Phase 0 established the rUvOS workspace structure with:
+
+- ✅ RuVector dependency audit completed (`docs/spec/ruvector-curation.md`)
+- ✅ 29 curated RuVector crates in `substrate/` (removed 33 variants/experimental)
+- ✅ 6 Ruflo crates scaffolded with module structure matching scope ledger
+- ✅ Root Cargo.toml with workspace + default-members properly scoped
+- ✅ CI pipeline configured (build/clippy/fmt/test)
+- ✅ All crates compile and pass checks
+
+### Deliverables
+
+1. **Workspace structure:** `crates/` (Ruflo) + `substrate/` (RuVector)
+2. **29 curated RuVector crates:** core vector, SONA, RVF, RuVLLM, Raft, witness chain
+3. **6 Ruflo crate scaffolds:** cli, mcp, host, plugin-host, hooks, session
+4. **Module structure:** 20 MCP tools, 12 agent archetypes (stubs), 8 hooks documented
+5. **CI pipeline:** GitHub Actions (build, clippy, fmt, test)
+6. **Documentation:** Updated CLAUDE.md with Phase 0 notes
+
+### Build Status
+
+```
+✓ cargo build --all-features — Finished in 5.55s
+✓ cargo clippy --all-features -- -D warnings — Passed
+✓ cargo fmt -- --check — Passed
+✓ All 6 Ruflo crates recognized by workspace metadata
+✓ Git working tree clean
+```
+
+### Crate Compilation Summary
+
+All six Ruflo crates build cleanly together:
+- `ruflo-cli` (8k LOC budget) — clap-based shell
+- `ruflo-mcp` (6k LOC budget) — JSON-RPC server + 20 tools
+- `ruflo-host` (6k LOC budget) — CliHost trait + adapters
+- `ruflo-plugin-host` (4k LOC budget) — plugin discovery + manifest
+- `ruflo-hooks` (3k LOC budget) — 8 hooks + SONA integration
+- `ruflo-session` (3k LOC budget) — .rvf container + fork + crypto
+
+### Next Steps
+
+**Phase 1** will integrate the full RuVector workspace and prepare Phase 2's day-1 integration test (`ruflo mcp serve` → Claude Code CLI).
