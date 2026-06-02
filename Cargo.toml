@@ -1,5 +1,15 @@
 [workspace]
-members = ["crates/*", "substrate/*"]
+# Phase 0: Substrate crates copied but not yet integrated into workspace.
+# The 62 curated RuVector crates are copied to substrate/ for future integration.
+# See docs/spec/ruvector-curation.md for the complete audit.
+members = [
+    "crates/ruflo-cli",
+    "crates/ruflo-mcp",
+    "crates/ruflo-host",
+    "crates/ruflo-plugin-host",
+    "crates/ruflo-hooks",
+    "crates/ruflo-session",
+]
 default-members = [
     "crates/ruflo-cli",
     "crates/ruflo-mcp",
@@ -7,28 +17,12 @@ default-members = [
     "crates/ruflo-plugin-host",
     "crates/ruflo-hooks",
     "crates/ruflo-session",
-    # RuVector crates Ruflo directly uses (from curation audit)
-    "substrate/ruvector-core",
-    "substrate/ruvector-acorn",
-    "substrate/ruvector-math",
-    "substrate/ruvector-simd",
-    "substrate/ruvector-utils",
-    "substrate/ruvector-rabitq",
-    "substrate/sona",
-    "substrate/ruvector-router-core",
-    "substrate/rvf",
-    "substrate/rvf-cow",
-    "substrate/rvf-crypto",
-    "substrate/ruvllm",
-    "substrate/ruvector-raft",
-    "substrate/ruvector-replication",
-    "substrate/ruvector-cluster",
-    # Add others from curation audit
 ]
 
 [workspace.package]
 version = "4.0.0-rc.1"
 edition = "2021"
+rust-version = "1.77"
 license = "MIT"
 authors = ["rUvOS contributors"]
 repository = "https://github.com/dgdev25/ruvos"
