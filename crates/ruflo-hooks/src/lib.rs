@@ -8,12 +8,19 @@
 //! 3. command — Before/after shell exec
 //! 4. session — Boot/shutdown (restore/persist .rvf)
 
-pub mod hooks;
-pub mod post;
-pub mod pre;
-pub mod route;
+pub mod types;
+pub mod queue;
+pub mod handlers;
+pub mod sona_bridge;
 
-pub use hooks::{HookKind, HookPayload};
-pub use post::post_hook;
-pub use pre::pre_hook;
-pub use route::{route_task, RouteRecommendation};
+pub use types::*;
+pub use queue::HookQueue;
+pub use handlers::HookDispatcher;
+
+pub fn create_queue(db_path: &str) -> anyhow::Result<HookQueue> {
+    HookQueue::new(db_path)
+}
+
+pub fn create_dispatcher() -> HookDispatcher {
+    HookDispatcher::new()
+}
