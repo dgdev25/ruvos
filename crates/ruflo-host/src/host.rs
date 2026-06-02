@@ -30,6 +30,30 @@ pub enum AgentEvent {
     Completed { result: String },
 }
 
+/// Tool call request (MCP round-trip).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub method: String,
+    pub params: serde_json::Value,
+}
+
+/// Tool call response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResponse {
+    pub id: String,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
+/// CLI error event (structured error reporting).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliError {
+    pub code: i32,
+    pub message: String,
+    pub data: Option<serde_json::Value>,
+}
+
 /// CliHost trait: abstraction over Claude Code, Codex, Gemini CLIs.
 #[async_trait]
 pub trait CliHost: Send + Sync {
@@ -44,6 +68,15 @@ pub trait CliHost: Send + Sync {
 
     /// Stream agent events (used for multi-turn interactions).
     async fn stream(&self, request: AgentRequest) -> anyhow::Result<Vec<AgentEvent>>;
+
+    /// Send a tool call to the host.
+    async fn send_tool_call(&self, tool_call: ToolCall) -> anyhow::Result<()>;
+
+    /// Receive a tool response from the host.
+    async fn receive_response(&self) -> anyhow::Result<ToolResponse>;
+
+    /// Report an error to the host.
+    async fn report_error(&self, error: CliError) -> anyhow::Result<()>;
 }
 
 /// Default ModelSpec factory.

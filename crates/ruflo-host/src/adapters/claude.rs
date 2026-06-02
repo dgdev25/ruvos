@@ -1,6 +1,6 @@
 //! Claude Code CLI host adapter.
 
-use crate::host::{AgentEvent, AgentRequest, CliHost, ModelSpec};
+use crate::host::{AgentEvent, AgentRequest, CliError, CliHost, ModelSpec, ToolCall, ToolResponse};
 use async_trait::async_trait;
 
 /// Adapter for Claude Code CLI.
@@ -31,5 +31,24 @@ impl CliHost for ClaudeHost {
     async fn stream(&self, _request: AgentRequest) -> anyhow::Result<Vec<AgentEvent>> {
         // TODO: Stream events from Claude Code daemon
         Ok(vec![])
+    }
+
+    async fn send_tool_call(&self, _tool_call: ToolCall) -> anyhow::Result<()> {
+        // TODO: Forward tool call to Claude Code daemon
+        Ok(())
+    }
+
+    async fn receive_response(&self) -> anyhow::Result<ToolResponse> {
+        // TODO: Receive tool response from Claude Code daemon
+        Ok(ToolResponse {
+            id: String::new(),
+            result: None,
+            error: Some("not_implemented".to_string()),
+        })
+    }
+
+    async fn report_error(&self, _error: CliError) -> anyhow::Result<()> {
+        // TODO: Report error to Claude Code daemon
+        Ok(())
     }
 }

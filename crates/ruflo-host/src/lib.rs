@@ -6,4 +6,4 @@ pub mod adapters;
 pub mod host;
 
 pub use adapters::{ClaudeHost, CodexHost};
-pub use host::{AgentEvent, AgentRequest, CliHost, ModelSpec};
+pub use host::{AgentEvent, AgentRequest, CliError, CliHost, ModelSpec, ToolCall, ToolResponse};
