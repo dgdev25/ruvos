@@ -11,9 +11,11 @@
 //! - **workflow** (1): run
 
 pub mod error;
+pub mod protocol;
 pub mod server;
 pub mod tools;
 
 pub use error::{RufloError, Result};
+pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 pub use server::serve;
 pub use tools::tool_registry;
