@@ -42,9 +42,9 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(session::SessionForkHandler));
 
     // Register agent tools
-    registry.register(Box::new(agent::AgentSpawnStub));
-    registry.register(Box::new(agent::AgentStatusStub));
-    registry.register(Box::new(agent::AgentMessageStub));
+    registry.register(Box::new(agent::AgentSpawnHandler));
+    registry.register(Box::new(agent::AgentStatusHandler));
+    registry.register(Box::new(agent::AgentMessageHandler));
 
     // Register hooks tools
     registry.register(Box::new(hooks::HooksPreHandler::new()));
@@ -237,7 +237,10 @@ mod integration_tests {
             ),
             ("memory.list", json!({"namespace": "test"})),
             ("session.create", json!({})),
-            ("agent.spawn", json!({"host": "test"})),
+            (
+                "agent.spawn",
+                json!({"archetype": "coder", "prompt": "test", "model": "claude-3-haiku"}),
+            ),
             ("hooks.route", json!({"task": "test"})),
             ("intel.pattern_search", json!({"query": "test"})),
             ("plugin.list", json!({})),
