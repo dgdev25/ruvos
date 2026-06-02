@@ -180,6 +180,16 @@ impl ToolHandler for PluginInvokeHandler {
                 })
                 .unwrap_or_default();
 
+            // Security: Validate command exists in plugin manifest before execution
+            let plugin_found = validate_command_in_plugin(&plugin_name, &command).await;
+            if let Err(e) = plugin_found {
+                return Ok(json!({
+                    "status": 1,
+                    "stdout": "",
+                    "stderr": e.message(),
+                }));
+            }
+
             let executor = create_executor();
             let request = ExecutionRequest {
                 plugin_name,
@@ -201,4 +211,60 @@ impl ToolHandler for PluginInvokeHandler {
             }
         })
     }
+}
+
+/// Validates that a command exists in a plugin's manifest.
+/// Searches in standard plugin locations and returns an error if not found.
+async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<()> {
+    let discoverer = create_discoverer();
+
+    // Locations to search for plugins
+    let search_paths = vec![
+        Path::new("./.ruflo/plugins").to_path_buf(),
+        {
+            if let Ok(home) = std::env::var("HOME") {
+                Path::new(&home).join(".ruflo/plugins")
+            } else {
+                Path::new("./.ruflo/plugins").to_path_buf()
+            }
+        },
+        {
+            if let Ok(ruflo_home) = std::env::var("RUFLO_HOME") {
+                Path::new(&ruflo_home).join("plugins")
+            } else {
+                Path::new("./.ruflo/plugins").to_path_buf()
+            }
+        },
+    ];
+
+    for path in search_paths {
+        if let Ok(plugins) = discoverer.discover_in_directory(&path) {
+            if let Some(plugin) = plugins.iter().find(|p| p.name == plugin_name) {
+                // Found the plugin, now check if command is in its commands list
+                if plugin
+                    .commands
+                    .iter()
+                    .any(|cmd_meta| cmd_meta.name == command)
+                {
+                    return Ok(());
+                } else {
+                    // Plugin found but command not in manifest
+                    let available_commands: Vec<&str> =
+                        plugin.commands.iter().map(|c| c.name.as_str()).collect();
+                    return Err(RufloError::ValidationError(format!(
+                        "Command '{}' not found in plugin '{}'. Available commands: {}",
+                        command,
+                        plugin_name,
+                        available_commands.join(", ")
+                    )));
+                }
+            }
+        }
+    }
+
+    // Plugin not found
+    Err(RufloError::ValidationError(format!(
+        "Plugin '{}' not found in any search path",
+        plugin_name
+    )))
 }
