@@ -7,7 +7,7 @@ pub fn parse_manifest(content: &str) -> Result<PluginManifest> {
 }
 
 pub fn read_manifest_from_file(path: &Path) -> Result<PluginManifest> {
-    let content = std::fs::read_to_string(path).map_err(|e| PluginError::Io(e))?;
+    let content = std::fs::read_to_string(path).map_err(PluginError::Io)?;
     parse_manifest(&content)
 }
 

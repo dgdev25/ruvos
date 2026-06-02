@@ -41,7 +41,7 @@ authors = []
 
     let manifest = parse_manifest(toml_content).expect("parse failed");
     assert_eq!(manifest.plugin.name, "minimal");
-    assert_eq!(manifest.capabilities.agents.is_empty(), true);
+    assert!(manifest.capabilities.agents.is_empty());
 }
 
 #[test]
