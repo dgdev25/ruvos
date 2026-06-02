@@ -36,7 +36,7 @@ fn test_discover_plugins_in_directory() {
     let temp_dir = TempDir::new().expect("create temp dir");
     let (plugin_dir, _manifest) = create_test_plugin_dir(&temp_dir, "test-plugin");
 
-    let discoverer = PluginDiscoverer::default();
+    let discoverer = PluginDiscoverer;
     let plugins = discoverer
         .discover_in_directory(temp_dir.path())
         .expect("discovery failed");
@@ -70,7 +70,7 @@ This is a test agent.
     let agent_path = agents_dir.join("test-agent.md");
     fs::write(&agent_path, agent_content).expect("write agent file");
 
-    let discoverer = PluginDiscoverer::default();
+    let discoverer = PluginDiscoverer;
     let plugins = discoverer
         .discover_in_directory(temp_dir.path())
         .expect("discovery failed");
