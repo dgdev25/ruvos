@@ -327,8 +327,8 @@ impl HybridIndex {
         let mut all_data: Vec<(Vec<f32>, VectorId)> = self.learned.data.clone();
 
         for (key_bytes, value) in &self.dynamic_buffer {
-            let (key, _): (Vec<f32>, usize) =
-                bincode::decode_from_slice(key_bytes, bincode::config::standard())
+            let key: Vec<f32> =
+                serde_json::from_slice(key_bytes)
                     .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             all_data.push((key, value.clone()));
         }
@@ -339,7 +339,7 @@ impl HybridIndex {
     }
 
     fn serialize_key(key: &[f32]) -> Vec<u8> {
-        bincode::encode_to_vec(key, bincode::config::standard()).unwrap_or_default()
+        serde_json::to_vec(key).unwrap_or_default()
     }
 }
 

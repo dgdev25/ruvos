@@ -8,8 +8,6 @@ use crate::error::{Result, RuvectorError};
 #[cfg(feature = "storage")]
 use crate::types::{DbOptions, VectorEntry, VectorId};
 #[cfg(feature = "storage")]
-use bincode::config;
-#[cfg(feature = "storage")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "storage")]
 use parking_lot::Mutex;
@@ -146,7 +144,7 @@ impl VectorStorage {
             let mut table = write_txn.open_table(VECTORS_TABLE)?;
 
             // Serialize vector data
-            let vector_data = bincode::encode_to_vec(&entry.vector, config::standard())
+            let vector_data = serde_json::to_vec(&entry.vector)
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
             table.insert(id.as_str(), vector_data.as_slice())?;
@@ -187,7 +185,7 @@ impl VectorStorage {
                     .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
                 // Serialize and insert vector
-                let vector_data = bincode::encode_to_vec(&entry.vector, config::standard())
+                let vector_data = serde_json::to_vec(&entry.vector)
                     .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
                 table.insert(id.as_str(), vector_data.as_slice())?;
 
@@ -215,8 +213,8 @@ impl VectorStorage {
             return Ok(None);
         };
 
-        let (vector, _): (Vec<f32>, usize) =
-            bincode::decode_from_slice(vector_data.value(), config::standard())
+        let vector: Vec<f32> =
+            serde_json::from_slice(vector_data.value())
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         // Try to get metadata

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-# Phase 1: Complete integrated workspace with all 6 Ruflo + 29 RuVector substrate crates.
+# Phase 1: Integrated workspace with 6 Ruflo + 18 curated RuVector substrate crates
+# (9 essential for Phase 2-5 + 9 optional for Phase 5+). 11 dropped crates: clustering (raft, replication, cluster),
+# LLM (ruvllm), variants (acorn), and runtime targets (ebpf, kernel, wasm, node, server, federation, launch).
 members = [
     "crates/ruflo-cli",
     "crates/ruflo-mcp",
@@ -8,31 +10,22 @@ members = [
     "crates/ruflo-plugin-host",
     "crates/ruflo-hooks",
     "crates/ruflo-session",
+    # 9 Essential RuVector crates (Phases 2-5)
     "substrate/mcp-brain",
-    "substrate/ruvector-acorn",
-    "substrate/ruvector-cluster",
     "substrate/ruvector-core",
     "substrate/ruvector-math",
-    "substrate/ruvector-rabitq",
-    "substrate/ruvector-raft",
-    "substrate/ruvector-replication",
-    "substrate/ruvllm",
-    "substrate/rvf-cli",
-    "substrate/rvf-crypto",
-    "substrate/rvf-ebpf",
-    "substrate/rvf-federation",
-    "substrate/rvf-import",
-    "substrate/rvf-index",
-    "substrate/rvf-kernel",
-    "substrate/rvf-launch",
-    "substrate/rvf-manifest",
-    "substrate/rvf-node",
-    "substrate/rvf-quant",
-    "substrate/rvf-runtime",
-    "substrate/rvf-server",
+    "substrate/sona",
     "substrate/rvf-types",
     "substrate/rvf-wire",
-    "substrate/sona",
+    "substrate/rvf-manifest",
+    "substrate/rvf-crypto",
+    "substrate/rvf-cli",
+    # 9 Optional RuVector crates (Phase 5+)
+    "substrate/ruvector-rabitq",
+    "substrate/rvf-quant",
+    "substrate/rvf-index",
+    "substrate/rvf-runtime",
+    "substrate/rvf-import",
 ]
 default-members = [
     "crates/ruflo-cli",

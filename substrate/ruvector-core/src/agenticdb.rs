@@ -55,7 +55,7 @@ pub struct ReflexionEpisode {
 }
 
 /// Skill definition in the library
-#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Skill {
     pub id: String,
     pub name: String,
@@ -70,7 +70,7 @@ pub struct Skill {
 }
 
 /// Causal edge in the hypergraph
-#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CausalEdge {
     pub id: String,
     pub causes: Vec<String>,  // Hypergraph: multiple causes
@@ -83,7 +83,7 @@ pub struct CausalEdge {
 }
 
 /// Learning session for RL training
-#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearningSession {
     pub id: String,
     pub algorithm: String, // Q-Learning, DQN, PPO, etc
@@ -96,7 +96,7 @@ pub struct LearningSession {
 }
 
 /// Single RL experience
-#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Experience {
     pub state: Vec<f32>,
     pub action: Vec<f32>,
@@ -107,7 +107,7 @@ pub struct Experience {
 }
 
 /// Prediction with confidence interval
-#[derive(Debug, Clone, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prediction {
     pub action: Vec<f32>,
     pub confidence_lower: f64,
@@ -383,7 +383,7 @@ impl AgenticDB {
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(SKILLS_TABLE)?;
-            let data = bincode::encode_to_vec(&skill, bincode::config::standard())
+            let data = serde_json::to_vec(&skill)
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             table.insert(id.as_str(), data.as_slice())?;
         }
@@ -428,8 +428,8 @@ impl AgenticDB {
                 if let Some(skill_id) = metadata.get("skill_id") {
                     let id = skill_id.as_str().unwrap();
                     if let Some(data) = table.get(id)? {
-                        let (skill, _): (Skill, usize) =
-                            bincode::decode_from_slice(data.value(), bincode::config::standard())
+                        let skill: Skill =
+                            serde_json::from_slice(data.value())
                                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
                         skills.push(skill);
                     }
@@ -495,7 +495,7 @@ impl AgenticDB {
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(CAUSAL_TABLE)?;
-            let data = bincode::encode_to_vec(&edge, bincode::config::standard())
+            let data = serde_json::to_vec(&edge)
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             table.insert(id.as_str(), data.as_slice())?;
         }
@@ -603,7 +603,7 @@ impl AgenticDB {
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(LEARNING_TABLE)?;
-            let data = bincode::encode_to_vec(&session, bincode::config::standard())
+            let data = serde_json::to_vec(&session)
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             table.insert(id.as_str(), data.as_slice())?;
         }
@@ -630,7 +630,7 @@ impl AgenticDB {
             .ok_or_else(|| RuvectorError::VectorNotFound(session_id.to_string()))?;
 
         let (mut session, _): (LearningSession, usize) =
-            bincode::decode_from_slice(data.value(), bincode::config::standard())
+            serde_json::from_slice(data.value())
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         drop(table);
@@ -651,7 +651,7 @@ impl AgenticDB {
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(LEARNING_TABLE)?;
-            let data = bincode::encode_to_vec(&session, bincode::config::standard())
+            let data = serde_json::to_vec(&session)
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             table.insert(session_id, data.as_slice())?;
         }
@@ -670,7 +670,7 @@ impl AgenticDB {
             .ok_or_else(|| RuvectorError::VectorNotFound(session_id.to_string()))?;
 
         let (session, _): (LearningSession, usize) =
-            bincode::decode_from_slice(data.value(), bincode::config::standard())
+            serde_json::from_slice(data.value())
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         // Simple prediction based on similar states (would use actual RL model in production)
@@ -726,7 +726,7 @@ impl AgenticDB {
 
         if let Some(data) = table.get(session_id)? {
             let (session, _): (LearningSession, usize) =
-                bincode::decode_from_slice(data.value(), bincode::config::standard())
+                serde_json::from_slice(data.value())
                     .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             Ok(Some(session))
         } else {

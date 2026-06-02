@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruflo × RuVector Integration Workflow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            padding: 40px;
+            background: #f8f9fa;
+        }
+
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .crate-group {
+            margin-bottom: 25px;
+        }
+
+        .crate-group h3 {
+            color: #764ba2;
+            font-size: 1.1em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .phase-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .crate {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 0.95em;
+        }
+
+        .crate.essential {
+            border-left-color: #e74c3c;
+        }
+
+        .crate.optional {
+            border-left-color: #f39c12;
+        }
+
+        .crate-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .crate-desc {
+            color: #555;
+            margin-top: 4px;
+            font-size: 0.9em;
+        }
+
+        .improvements {
+            background: #ecf0f1;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .improvements h3 {
+            color: #27ae60;
+            margin-bottom: 15px;
+        }
+
+        .improvement-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+        }
+
+        .improvement-icon {
+            font-size: 1.3em;
+            min-width: 30px;
+        }
+
+        .improvement-text {
+            flex: 1;
+            color: #2c3e50;
+        }
+
+        .phase-timeline {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .phase-timeline h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .timeline-item {
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+        }
+
+        .timeline-marker {
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .timeline-phase {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .timeline-desc {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 4px;
+        }
+
+        .data-flow {
+            margin-top: 30px;
+            padding: 20px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+        }
+
+        .data-flow h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .flow-diagram {
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: #f0f4ff;
+            border-radius: 8px;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Ruflo × RuVector Integration</h1>
+            <p>How 18 curated RuVector crates enhance Ruflo's agent orchestration capabilities</p>
+        </div>
+
+        <div class="content">
+            <!-- Left Column: Ruflo Layer -->
+            <div>
+                <div class="section">
+                    <h2>🔧 Ruflo Orchestration Layer</h2>
+                    <p style="color: #666; margin-bottom: 20px;">6 crates providing agent coordination, MCP server, and lifecycle management</p>
+
+                    <div class="crate-group">
+                        <h3>Core MCP & CLI</h3>
+                        <div class="crate">
+                            <div class="crate-name">ruflo-cli</div>
+                            <div class="crate-desc">Command-line interface for agent orchestration</div>
+                        </div>
+                        <div class="crate">
+                            <div class="crate-name">ruflo-mcp</div>
+                            <div class="crate-desc">JSON-RPC MCP server (20 tools)</div>
+                        </div>
+                    </div>
+
+                    <div class="crate-group">
+                        <h3>Multi-CLI Support</h3>
+                        <div class="crate">
+                            <div class="crate-name">ruflo-host</div>
+                            <div class="crate-desc">CliHost trait + Claude/Codex adapters</div>
+                        </div>
+                    </div>
+
+                    <div class="crate-group">
+                        <h3>Plugin & Lifecycle</h3>
+                        <div class="crate">
+                            <div class="crate-name">ruflo-plugin-host</div>
+                            <div class="crate-desc">Plugin discovery & shell execution</div>
+                        </div>
+                        <div class="crate">
+                            <div class="crate-name">ruflo-hooks</div>
+                            <div class="crate-desc">8 lifecycle hooks + routing</div>
+                        </div>
+                        <div class="crate">
+                            <div class="crate-name">ruflo-session</div>
+                            <div class="crate-desc">.rvf container I/O & fork</div>
+                        </div>
+                    </div>
+
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-number">6</div>
+                            <div class="stat-label">Crates</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">20</div>
+                            <div class="stat-label">MCP Tools</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">~30k</div>
+                            <div class="stat-label">Max LOC</div>
+                        </div>
+                    </div>
+
+                    <div class="improvements">
+                        <h3>✨ Ruflo Improvements</h3>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">📡</div>
+                            <div class="improvement-text">Multi-CLI orchestration (Claude Code, Codex, Gemini)</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">🔌</div>
+                            <div class="improvement-text">Plugin system for extensibility</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">🎛️</div>
+                            <div class="improvement-text">Agent lifecycle management via hooks</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">💾</div>
+                            <div class="improvement-text">Session persistence with .rvf containers</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: RuVector Substrate -->
+            <div>
+                <div class="section">
+                    <h2>⚡ RuVector Substrate Layer</h2>
+                    <p style="color: #666; margin-bottom: 20px;">18 crates providing vector search, state persistence, and agentic infrastructure</p>
+
+                    <div class="crate-group">
+                        <h3><span class="phase-badge">Phase 2-4</span> Core MCP</h3>
+                        <div class="crate essential">
+                            <div class="crate-name">mcp-brain</div>
+                            <div class="crate-desc">MCP server foundation</div>
+                        </div>
+                    </div>
+
+                    <div class="crate-group">
+                        <h3><span class="phase-badge">Phase 5</span> Vector Search</h3>
+                        <div class="crate essential">
+                            <div class="crate-name">ruvector-core</div>
+                            <div class="crate-desc">HNSW vector search engine</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">ruvector-math</div>
+                            <div class="crate-desc">Math kernels & operations</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">ruvector-rabitq</div>
+                            <div class="crate-desc">RaBitQ quantization</div>
+                        </div>
+                    </div>
+
+                    <div class="crate-group">
+                        <h3><span class="phase-badge">Phase 5</span> Learning & Routing</h3>
+                        <div class="crate essential">
+                            <div class="crate-name">sona</div>
+                            <div class="crate-desc">Self-learning & reranking</div>
+                        </div>
+                        <div class="crate essential">
+                            <div class="crate-name">ruvector-router-core</div>
+                            <div class="crate-desc">Model & agent routing</div>
+                        </div>
+                    </div>
+
+                    <div class="crate-group">
+                        <h3><span class="phase-badge">Phase 5</span> Session Management</h3>
+                        <div class="crate essential">
+                            <div class="crate-name">rvf-types</div>
+                            <div class="crate-desc">.rvf container types</div>
+                        </div>
+                        <div class="crate essential">
+                            <div class="crate-name">rvf-wire</div>
+                            <div class="crate-desc">.rvf wire protocol</div>
+                        </div>
+                        <div class="crate essential">
+                            <div class="crate-name">rvf-manifest</div>
+                            <div class="crate-desc">Manifest handling</div>
+                        </div>
+                        <div class="crate essential">
+                            <div class="crate-name">rvf-crypto</div>
+                            <div class="crate-desc">Witness chain & signatures</div>
+                        </div>
+                        <div class="crate essential">
+                            <div class="crate-name">rvf-cli</div>
+                            <div class="crate-desc">CLI utilities</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">rvf-quant</div>
+                            <div class="crate-desc">Quantization utilities</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">rvf-index</div>
+                            <div class="crate-desc">Indexing primitives</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">rvf-runtime</div>
+                            <div class="crate-desc">Runtime support</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">rvf-import</div>
+                            <div class="crate-desc">Import utilities</div>
+                        </div>
+                    </div>
+
+                    <div class="crate-group">
+                        <h3><span class="phase-badge">Phase 5</span> Optimizations</h3>
+                        <div class="crate optional">
+                            <div class="crate-name">ruvector-collections</div>
+                            <div class="crate-desc">Collection algorithms</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">ruvector-filter</div>
+                            <div class="crate-desc">Search filtering</div>
+                        </div>
+                        <div class="crate optional">
+                            <div class="crate-name">ruvector-metrics</div>
+                            <div class="crate-desc">Performance monitoring</div>
+                        </div>
+                    </div>
+
+                    <div class="improvements">
+                        <h3>✨ RuVector Improvements</h3>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">🔍</div>
+                            <div class="improvement-text">Fast vector similarity search (HNSW 150x–1000x faster)</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">💡</div>
+                            <div class="improvement-text">Self-learning via SONA for adaptive routing</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">📊</div>
+                            <div class="improvement-text">Model/agent routing via ruvector-router-core</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">🔐</div>
+                            <div class="improvement-text">Cryptographic session verification (witness chain)</div>
+                        </div>
+                        <div class="improvement-item">
+                            <div class="improvement-icon">⚙️</div>
+                            <div class="improvement-text">Memory optimization via RaBitQ quantization</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Full-Width Sections -->
+        <div class="content full-width">
+            <div class="section" style="grid-column: 1 / -1;">
+                <h2>📊 Data Flow & Integration Points</h2>
+
+                <div class="flow-diagram">
+Claude Code CLI
+    │
+    └─→ [ruflo-host Claude adapter]
+         │
+         ├─→ [ruflo-cli] ──→ command dispatch
+         │
+         ├─→ [ruflo-mcp] ──→ 20 MCP tools
+         │   │
+         │   ├─→ memory.* ─────┐
+         │   ├─→ session.* ────┼─→ [ruflo-session] ──→ [rvf-*] ──→ RuVLLM containers
+         │   ├─→ agent.* ──────┤
+         │   ├─→ intel.* ──────┼─→ [sona] ──→ SONA learning loop
+         │   ├─→ hooks.* ──────┼─→ [ruvector-router-core] ──→ routing decisions
+         │   ├─→ gov.* ────────┼─→ [rvf-crypto] ──→ witness chain verification
+         │   └─→ workflow.* ───┘
+         │
+         ├─→ [ruflo-plugin-host] ──→ plugin discovery & execution
+         │
+         └─→ [ruflo-hooks] ──→ lifecycle events
+             │
+             ├─→ pre-task
+             ├─→ post-task
+             ├─→ pre-edit
+             └─→ post-command
+
+PHASE ACTIVATION:
+  Phase 2-4: Stubs + MCP server active (mcp-brain)
+  Phase 5+:  Real implementations (ruvector-core, sona, RVF containers)
+                </div>
+            </div>
+        </div>
+
+        <!-- Phase Timeline -->
+        <div class="content full-width">
+            <div class="section" style="grid-column: 1 / -1;">
+                <div class="phase-timeline">
+                    <h3>🔄 Phase-by-Phase Activation Timeline</h3>
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-marker">0</div>
+                            <div class="timeline-content">
+                                <div class="timeline-phase">Phase 0: Scaffolding (Done)</div>
+                                <div class="timeline-desc">6 Ruflo crates + 18 RuVector crates copied & integrated</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-marker">1</div>
+                            <div class="timeline-content">
+                                <div class="timeline-phase">Phase 1: Validation</div>
+                                <div class="timeline-desc">All 24 crates compile cleanly, CI passes, integration verified</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-marker">2</div>
+                            <div class="timeline-content">
+                                <div class="timeline-phase">Phase 2: MCP Server</div>
+                                <div class="timeline-desc">ruflo mcp serve ships with 20 tools, all using RuVector stubs</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-marker">3</div>
+                            <div class="timeline-content">
+                                <div class="timeline-phase">Phase 3: Plugins</div>
+                                <div class="timeline-desc">Plugin host + discovery, skill compatibility, tools stubbed</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-marker">4</div>
+                            <div class="timeline-content">
+                                <div class="timeline-phase">Phase 4: Hooks</div>
+                                <div class="timeline-desc">8 hooks + routing, SONA integration begins, routing decisions stubbed</div>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-marker">5</div>
+                            <div class="timeline-content">
+                                <div class="timeline-phase">Phase 5: Real Implementations</div>
+                                <div class="timeline-desc">Activate ruvector-core (vector search), sona (learning), RVF (persistence), witness chain</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="content full-width">
+            <div class="section" style="grid-column: 1 / -1;">
+                <h2>📋 Legend & Stats</h2>
+
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #e74c3c;"></div>
+                        <div><strong>Essential (9)</strong> — Ship for v1, real use</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #f39c12;"></div>
+                        <div><strong>Optional (9)</strong> — Defer to Phase 5+</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #27ae60;"></div>
+                        <div><strong>Improvements</strong> — Actual benefits per crate</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 30px; padding: 20px; background: #f0f4ff; border-radius: 8px;">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">Key Metrics</h3>
+                    <ul style="color: #555; line-height: 2;">
+                        <li><strong>Total Crates:</strong> 24 (6 Ruflo + 18 RuVector)</li>
+                        <li><strong>Ruflo LOC Budget:</strong> ≤30k (v1 contract)</li>
+                        <li><strong>Dropped from v1:</strong> 11 clustering/LLM/research crates</li>
+                        <li><strong>Performance Boost:</strong> HNSW 150x–1000x vs naive search</li>
+                        <li><strong>Session Isolation:</strong> Cryptographically verified via witness chain</li>
+                        <li><strong>Self-Learning:</strong> SONA adapts routing over time</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>

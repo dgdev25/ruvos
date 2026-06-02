@@ -4,10 +4,10 @@ use crate::distance::distance;
 use crate::error::{Result, RuvectorError};
 use crate::index::VectorIndex;
 use crate::types::{DistanceMetric, HnswConfig, SearchResult, VectorId};
-use bincode::{Decode, Encode};
 use dashmap::DashMap;
 use hnsw_rs::prelude::*;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Distance function wrapper for hnsw_rs
@@ -48,7 +48,7 @@ struct HnswInner {
 }
 
 /// Serializable HNSW index state
-#[derive(Encode, Decode, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct HnswState {
     vectors: Vec<(String, Vec<f32>)>,
     id_to_idx: Vec<(String, usize)>,
@@ -59,7 +59,7 @@ pub struct HnswState {
     metric: SerializableDistanceMetric,
 }
 
-#[derive(Encode, Decode, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 struct SerializableHnswConfig {
     m: usize,
     ef_construction: usize,
@@ -67,7 +67,7 @@ struct SerializableHnswConfig {
     max_elements: usize,
 }
 
-#[derive(Encode, Decode, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 enum SerializableDistanceMetric {
     Euclidean,
     Cosine,
@@ -169,7 +169,7 @@ impl HnswIndex {
             metric: self.metric.into(),
         };
 
-        bincode::encode_to_vec(&state, bincode::config::standard()).map_err(|e| {
+        serde_json::to_vec(&state).map_err(|e| {
             RuvectorError::SerializationError(format!("Failed to serialize HNSW index: {}", e))
         })
     }
@@ -177,7 +177,7 @@ impl HnswIndex {
     /// Deserialize the index from bytes using bincode
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
         let (state, _): (HnswState, usize) =
-            bincode::decode_from_slice(bytes, bincode::config::standard()).map_err(|e| {
+            serde_json::from_slice(bytes).map_err(|e| {
                 RuvectorError::SerializationError(format!(
                     "Failed to deserialize HNSW index: {}",
                     e
