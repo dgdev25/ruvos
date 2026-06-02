@@ -6,8 +6,24 @@
 //! 3. $RUFLO_HOME/plugins/<name>/
 //! 4. <workspace>/crates/ruflo-plugin-host/registry/<name>/
 
+pub mod error;
+pub mod types;
+pub mod manifest;
+pub mod parser;
+pub mod discover;
+pub mod executor;
 pub mod discovery;
 pub mod registry;
 
-pub use discovery::{discover_plugins, PluginManifest};
-pub use registry::PluginRegistry;
+pub use error::{PluginError, Result};
+pub use types::*;
+pub use discover::PluginDiscoverer;
+pub use executor::PluginExecutor;
+
+pub fn create_discoverer() -> PluginDiscoverer {
+    PluginDiscoverer::default()
+}
+
+pub fn create_executor() -> PluginExecutor {
+    PluginExecutor::new()
+}
