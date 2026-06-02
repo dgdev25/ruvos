@@ -37,9 +37,9 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(memory::MemoryListHandler));
 
     // Register session tools
-    registry.register(Box::new(session::SessionCreateStub));
-    registry.register(Box::new(session::SessionResumeStub));
-    registry.register(Box::new(session::SessionForkStub));
+    registry.register(Box::new(session::SessionCreateHandler));
+    registry.register(Box::new(session::SessionResumeHandler));
+    registry.register(Box::new(session::SessionForkHandler));
 
     // Register agent tools
     registry.register(Box::new(agent::AgentSpawnStub));
