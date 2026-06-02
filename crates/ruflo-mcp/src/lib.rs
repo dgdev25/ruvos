@@ -10,8 +10,10 @@
 //! - **gov** (2): witness_verify, health
 //! - **workflow** (1): run
 
+pub mod error;
 pub mod server;
 pub mod tools;
 
+pub use error::{RufloError, Result};
 pub use server::serve;
 pub use tools::tool_registry;
