@@ -69,63 +69,6 @@ pub fn create_registry() -> ToolRegistry {
     registry
 }
 
-#[cfg(test)]
-mod integration_tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_full_registry_creation() {
-        let registry = create_registry();
-        // All 20 tools + 1 test echo tool = 21
-        assert_eq!(registry.tool_count(), 21);
-    }
-
-    #[test]
-    fn test_registry_contains_all_domains() {
-        let registry = create_registry();
-        let tools = registry.list_tools();
-
-        // Check each domain is represented
-        assert!(tools.iter().any(|t| t.starts_with("memory.")));
-        assert!(tools.iter().any(|t| t.starts_with("session.")));
-        assert!(tools.iter().any(|t| t.starts_with("agent.")));
-        assert!(tools.iter().any(|t| t.starts_with("hooks.")));
-        assert!(tools.iter().any(|t| t.starts_with("intel.")));
-        assert!(tools.iter().any(|t| t.starts_with("plugin.")));
-        assert!(tools.iter().any(|t| t.starts_with("gov.")));
-        assert!(tools.iter().any(|t| t.starts_with("workflow.")));
-        assert!(tools.iter().any(|t| t == "test.echo"));
-    }
-
-    #[tokio::test]
-    async fn test_all_stubs_execute_successfully() {
-        let registry = create_registry();
-
-        let tests = vec![
-            ("test.echo", json!({"msg": "test"})),
-            ("memory.search", json!({"query": "test"})),
-            ("session.create", json!({})),
-            ("agent.spawn", json!({"host": "test"})),
-            ("hooks.route", json!({"task": "test"})),
-            ("intel.pattern_search", json!({"query": "test"})),
-            ("plugin.list", json!({})),
-            ("gov.health", json!({})),
-            ("workflow.run", json!({"workflow_type": "feature"})),
-        ];
-
-        for (method, params) in tests {
-            let result = registry.execute(method, params).await;
-            assert!(
-                result.is_ok(),
-                "Tool {} failed to execute: {:?}",
-                method,
-                result.err()
-            );
-        }
-    }
-}
-
 /// Return the registry of all 20 tools (metadata only).
 pub fn tool_registry() -> Vec<ToolMetadata> {
     vec![
@@ -243,4 +186,61 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             domain: "workflow".to_string(),
         },
     ]
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_full_registry_creation() {
+        let registry = create_registry();
+        // All 20 tools + 1 test echo tool = 21
+        assert_eq!(registry.tool_count(), 21);
+    }
+
+    #[test]
+    fn test_registry_contains_all_domains() {
+        let registry = create_registry();
+        let tools = registry.list_tools();
+
+        // Check each domain is represented
+        assert!(tools.iter().any(|t| t.starts_with("memory.")));
+        assert!(tools.iter().any(|t| t.starts_with("session.")));
+        assert!(tools.iter().any(|t| t.starts_with("agent.")));
+        assert!(tools.iter().any(|t| t.starts_with("hooks.")));
+        assert!(tools.iter().any(|t| t.starts_with("intel.")));
+        assert!(tools.iter().any(|t| t.starts_with("plugin.")));
+        assert!(tools.iter().any(|t| t.starts_with("gov.")));
+        assert!(tools.iter().any(|t| t.starts_with("workflow.")));
+        assert!(tools.iter().any(|t| t == "echo.test"));
+    }
+
+    #[tokio::test]
+    async fn test_all_stubs_execute_successfully() {
+        let registry = create_registry();
+
+        let tests = vec![
+            ("echo.test", json!({"message": "test"})),
+            ("memory.search", json!({"query": "test"})),
+            ("session.create", json!({})),
+            ("agent.spawn", json!({"host": "test"})),
+            ("hooks.route", json!({"task": "test"})),
+            ("intel.pattern_search", json!({"query": "test"})),
+            ("plugin.list", json!({})),
+            ("gov.health", json!({})),
+            ("workflow.run", json!({"workflow_type": "feature"})),
+        ];
+
+        for (method, params) in tests {
+            let result = registry.execute(method, params).await;
+            assert!(
+                result.is_ok(),
+                "Tool {} failed to execute: {:?}",
+                method,
+                result.err()
+            );
+        }
+    }
 }

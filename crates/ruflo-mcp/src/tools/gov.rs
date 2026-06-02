@@ -1,6 +1,6 @@
 //! Gov domain tools (2): witness_verify, health
 
-use super::handler::{ToolHandler, ExecuteFuture};
+use super::handler::{ExecuteFuture, ToolHandler};
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

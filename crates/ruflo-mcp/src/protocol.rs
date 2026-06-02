@@ -5,15 +5,15 @@ use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct JsonRpcRequest {
-    pub jsonrpc: String,  // must be "2.0"
-    pub method: String,   // e.g., "echo.test", "memory.search"
+    pub jsonrpc: String, // must be "2.0"
+    pub method: String,  // e.g., "echo.test", "memory.search"
     pub params: Value,
-    pub id: String,       // request ID
+    pub id: String, // request ID
 }
 
 #[derive(Debug, Serialize)]
 pub struct JsonRpcResponse {
-    pub jsonrpc: String,  // always "2.0"
+    pub jsonrpc: String, // always "2.0"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]

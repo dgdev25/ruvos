@@ -1,6 +1,6 @@
 //! Intel domain tools (2): pattern_search, pattern_store
 
-use super::handler::{ToolHandler, ExecuteFuture};
+use super::handler::{ExecuteFuture, ToolHandler};
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

@@ -3,11 +3,11 @@
 #[derive(Debug)]
 pub enum RufloError {
     // JSON-RPC protocol errors
-    ParseError(String),           // -32700
-    InvalidRequest(String),       // -32600
-    MethodNotFound,               // -32601
-    InvalidParams(String),        // -32602
-    InternalError(String),        // -32603
+    ParseError(String),     // -32700
+    InvalidRequest(String), // -32600
+    MethodNotFound,         // -32601
+    InvalidParams(String),  // -32602
+    InternalError(String),  // -32603
 
     // Handler errors
     HandlerError(String),
@@ -21,7 +21,9 @@ impl RufloError {
             RufloError::InvalidRequest(_) => -32600,
             RufloError::MethodNotFound => -32601,
             RufloError::InvalidParams(_) => -32602,
-            RufloError::InternalError(_) | RufloError::HandlerError(_) | RufloError::ValidationError(_) => -32000,
+            RufloError::InternalError(_)
+            | RufloError::HandlerError(_)
+            | RufloError::ValidationError(_) => -32000,
         }
     }
 

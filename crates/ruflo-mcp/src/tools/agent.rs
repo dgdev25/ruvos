@@ -1,6 +1,6 @@
 //! Agent domain tools (3): spawn, status, message
 
-use super::handler::{ToolHandler, ExecuteFuture};
+use super::handler::{ExecuteFuture, ToolHandler};
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

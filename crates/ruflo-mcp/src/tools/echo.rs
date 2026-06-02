@@ -1,30 +1,50 @@
 // crates/ruflo-mcp/src/tools/echo.rs
 //! Echo tool - a simple test handler for the registry
 
-use super::handler::{ToolHandler, ExecuteFuture};
+use super::handler::{ExecuteFuture, ToolHandler};
 use crate::Result;
+use chrono::Utc;
 use serde_json::{json, Value};
 
 pub struct EchoHandler;
 
 impl ToolHandler for EchoHandler {
     fn name(&self) -> &'static str {
-        "echo"
-    }
-
-    fn domain(&self) -> &'static str {
         "test"
     }
 
-    fn validate(&self, _params: &Value) -> Result<()> {
-        // Echo accepts any input
+    fn domain(&self) -> &'static str {
+        "echo"
+    }
+
+    fn validate(&self, params: &Value) -> Result<()> {
+        if !params.is_object() {
+            return Err(crate::RufloError::InvalidParams(
+                "params must be an object".to_string(),
+            ));
+        }
+
+        if params.get("message").and_then(|v| v.as_str()).is_none() {
+            return Err(crate::RufloError::InvalidParams(
+                "missing 'message' field (string)".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
+            let message = params
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap()
+                .to_string();
+
             Ok(json!({
-                "echoed": params,
+                "echo": message,
+                "timestamp": Utc::now().to_rfc3339(),
+                "handler": "echo",
             }))
         })
     }

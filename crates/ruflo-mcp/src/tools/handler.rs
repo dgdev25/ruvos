@@ -4,8 +4,8 @@
 use crate::Result;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 /// Type alias for the boxed future returned by execute
 pub type ExecuteFuture = Pin<Box<dyn Future<Output = Result<Value>> + Send>>;
@@ -99,7 +99,7 @@ mod tests {
         assert_eq!(registry.tool_count(), 1);
 
         let tools = registry.list_tools();
-        assert!(tools.contains(&"test.echo".to_string()));
+        assert!(tools.contains(&"echo.test".to_string()));
     }
 
     #[tokio::test]
@@ -109,12 +109,18 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(EchoHandler));
 
-        let input = json!({"hello": "world"});
-        let result = registry.execute("test.echo", input.clone()).await;
+        let input = json!({"message": "hello world"});
+        let result = registry.execute("echo.test", input.clone()).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert!(response.get("echoed").is_some());
+        assert!(response.get("echo").is_some());
+        assert_eq!(
+            response.get("echo").unwrap().as_str().unwrap(),
+            "hello world"
+        );
+        assert!(response.get("timestamp").is_some());
+        assert!(response.get("handler").is_some());
     }
 
     #[tokio::test]
@@ -124,4 +130,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-
