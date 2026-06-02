@@ -1,0 +1,27 @@
+# Rust
+/target/
+Cargo.lock
+*.rs.bk
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.rlib
+
+# Test artifacts
+*.test
+
+# Temporary files
+*.tmp
+.env.local
