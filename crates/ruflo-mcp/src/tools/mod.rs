@@ -31,10 +31,10 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(echo::EchoHandler));
 
     // Register memory tools
-    registry.register(Box::new(memory::MemorySearchStub));
-    registry.register(Box::new(memory::MemoryStoreStub));
-    registry.register(Box::new(memory::MemoryRetrieveStub));
-    registry.register(Box::new(memory::MemoryListStub));
+    registry.register(Box::new(memory::MemorySearchHandler));
+    registry.register(Box::new(memory::MemoryStoreHandler));
+    registry.register(Box::new(memory::MemoryRetrieveHandler));
+    registry.register(Box::new(memory::MemoryListHandler));
 
     // Register session tools
     registry.register(Box::new(session::SessionCreateStub));
@@ -223,7 +223,19 @@ mod integration_tests {
 
         let tests = vec![
             ("echo.test", json!({"message": "test"})),
-            ("memory.search", json!({"query": "test"})),
+            (
+                "memory.search",
+                json!({"query": "test", "namespace": "test"}),
+            ),
+            (
+                "memory.store",
+                json!({"key": "test", "value": "test", "namespace": "test"}),
+            ),
+            (
+                "memory.retrieve",
+                json!({"key": "test", "namespace": "test"}),
+            ),
+            ("memory.list", json!({"namespace": "test"})),
             ("session.create", json!({})),
             ("agent.spawn", json!({"host": "test"})),
             ("hooks.route", json!({"task": "test"})),
