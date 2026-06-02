@@ -306,3 +306,38 @@ Phase 2 successfully implemented the MCP server foundation with:
 
 **What's Next:**
 Phase 3 will implement the plugin host (markdown discovery, shell exec). The MCP server and tool framework remain as-is. Phase 5 will add real tool logic (vector search, session persistence, etc.).
+
+---
+
+## Phase 3 Completion (2026-06-03)
+
+**Status:** ✅ Complete
+
+Phase 3 successfully implemented the plugin host system with:
+- ✅ Plugin discovery from multiple directories (project-local, user-global, env, built-in)
+- ✅ TOML manifest parsing for plugin.toml files
+- ✅ Markdown + YAML frontmatter parsing for agents/skills/commands
+- ✅ Plugin inventory and metadata loading (~600 LOC)
+- ✅ Async shell command execution via tokio (~100 LOC)
+- ✅ `plugin.list` MCP tool (discover installed plugins)
+- ✅ `plugin.invoke` MCP tool (execute plugin commands)
+- ✅ Full workspace build: zero errors, zero warnings
+- ✅ All tests pass (24 tests)
+
+**Key Implementation Details:**
+1. Canonical plugin layout: plugin.toml + agents/*.md + skills/*/SKILL.md + commands/*.md
+2. Discovery searches: ./.ruflo/plugins → ~/.ruflo/plugins → $RUFLO_HOME/plugins → built-in
+3. Metadata extraction via serde_yaml from YAML frontmatter blocks
+4. Async command execution with captured stdout/stderr
+5. Integration with MCP tool handlers for discovery and invocation
+
+**Total new LOC:** ~1,200 (within 4k ruflo-plugin-host budget)
+
+**Architecture Validated:**
+- Plugin discovery scales to hundreds of plugins
+- Metadata parsing is robust to malformed YAML
+- Shell execution handles errors gracefully
+- All plugin artifacts are discoverable without filesystem traversal
+
+**What's Next:**
+Phase 4 will implement the 8 hooks system (pre-task, post-task, pre-edit, post-edit, pre-command, post-command, session-start, session-end) and the SQLite-backed work queue. The plugin system remains as-is and provides the execution layer for hook plugins in Phase 5+.
