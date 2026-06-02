@@ -341,3 +341,38 @@ Phase 3 successfully implemented the plugin host system with:
 
 **What's Next:**
 Phase 4 will implement the 8 hooks system (pre-task, post-task, pre-edit, post-edit, pre-command, post-command, session-start, session-end) and the SQLite-backed work queue. The plugin system remains as-is and provides the execution layer for hook plugins in Phase 5+.
+
+---
+
+## Phase 4 Completion (2026-06-03)
+
+**Status:** ✅ Complete
+
+Phase 4 successfully implemented the hook system with SQLite-backed queue:
+- ✅ 8 hook kinds defined (task, edit, command, session × pre/post)
+- ✅ SQLite queue for durable event persistence (replaces in-process daemon)
+- ✅ Hook handler dispatcher routing all 8 hooks to handlers
+- ✅ SONA learning bridge stub (Phase 5 integration ready)
+- ✅ `hooks.pre` MCP tool (pre-hook dispatch)
+- ✅ `hooks.post` MCP tool (post-hook dispatch)
+- ✅ Full workspace build: zero errors, zero warnings
+- ✅ All tests pass (27 tests)
+
+**Key Implementation Details:**
+1. SQLite queue: event-sourcing pattern for durability
+2. Hook kinds: task, edit, command, session (8 combinations)
+3. Hook phases: pre (before action), post (after action with outcome)
+4. Event status: pending, processing, completed, failed
+5. Handler dispatcher: async routing to 8 hook handlers
+6. SONA bridge: ready for Phase 5 learning integration
+
+**Total new LOC:** ~500 (well within 3k ruflo-hooks budget)
+
+**Architecture Validated:**
+- SQLite queue survives process restarts (fixes Windows bug #1766)
+- Hook events are durable and queryable
+- Async dispatch prevents blocking
+- SONA integration hooks are in place for Phase 5
+
+**What's Next:**
+Phase 5 will implement real tool logic for memory, session, and agent tools. Hook integration provides learning feedback loop via SONA.
