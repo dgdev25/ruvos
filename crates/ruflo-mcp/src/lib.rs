@@ -17,5 +17,5 @@ pub mod tools;
 
 pub use error::{Result, RufloError};
 pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
-pub use server::serve;
+pub use server::{serve, JsonRpcServer};
 pub use tools::{create_registry, tool_registry, ToolRegistry};
