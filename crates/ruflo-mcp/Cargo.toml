@@ -18,3 +18,4 @@ chrono.workspace = true
 ruflo-plugin-host = { path = "../ruflo-plugin-host" }
 
 [dev-dependencies]
+tokio = { version = "1.40", features = ["macros"] }
