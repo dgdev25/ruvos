@@ -3,15 +3,15 @@
 //! Validates that the MCP server can be spawned and respond to requests correctly.
 
 use serde_json::{json, Value};
-use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
 use std::thread;
 
 #[test]
 fn test_mcp_echo_round_trip() {
     // Build the binary first
     let build = Command::new("cargo")
-        .args(&["build", "--release", "-p", "ruflo-cli"])
+        .args(["build", "--release", "-p", "ruflo-cli"])
         .output()
         .expect("failed to build ruflo-cli");
 
@@ -27,12 +27,14 @@ fn test_mcp_echo_round_trip() {
     let binary_path = format!("{}/../../target/release/ruflo-cli", manifest_dir);
 
     let mut child = Command::new(&binary_path)
-        .args(&["mcp", "serve"])
+        .args(["mcp", "serve"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("failed to spawn ruflo mcp serve");
+
+    // Note: child is wait()'ed on via kill() below
 
     let mut stdin = child.stdin.take().expect("failed to get stdin");
     let stdout = child.stdout.take().expect("failed to get stdout");
@@ -56,7 +58,7 @@ fn test_mcp_echo_round_trip() {
         "id": "test-1"
     });
 
-    let request_str = format!("{}\n", request.to_string());
+    let request_str = format!("{}\n", request);
     stdin
         .write_all(request_str.as_bytes())
         .expect("failed to write request");
@@ -96,8 +98,7 @@ fn test_mcp_echo_round_trip() {
         "response missing result field"
     );
     assert_eq!(
-        response["result"]["echo"],
-        "integration-test-123",
+        response["result"]["echo"], "integration-test-123",
         "echo value mismatch"
     );
     assert_eq!(response["id"], "test-1", "request ID mismatch");
@@ -107,5 +108,6 @@ fn test_mcp_echo_round_trip() {
     );
 
     // Clean up
-    child.kill().expect("failed to kill process");
+    let _ = child.kill();
+    let _ = child.wait();
 }
