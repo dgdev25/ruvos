@@ -3,10 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-fn create_test_plugin_dir(
-    parent: &TempDir,
-    name: &str,
-) -> (PathBuf, PluginManifest) {
+fn create_test_plugin_dir(parent: &TempDir, name: &str) -> (PathBuf, PluginManifest) {
     let plugin_dir = parent.path().join(name);
     fs::create_dir_all(&plugin_dir).expect("create plugin dir");
 

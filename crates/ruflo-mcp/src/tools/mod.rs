@@ -56,8 +56,8 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(intel::IntelPatternStoreStub));
 
     // Register plugin tools
-    registry.register(Box::new(plugin::PluginListStub));
-    registry.register(Box::new(plugin::PluginInvokeStub));
+    registry.register(Box::new(plugin::PluginListHandler::new()));
+    registry.register(Box::new(plugin::PluginInvokeHandler::new()));
 
     // Register gov tools
     registry.register(Box::new(gov::GovWitnessVerifyStub));

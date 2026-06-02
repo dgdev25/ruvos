@@ -1,9 +1,11 @@
 //! Plugin domain tools (2): list, invoke
 
 use super::handler::{ExecuteFuture, ToolHandler};
-use crate::Result;
+use crate::{error::RufloError, Result};
+use ruflo_plugin_host::{create_discoverer, create_executor, types::ExecutionRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginInfo {
@@ -13,12 +15,24 @@ pub struct PluginInfo {
 }
 
 // ============================================================================
-// Stub handlers for plugin tools
+// Real handlers for plugin tools
 // ============================================================================
 
-pub struct PluginListStub;
+pub struct PluginListHandler;
 
-impl ToolHandler for PluginListStub {
+impl PluginListHandler {
+    pub fn new() -> Self {
+        PluginListHandler
+    }
+}
+
+impl Default for PluginListHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolHandler for PluginListHandler {
     fn name(&self) -> &'static str {
         "list"
     }
@@ -33,17 +47,73 @@ impl ToolHandler for PluginListStub {
 
     fn execute(&self, _params: Value) -> ExecuteFuture {
         Box::pin(async move {
-            // TODO: Invoke ruflo-plugin-host discovery
+            let discoverer = create_discoverer();
+
+            // Try to discover plugins in standard locations
+            let mut all_plugins = Vec::new();
+
+            // 1. ./.ruflo/plugins/
+            if let Ok(plugins) = discoverer.discover_in_directory(Path::new("./.ruflo/plugins")) {
+                all_plugins.extend(plugins);
+            }
+
+            // 2. ~/.ruflo/plugins/
+            if let Ok(home_dir) = std::env::var("HOME") {
+                let home_plugins = Path::new(&home_dir).join(".ruflo/plugins");
+                if let Ok(plugins) = discoverer.discover_in_directory(&home_plugins) {
+                    all_plugins.extend(plugins);
+                }
+            }
+
+            // 3. $RUFLO_HOME/plugins/
+            if let Ok(ruflo_home) = std::env::var("RUFLO_HOME") {
+                let ruflo_plugins = Path::new(&ruflo_home).join("plugins");
+                if let Ok(plugins) = discoverer.discover_in_directory(&ruflo_plugins) {
+                    all_plugins.extend(plugins);
+                }
+            }
+
+            // Convert to JSON response
+            let plugin_infos: Vec<Value> = all_plugins
+                .iter()
+                .map(|plugin| {
+                    json!({
+                        "name": plugin.name,
+                        "version": plugin.manifest.plugin.version,
+                        "description": plugin.manifest.plugin.description,
+                        "path": plugin.path.display().to_string(),
+                        "agents": plugin.agents.iter().map(|a| &a.name).collect::<Vec<_>>(),
+                        "skills": plugin.skills.iter().map(|s| &s.name).collect::<Vec<_>>(),
+                        "commands": plugin.commands.iter().map(|c| &c.name).collect::<Vec<_>>(),
+                    })
+                })
+                .collect();
+
+            let count = plugin_infos.len();
+
             Ok(json!({
-                "plugins": [],
+                "plugins": plugin_infos,
+                "count": count,
             }))
         })
     }
 }
 
-pub struct PluginInvokeStub;
+pub struct PluginInvokeHandler;
 
-impl ToolHandler for PluginInvokeStub {
+impl PluginInvokeHandler {
+    pub fn new() -> Self {
+        PluginInvokeHandler
+    }
+}
+
+impl Default for PluginInvokeHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolHandler for PluginInvokeHandler {
     fn name(&self) -> &'static str {
         "invoke"
     }
@@ -52,17 +122,83 @@ impl ToolHandler for PluginInvokeStub {
         "plugin"
     }
 
-    fn validate(&self, _params: &Value) -> Result<()> {
-        // TODO: Validate required fields: plugin_name, command
+    fn validate(&self, params: &Value) -> Result<()> {
+        // Validate required fields: plugin_name, command
+        if !params.is_object() {
+            return Err(RufloError::ValidationError(
+                "Parameters must be a JSON object".to_string(),
+            ));
+        }
+
+        if params.get("plugin_name").is_none() {
+            return Err(RufloError::ValidationError(
+                "Missing required parameter: plugin_name".to_string(),
+            ));
+        }
+
+        if params.get("command").is_none() {
+            return Err(RufloError::ValidationError(
+                "Missing required parameter: command".to_string(),
+            ));
+        }
+
         Ok(())
     }
 
-    fn execute(&self, _params: Value) -> ExecuteFuture {
+    fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
-            // TODO: Look up plugin manifest, execute shell command via tokio::process
-            Ok(json!({
-                "output": "",
-            }))
+            let plugin_name = match params.get("plugin_name").and_then(|v| v.as_str()) {
+                Some(name) => name.to_string(),
+                None => {
+                    return Ok(json!({
+                        "status": 1,
+                        "stdout": "",
+                        "stderr": "plugin_name must be a string",
+                    }))
+                }
+            };
+
+            let command = match params.get("command").and_then(|v| v.as_str()) {
+                Some(cmd) => cmd.to_string(),
+                None => {
+                    return Ok(json!({
+                        "status": 1,
+                        "stdout": "",
+                        "stderr": "command must be a string",
+                    }))
+                }
+            };
+
+            let args: Vec<String> = params
+                .get("args")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let executor = create_executor();
+            let request = ExecutionRequest {
+                plugin_name,
+                command,
+                args,
+            };
+
+            match executor.execute(&request).await {
+                Ok(result) => Ok(json!({
+                    "status": result.status,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                })),
+                Err(e) => Ok(json!({
+                    "status": 1,
+                    "stdout": "",
+                    "stderr": e.to_string(),
+                })),
+            }
         })
     }
 }

@@ -1,11 +1,9 @@
 //! Plugin discovery: traverse directories, load manifests, parse agents/skills/commands.
 
 use crate::error::{PluginError, Result};
-use crate::parser::parse_frontmatter;
-use crate::types::{
-    AgentMetadata, CommandMetadata, Plugin, SkillMetadata,
-};
 use crate::manifest::read_manifest_from_file;
+use crate::parser::parse_frontmatter;
+use crate::types::{AgentMetadata, CommandMetadata, Plugin, SkillMetadata};
 use std::fs;
 use std::path::Path;
 
@@ -74,9 +72,7 @@ impl PluginDiscoverer {
             .and_then(|items| {
                 items
                     .into_iter()
-                    .map(|(name, description)| {
-                        Ok(AgentMetadata { name, description })
-                    })
+                    .map(|(name, description)| Ok(AgentMetadata { name, description }))
                     .collect()
             })
     }
@@ -87,9 +83,7 @@ impl PluginDiscoverer {
             .and_then(|items| {
                 items
                     .into_iter()
-                    .map(|(name, description)| {
-                        Ok(SkillMetadata { name, description })
-                    })
+                    .map(|(name, description)| Ok(SkillMetadata { name, description }))
                     .collect()
             })
     }
@@ -100,9 +94,7 @@ impl PluginDiscoverer {
             .and_then(|items| {
                 items
                     .into_iter()
-                    .map(|(name, description)| {
-                        Ok(CommandMetadata { name, description })
-                    })
+                    .map(|(name, description)| Ok(CommandMetadata { name, description }))
                     .collect()
             })
     }
