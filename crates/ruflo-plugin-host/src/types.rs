@@ -34,7 +34,7 @@ pub struct PluginCompat {
     pub ruflo_min: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plugin {
     pub name: String,
     pub path: std::path::PathBuf,
@@ -48,7 +48,6 @@ pub struct Plugin {
 pub struct AgentMetadata {
     pub name: String,
     pub description: String,
-    pub purpose: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

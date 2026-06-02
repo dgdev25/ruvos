@@ -12,8 +12,6 @@ pub mod manifest;
 pub mod parser;
 pub mod discover;
 pub mod executor;
-pub mod discovery;
-pub mod registry;
 
 pub use error::{PluginError, Result};
 pub use types::*;
