@@ -2,6 +2,7 @@ use crate::types::*;
 use anyhow::Result;
 use serde_json::json;
 
+#[derive(Clone)]
 pub struct HookDispatcher;
 
 impl HookDispatcher {

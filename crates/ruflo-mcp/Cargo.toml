@@ -16,6 +16,7 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 anyhow = "1.0"
 chrono.workspace = true
 ruflo-plugin-host = { path = "../ruflo-plugin-host" }
+ruflo-hooks = { path = "../ruflo-hooks" }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }

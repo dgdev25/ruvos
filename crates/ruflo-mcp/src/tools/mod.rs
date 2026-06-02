@@ -47,8 +47,8 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(agent::AgentMessageStub));
 
     // Register hooks tools
-    registry.register(Box::new(hooks::HooksPreStub));
-    registry.register(Box::new(hooks::HooksPostStub));
+    registry.register(Box::new(hooks::HooksPreHandler::new()));
+    registry.register(Box::new(hooks::HooksPostHandler::new()));
     registry.register(Box::new(hooks::HooksRouteStub));
 
     // Register intel tools
