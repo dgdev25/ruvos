@@ -1,6 +1,9 @@
 //! Memory domain tools (4): search, store, retrieve, list
 
+use super::handler::{ToolHandler, ExecuteFuture};
+use crate::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
@@ -9,26 +12,110 @@ pub struct MemoryEntry {
     pub namespace: String,
 }
 
-/// Search across namespaces with MMR diversity + recency weighting.
-pub async fn search(_query: &str, _namespace: &str) -> anyhow::Result<Vec<MemoryEntry>> {
-    // TODO: Use ruvector-core HNSW + sona reranker
-    Ok(vec![])
+// ============================================================================
+// Stub handlers for memory tools
+// ============================================================================
+
+pub struct MemorySearchStub;
+
+impl ToolHandler for MemorySearchStub {
+    fn name(&self) -> &'static str {
+        "search"
+    }
+
+    fn domain(&self) -> &'static str {
+        "memory"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: query, namespace
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Use ruvector-core HNSW + sona reranker
+            Ok(json!({
+                "results": [],
+            }))
+        })
+    }
 }
 
-/// Insert/update an entry with optional embedding + tags.
-pub async fn store(_entry: MemoryEntry) -> anyhow::Result<()> {
-    // TODO: Write to ruvector-core
-    Ok(())
+pub struct MemoryStoreStub;
+
+impl ToolHandler for MemoryStoreStub {
+    fn name(&self) -> &'static str {
+        "store"
+    }
+
+    fn domain(&self) -> &'static str {
+        "memory"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: key, value, namespace
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Write to ruvector-core
+            Ok(json!({
+                "status": "stored",
+            }))
+        })
+    }
 }
 
-/// Get a single entry by key.
-pub async fn retrieve(_key: &str) -> anyhow::Result<Option<MemoryEntry>> {
-    // TODO: Look up in ruvector-core
-    Ok(None)
+pub struct MemoryRetrieveStub;
+
+impl ToolHandler for MemoryRetrieveStub {
+    fn name(&self) -> &'static str {
+        "retrieve"
+    }
+
+    fn domain(&self) -> &'static str {
+        "memory"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required field: key
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Look up in ruvector-core
+            Ok(json!({
+                "entry": None::<MemoryEntry>,
+            }))
+        })
+    }
 }
 
-/// List entries in a namespace with filters.
-pub async fn list(_namespace: &str) -> anyhow::Result<Vec<MemoryEntry>> {
-    // TODO: Query ruvector-core with namespace filter
-    Ok(vec![])
+pub struct MemoryListStub;
+
+impl ToolHandler for MemoryListStub {
+    fn name(&self) -> &'static str {
+        "list"
+    }
+
+    fn domain(&self) -> &'static str {
+        "memory"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required field: namespace
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Query ruvector-core with namespace filter
+            Ok(json!({
+                "entries": [],
+            }))
+        })
+    }
 }

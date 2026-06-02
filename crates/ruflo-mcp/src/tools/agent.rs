@@ -1,6 +1,9 @@
 //! Agent domain tools (3): spawn, status, message
 
+use super::handler::{ToolHandler, ExecuteFuture};
+use crate::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,21 +23,85 @@ pub struct AgentStatus {
     pub state: String,
 }
 
-/// Spawn a host agent.
-pub async fn spawn(_request: AgentRequest) -> anyhow::Result<String> {
-    let agent_id = Uuid::new_v4().to_string();
-    // TODO: Route to ruflo-host, create agent instance
-    Ok(agent_id)
+// ============================================================================
+// Stub handlers for agent tools
+// ============================================================================
+
+pub struct AgentSpawnStub;
+
+impl ToolHandler for AgentSpawnStub {
+    fn name(&self) -> &'static str {
+        "spawn"
+    }
+
+    fn domain(&self) -> &'static str {
+        "agent"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: host, archetype, prompt, model
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Route to ruflo-host, create agent instance
+            let agent_id = Uuid::new_v4().to_string();
+            Ok(json!({
+                "agent_id": agent_id,
+                "state": "spawned",
+            }))
+        })
+    }
 }
 
-/// List running agents + states.
-pub async fn status() -> anyhow::Result<Vec<AgentStatus>> {
-    // TODO: Query agent registry from ruflo-host
-    Ok(vec![])
+pub struct AgentStatusStub;
+
+impl ToolHandler for AgentStatusStub {
+    fn name(&self) -> &'static str {
+        "status"
+    }
+
+    fn domain(&self) -> &'static str {
+        "agent"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Query agent registry from ruflo-host
+            Ok(json!({
+                "agents": [],
+            }))
+        })
+    }
 }
 
-/// Send message to a named agent.
-pub async fn message(_agent_id: &str, _message: &str) -> anyhow::Result<String> {
-    // TODO: Route to agent's message queue
-    Ok(String::new())
+pub struct AgentMessageStub;
+
+impl ToolHandler for AgentMessageStub {
+    fn name(&self) -> &'static str {
+        "message"
+    }
+
+    fn domain(&self) -> &'static str {
+        "agent"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: agent_id, message
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Route to agent's message queue
+            Ok(json!({
+                "status": "sent",
+            }))
+        })
+    }
 }

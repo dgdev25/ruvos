@@ -1,6 +1,9 @@
 //! Plugin domain tools (2): list, invoke
 
+use super::handler::{ToolHandler, ExecuteFuture};
+use crate::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginInfo {
@@ -9,14 +12,57 @@ pub struct PluginInfo {
     pub path: String,
 }
 
-/// Installed plugins + skills (discovered from disk).
-pub async fn list() -> anyhow::Result<Vec<PluginInfo>> {
-    // TODO: Invoke ruflo-plugin-host discovery
-    Ok(vec![])
+// ============================================================================
+// Stub handlers for plugin tools
+// ============================================================================
+
+pub struct PluginListStub;
+
+impl ToolHandler for PluginListStub {
+    fn name(&self) -> &'static str {
+        "list"
+    }
+
+    fn domain(&self) -> &'static str {
+        "plugin"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Invoke ruflo-plugin-host discovery
+            Ok(json!({
+                "plugins": [],
+            }))
+        })
+    }
 }
 
-/// Run a plugin command (shell exec via tokio).
-pub async fn invoke(_plugin_name: &str, _command: &str) -> anyhow::Result<String> {
-    // TODO: Look up plugin manifest, execute shell command via tokio::process
-    Ok(String::new())
+pub struct PluginInvokeStub;
+
+impl ToolHandler for PluginInvokeStub {
+    fn name(&self) -> &'static str {
+        "invoke"
+    }
+
+    fn domain(&self) -> &'static str {
+        "plugin"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: plugin_name, command
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Look up plugin manifest, execute shell command via tokio::process
+            Ok(json!({
+                "output": "",
+            }))
+        })
+    }
 }

@@ -1,6 +1,9 @@
 //! Intel domain tools (2): pattern_search, pattern_store
 
+use super::handler::{ToolHandler, ExecuteFuture};
+use crate::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pattern {
@@ -9,14 +12,58 @@ pub struct Pattern {
     pub outcome: String,
 }
 
-/// Find similar past trajectories (4-step retrieve phase).
-pub async fn pattern_search(_query: &str) -> anyhow::Result<Vec<Pattern>> {
-    // TODO: Query sona + ruvector-core with semantic similarity
-    Ok(vec![])
+// ============================================================================
+// Stub handlers for intel tools
+// ============================================================================
+
+pub struct IntelPatternSearchStub;
+
+impl ToolHandler for IntelPatternSearchStub {
+    fn name(&self) -> &'static str {
+        "pattern_search"
+    }
+
+    fn domain(&self) -> &'static str {
+        "intel"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required field: query
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Query sona + ruvector-core with semantic similarity
+            Ok(json!({
+                "patterns": [],
+            }))
+        })
+    }
 }
 
-/// Store outcome for the distill/consolidate phases.
-pub async fn pattern_store(_pattern: Pattern) -> anyhow::Result<()> {
-    // TODO: Write to sona, trigger consolidation pipeline
-    Ok(())
+pub struct IntelPatternStoreStub;
+
+impl ToolHandler for IntelPatternStoreStub {
+    fn name(&self) -> &'static str {
+        "pattern_store"
+    }
+
+    fn domain(&self) -> &'static str {
+        "intel"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: trajectory, outcome
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Write to sona, trigger consolidation pipeline
+            Ok(json!({
+                "status": "stored",
+            }))
+        })
+    }
 }

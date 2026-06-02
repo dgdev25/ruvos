@@ -1,6 +1,9 @@
 //! Workflow domain tools (1): run
 
+use super::handler::{ToolHandler, ExecuteFuture};
+use crate::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowRequest {
@@ -10,8 +13,33 @@ pub struct WorkflowRequest {
     pub task: String,
 }
 
-/// Execute an orchestration template.
-pub async fn run(_request: WorkflowRequest) -> anyhow::Result<String> {
-    // TODO: Dispatch to ruflo-host with workflow orchestration
-    Ok(String::new())
+// ============================================================================
+// Stub handler for workflow tools
+// ============================================================================
+
+pub struct WorkflowRunStub;
+
+impl ToolHandler for WorkflowRunStub {
+    fn name(&self) -> &'static str {
+        "run"
+    }
+
+    fn domain(&self) -> &'static str {
+        "workflow"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required fields: workflow_type, host, archetype, task
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Dispatch to ruflo-host with workflow orchestration
+            Ok(json!({
+                "workflow_id": "",
+                "status": "started",
+            }))
+        })
+    }
 }

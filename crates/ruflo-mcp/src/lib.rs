@@ -18,4 +18,4 @@ pub mod tools;
 pub use error::{RufloError, Result};
 pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 pub use server::serve;
-pub use tools::tool_registry;
+pub use tools::{create_registry, tool_registry, ToolRegistry};

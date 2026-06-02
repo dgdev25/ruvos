@@ -1,6 +1,9 @@
 //! Gov domain tools (2): witness_verify, health
 
+use super::handler::{ToolHandler, ExecuteFuture};
+use crate::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthStatus {
@@ -9,18 +12,59 @@ pub struct HealthStatus {
     pub mcp: String,
 }
 
-/// Verify .rvf signature chain.
-pub async fn witness_verify(_rvf_path: &str) -> anyhow::Result<bool> {
-    // TODO: Invoke rvf-crypto to verify signature chain
-    Ok(true)
+// ============================================================================
+// Stub handlers for gov tools
+// ============================================================================
+
+pub struct GovWitnessVerifyStub;
+
+impl ToolHandler for GovWitnessVerifyStub {
+    fn name(&self) -> &'static str {
+        "witness_verify"
+    }
+
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        // TODO: Validate required field: rvf_path
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Invoke rvf-crypto to verify signature chain
+            Ok(json!({
+                "verified": true,
+            }))
+        })
+    }
 }
 
-/// Doctor / status across substrate, hosts, MCP, daemon.
-pub async fn health() -> anyhow::Result<HealthStatus> {
-    // TODO: Query all subsystems and aggregate health
-    Ok(HealthStatus {
-        substrate: "ok".to_string(),
-        hosts: "ok".to_string(),
-        mcp: "ok".to_string(),
-    })
+pub struct GovHealthStub;
+
+impl ToolHandler for GovHealthStub {
+    fn name(&self) -> &'static str {
+        "health"
+    }
+
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            // TODO: Query all subsystems and aggregate health
+            Ok(json!({
+                "substrate": "ok",
+                "hosts": "ok",
+                "mcp": "ok",
+            }))
+        })
+    }
 }
