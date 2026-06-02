@@ -19,7 +19,7 @@ pub use discover::PluginDiscoverer;
 pub use executor::PluginExecutor;
 
 pub fn create_discoverer() -> PluginDiscoverer {
-    PluginDiscoverer::default()
+    PluginDiscoverer
 }
 
 pub fn create_executor() -> PluginExecutor {
