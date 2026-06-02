@@ -13,13 +13,13 @@ categories = ["science", "algorithms"]
 
 [dependencies]
 # Ruvector integration
-ruvector-core = { version = "2.0", path = "../ruvector-core", default-features = false, features = ["storage", "hnsw", "parallel", "simd"] }
-ruvector-sona = { version = "0.2.0", path = "../sona", default-features = false, features = ["serde-support"] }
+ruvector-core = { version = "4.0.0-rc.1", path = "../ruvector-core", default-features = false, features = ["storage", "hnsw", "parallel", "simd"] }
+ruvector-sona = { version = "4.0.0-rc.1", path = "../sona", default-features = false, features = ["serde-support"] }
 
-# Optional Ruvector crates for advanced features
-ruvector-attention = { version = "2.0", path = "../ruvector-attention", optional = true }
-ruvector-graph = { version = "2.0", path = "../ruvector-graph", optional = true, default-features = false }
-ruvector-gnn = { version = "2.0", path = "../ruvector-gnn", optional = true }
+# Optional Ruvector crates for advanced features (not yet available in substrate)
+# ruvector-attention = { version = "2.0", path = "../ruvector-attention", optional = true }
+# ruvector-graph = { version = "2.0", path = "../ruvector-graph", optional = true, default-features = false }
+# ruvector-gnn = { version = "2.0", path = "../ruvector-gnn", optional = true }
 
 # Serialization
 serde = { workspace = true }
@@ -113,7 +113,7 @@ tracing-subscriber = { workspace = true }
 
 [features]
 # Default includes candle for working inference out of the box
-default = ["async-runtime", "candle", "routing-metrics", "quantize", "hub-download"]
+default = ["async-runtime", "candle", "routing-metrics", "quantize", "hub-download", "parallel"]
 async-runtime = ["tokio", "tokio-stream"]
 
 # Minimal build without inference (for embedding/library use only)
@@ -128,13 +128,13 @@ quantize = []
 # Disable for production to avoid Instant::now() syscall overhead (~0.04-0.08µs)
 routing-metrics = []
 
-# Ruvector integration features
-attention = ["dep:ruvector-attention"]
-graph = ["dep:ruvector-graph"]
-gnn = ["dep:ruvector-gnn"]
+# Ruvector integration features (not yet available in substrate)
+# attention = ["dep:ruvector-attention"]
+# graph = ["dep:ruvector-graph"]
+# gnn = ["dep:ruvector-gnn"]
 
 # Full Ruvector integration (all optional crates)
-ruvector-full = ["attention", "graph", "gnn"]
+# ruvector-full = ["attention", "graph", "gnn"]
 
 # Multi-threaded GEMM/GEMV with rayon (4-6x speedup on M4 Pro 10-core)
 parallel = ["dep:rayon"]
