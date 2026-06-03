@@ -93,6 +93,14 @@ That's it — all 24 rUvOS tools are now available to Claude Code in every proje
 
 > **Note:** removing Ruflo v2/v3 is **mandatory** — there is no opt-out flag,
 > because v4 cannot coexist with the legacy install.
+>
+> **What `setup.sh` removes:** the npm packages (`ruflo`, `@claude-flow/cli`) and
+> their stale MCP server registrations (`ruflo`, `claude-flow@alpha`,
+> `ruv-swarm`, … matched by prefix, so versioned/`@alpha` names are caught).
+> **What it does *not* remove:** legacy Ruflo **Claude Code plugins** (the `ruflo`
+> marketplace bundle that adds `ruflo-*` agents/skills). Plugins are user-managed
+> Claude Code state — if you want a fully ruflo-free environment, uninstall them
+> yourself with the `/plugin` command. (You may legitimately want to keep them.)
 
 **`setup.sh` flags:**
 
