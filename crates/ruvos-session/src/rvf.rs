@@ -1,8 +1,8 @@
 //! `.rvf` container write/read operations — real witness-chained files on disk.
 
 use crate::verify::{verify_container, witness_type_provenance};
-use crate::Session;
-use rvf_crypto::{create_witness_chain, shake256_256, verify_witness_chain, WitnessEntry};
+use crate::{keyed_attestation, Session};
+use rvf_crypto::{create_witness_chain, verify_witness_chain, WitnessEntry};
 use serde::{Deserialize, Serialize};
 
 /// On-disk `.rvf` container: a witness-chained envelope around a session payload.
@@ -26,10 +26,12 @@ fn now_ns() -> u64 {
 
 /// A provenance entry attesting `payload`. `prev_hash` is overwritten by
 /// `create_witness_chain` when the chain is (re)built, so it is left zeroed.
+/// `action_hash` is a *keyed* HMAC of the payload, so the attestation is
+/// authentic — not a forgeable unkeyed hash.
 fn provenance_entry(payload: &Session) -> WitnessEntry {
     WitnessEntry {
         prev_hash: [0u8; 32],
-        action_hash: shake256_256(&payload.canonical_bytes()),
+        action_hash: keyed_attestation(payload),
         timestamp_ns: now_ns(),
         witness_type: witness_type_provenance(),
     }

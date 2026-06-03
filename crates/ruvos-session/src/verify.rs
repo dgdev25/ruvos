@@ -1,7 +1,7 @@
 //! `.rvf` witness-chain verification (real SHAKE-256 chain via rvf-crypto).
 
-use crate::RvfContainer;
-use rvf_crypto::{shake256_256, verify_witness_chain};
+use crate::{keyed_attestation, RvfContainer};
+use rvf_crypto::verify_witness_chain;
 
 /// Witness type byte for provenance entries (rvf-crypto convention: 0x01).
 pub const fn witness_type_provenance() -> u8 {
@@ -10,9 +10,10 @@ pub const fn witness_type_provenance() -> u8 {
 
 /// Verify a loaded container:
 /// 1. The witness chain replays correctly (each `prev_hash` matches the
-///    SHAKE-256 of the preceding entry).
-/// 2. The final entry's `action_hash` equals SHAKE-256 of the current payload,
-///    proving the chain attests *this exact* payload.
+///    SHAKE-256 of the preceding entry) — lineage / tamper-evidence.
+/// 2. The final entry's `action_hash` equals the **keyed** HMAC attestation of
+///    the current payload — authenticity. Without the signing key an attacker
+///    cannot forge a chain that attests a modified payload.
 pub fn verify_container(container: &RvfContainer) -> bool {
     let chain = match hex::decode(&container.witness) {
         Ok(b) => b,
@@ -26,7 +27,14 @@ pub fn verify_container(container: &RvfContainer) -> bool {
         Some(e) => e,
         None => return false,
     };
-    last.action_hash == shake256_256(&container.payload.canonical_bytes())
+    // Constant-time comparison of the keyed attestation (HMAC output type).
+    use hmac::digest::CtOutput;
+    use hmac::Hmac;
+    use sha2::Sha256;
+    let expected = keyed_attestation(&container.payload);
+    let lhs = CtOutput::<Hmac<Sha256>>::new(last.action_hash.into());
+    let rhs = CtOutput::<Hmac<Sha256>>::new(expected.into());
+    lhs == rhs
 }
 
 /// Verify the witness chain of an `.rvf` container on disk.
@@ -39,6 +47,7 @@ pub async fn verify_signature(rvf_path: &str) -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keyed_attestation;
     use crate::rvf::build_chain;
     use crate::Session;
     use rvf_crypto::WitnessEntry;
@@ -49,10 +58,10 @@ mod tests {
         s.name = "demo".into();
         s.state.insert("k".into(), "\"v\"".into());
 
-        // Genesis chain attesting the payload.
+        // Genesis chain with a keyed attestation of the payload.
         let entry = WitnessEntry {
             prev_hash: [0u8; 32],
-            action_hash: shake256_256(&s.canonical_bytes()),
+            action_hash: keyed_attestation(&s),
             timestamp_ns: 1,
             witness_type: witness_type_provenance(),
         };
@@ -63,9 +72,33 @@ mod tests {
         };
         assert!(verify_container(&container), "valid container must verify");
 
-        // Tamper the payload — chain no longer attests it.
+        // Tamper the payload — keyed attestation no longer matches.
         let mut tampered = container.clone();
         tampered.payload.name = "evil".into();
         assert!(!verify_container(&tampered), "tampered payload must fail");
+    }
+
+    #[test]
+    fn forged_chain_without_key_is_rejected() {
+        // An attacker who edits the payload and rebuilds the chain with an
+        // UNKEYED hash cannot pass verification (authenticity, not just
+        // tamper-evidence).
+        let mut s = Session::new();
+        s.name = "victim".into();
+        let forged_entry = WitnessEntry {
+            prev_hash: [0u8; 32],
+            action_hash: rvf_crypto::shake256_256(&s.canonical_bytes()), // unkeyed!
+            timestamp_ns: 1,
+            witness_type: witness_type_provenance(),
+        };
+        let forged = RvfContainer {
+            version: "rvf-1".into(),
+            payload: s,
+            witness: hex::encode(build_chain(&[forged_entry])),
+        };
+        assert!(
+            !verify_container(&forged),
+            "an unkeyed (forged) attestation must be rejected"
+        );
     }
 }

@@ -16,6 +16,8 @@ tracing = "0.1"
 anyhow = "1.0"
 chrono = { workspace = true }
 hex = "0.4"
+sha2 = "0.10"
+hmac = "0.12"
 rvf-crypto = { path = "../../substrate/rvf-crypto" }
 
 [dev-dependencies]
