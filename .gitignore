@@ -25,3 +25,6 @@ Cargo.lock
 # Temporary files
 *.tmp
 .env.local
+
+# rUvOS runtime data + per-install signing key (never commit)
+.ruvos/
