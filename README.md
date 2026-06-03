@@ -1,5 +1,16 @@
 # rUvOS — The Agentic Operating System
 
+> # ⚠️ NOT BACKWARD COMPATIBLE WITH RUFLO v2/v3
+>
+> **rUvOS v4 is a complete, clean-room Rust rewrite. It is _NOT_ compatible with
+> Ruflo v2/v3** (the TypeScript/npm `ruflo` and `@claude-flow/cli` packages). There
+> is **no migration path** and **no `v2:migrate`** — the clean break is intentional.
+>
+> **Running [`./setup.sh`](#install) will REMOVE Ruflo v2/v3 entirely** — it
+> uninstalls the old npm packages, clears their cache, and drops their stale MCP
+> registrations — and replaces them with the single `ruvos` v4 binary. If you want
+> to keep the old install, run `./setup.sh --keep-legacy`.
+
 rUvOS is a Rust-native agent orchestration system. It runs as an **MCP server** that
 plugs into Claude Code, Codex CLI, or Gemini CLI and gives them persistent memory,
 resumable sessions, multi-agent coordination, a knowledge graph, safety guardrails,
@@ -31,7 +42,6 @@ whole workspace.
 ## Table of contents
 
 - [Install](#install)
-- [Connect it to Claude Code](#connect-it-to-claude-code)
 - [How you actually use it](#how-you-actually-use-it-just-talk)
 - [The 21 tools](#the-21-tools)
 - [Worked examples](#worked-examples)
@@ -46,39 +56,47 @@ whole workspace.
 
 ## Install
 
-rUvOS is one self-contained binary. Build it and put it on your `PATH`:
+### One-shot (recommended)
+
+Clone and run the installer — it does **everything**: builds the binary, **removes
+any legacy Ruflo v2/v3**, installs `ruvos` onto your `PATH`, sets `RUVOS_HOME`,
+registers the MCP server with Claude Code, and verifies the result.
 
 ```bash
 git clone https://github.com/dgdev25/ruvos.git
 cd ruvos
-cargo build --release
-
-# install the binary (Linux/macOS)
-sudo cp target/release/ruvos /usr/local/bin/ruvos
-ruvos --version          # ruvos 4.0.0-rc.1
+./setup.sh
 ```
 
-Optionally pin where rUvOS keeps its data (defaults to `./.ruvos` in the current
-directory; set this to share one memory/session store across every project):
+Then open a new terminal (so `PATH`/`RUVOS_HOME` take effect) and check it:
 
 ```bash
-echo 'export RUVOS_HOME="$HOME/.ruvos"' >> ~/.bashrc   # or ~/.zshrc
-export RUVOS_HOME="$HOME/.ruvos"
-```
-
----
-
-## Connect it to Claude Code
-
-Register rUvOS as an MCP server. Use `--scope user` to make it available in
-**every** project, not just the current one:
-
-```bash
-claude mcp add ruvos --scope user -- ruvos mcp serve
 claude mcp list          # ruvos: ✓ Connected
 ```
 
-That's it. All 21 rUvOS tools are now available to Claude Code automatically.
+That's it — all 21 rUvOS tools are now available to Claude Code in every project.
+
+**`setup.sh` flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--keep-legacy` | Do **not** remove Ruflo v2/v3 (skip the clean-break removal) |
+| `--no-mcp` | Skip Claude Code MCP registration |
+| `--prefix DIR` | Install the binary into `DIR` (default `/usr/local/bin`, else `~/.local/bin`) |
+| `--help` | Show usage |
+
+### Manual install (if you prefer)
+
+```bash
+cargo build --release
+sudo cp target/release/ruvos /usr/local/bin/ruvos        # or any dir on your PATH
+export RUVOS_HOME="$HOME/.ruvos"                          # shared data dir (optional)
+claude mcp add ruvos --scope user -- ruvos mcp serve      # register with Claude Code
+claude mcp list                                           # ruvos: ✓ Connected
+```
+
+`RUVOS_HOME` defaults to `./.ruvos` in the current directory; set it to share one
+memory/session store across every project.
 
 ---
 
