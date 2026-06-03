@@ -9,17 +9,11 @@
 //! 4. session — Boot/shutdown (restore/persist .rvf)
 
 pub mod handlers;
-pub mod queue;
 pub mod sona_bridge;
 pub mod types;
 
 pub use handlers::HookDispatcher;
-pub use queue::HookQueue;
 pub use types::*;
-
-pub fn create_queue(db_path: &str) -> anyhow::Result<HookQueue> {
-    HookQueue::new(db_path)
-}
 
 pub fn create_dispatcher() -> HookDispatcher {
     HookDispatcher::new()
