@@ -4,13 +4,20 @@
 //! `memory.search` runs real retrieval: embeddings + a real HNSW
 //! approximate-nearest-neighbour index (via `ruvector-core`), then MMR
 //! re-ranking for diversity and a recency boost. See `super::embedding`.
+//!
+//! RuLake is wired in as a **second ranking tier** (additive). On
+//! `memory.store` the entry's embedding is also appended to a
+//! process-global `RuLake` / `LocalBackend` instance keyed by namespace.
+//! On `memory.search` both the HNSW candidates and the RuLake results
+//! are merged (union by key, max score wins) before MMR.
 
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::{paths, Result, RuvosError};
+use rulake::{LocalBackend, RuLake, SearchResult as LakeSearchResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
@@ -25,10 +32,91 @@ pub struct MemoryEntry {
 /// On-disk shape: namespace -> key -> entry.
 type Store = BTreeMap<String, BTreeMap<String, MemoryEntry>>;
 
+// ── RuLake process-global instance ─────────────────────────────────────────
+//
+// A single `RuLake` + `LocalBackend` lives for the duration of the process.
+// The backend id is "local"; namespace becomes the collection name.
+// A companion `HashMap<u64, String>` maps the FNV-1a hash of each key back
+// to the key string so we can resolve RuLake hit ids back to memory keys.
+
+struct RuLakeState {
+    lake: RuLake,
+    backend: Arc<LocalBackend>,
+    /// FNV-1a(key) → key  reverse map.
+    id_to_key: HashMap<u64, String>,
+    /// Tracks which (namespace, collection) pairs have been initialised.
+    initialized_collections: std::collections::HashSet<String>,
+}
+
+lazy_static::lazy_static! {
+    static ref LAKE: Mutex<RuLakeState> = {
+        let backend = Arc::new(LocalBackend::new("local"));
+        let lake = RuLake::new(20, 42);
+        // unwrap: first registration never fails
+        lake.register_backend(Arc::clone(&backend) as Arc<dyn rulake::BackendAdapter>)
+            .unwrap();
+        Mutex::new(RuLakeState {
+            lake,
+            backend,
+            id_to_key: HashMap::new(),
+            initialized_collections: std::collections::HashSet::new(),
+        })
+    };
+}
+
 // Serialize all file access within a process so concurrent tool calls don't
 // clobber each other. Disk remains the source of truth.
 lazy_static::lazy_static! {
     static ref FILE_LOCK: Mutex<()> = Mutex::new(());
+}
+
+/// FNV-1a 64-bit hash of a string key — stable, deterministic u64 id for
+/// the RuLake backend. Keeps the same algorithm as `embedding::fnv1a` to
+/// avoid a separate dependency.
+fn key_hash(key: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for &b in key.as_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// Append an entry to the RuLake `LocalBackend`. Creates the collection
+/// (via `put_collection`) on first use; subsequent calls use `append`.
+fn lake_append(namespace: &str, key: &str, vec: Vec<f32>) {
+    let id = key_hash(key);
+    if let Ok(mut state) = LAKE.lock() {
+        state.id_to_key.insert(id, key.to_string());
+        if !state.initialized_collections.contains(namespace) {
+            // Initialize with this first vector via put_collection.
+            let _ = state.backend.put_collection(
+                namespace,
+                super::embedding::EMBED_DIM,
+                vec![id],
+                vec![vec],
+            );
+            state.initialized_collections.insert(namespace.to_string());
+        } else {
+            let _ = state.backend.append(namespace, id, vec);
+        }
+    }
+}
+
+/// Query RuLake for the top-k hits in a namespace, returning `(key, score)`.
+/// Returns an empty vec on any error (RuLake is additive, not required).
+fn lake_search(namespace: &str, query_vec: &[f32], k: usize) -> Vec<(String, f32)> {
+    let state = match LAKE.lock() {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let hits: Vec<LakeSearchResult> = state
+        .lake
+        .search_one("local", namespace, query_vec, k)
+        .unwrap_or_default();
+    hits.into_iter()
+        .filter_map(|h| state.id_to_key.get(&h.id).map(|key| (key.clone(), h.score)))
+        .collect()
 }
 
 fn load_store() -> Store {
@@ -160,8 +248,13 @@ impl ToolHandler for MemoryStoreHandler {
             store
                 .entry(namespace.clone())
                 .or_default()
-                .insert(key.clone(), entry);
+                .insert(key.clone(), entry.clone());
             save_store(&store)?;
+            drop(_guard);
+
+            // Additive: also seed RuLake with this entry's embedding.
+            let vec = embed(&entry_text(&entry));
+            lake_append(&namespace, &key, vec);
 
             Ok(json!({
                 "status": "stored",
@@ -325,8 +418,8 @@ impl ToolHandler for MemorySearchHandler {
             let by_key: BTreeMap<String, MemoryEntry> =
                 entries.iter().map(|e| (e.key.clone(), e.clone())).collect();
 
-            // Real HNSW ANN retrieval over real embeddings. Pull a wider
-            // candidate set so MMR has room to diversify.
+            // ── Tier 1: HNSW ANN retrieval ─────────────────────────────
+            // Pull a wider candidate set so MMR has room to diversify.
             let items: Vec<(String, String)> = entries
                 .iter()
                 .map(|e| (e.key.clone(), entry_text(e)))
@@ -337,13 +430,47 @@ impl ToolHandler for MemorySearchHandler {
 
             // Blend the (dense cosine) relevance with a recency boost, then MMR.
             let query_vec = embed(&query);
-            let mut scored: Vec<Scored> = ranked_ids
-                .iter()
-                .filter_map(|id| by_key.get(id))
-                .map(|e| {
+
+            // ── Tier 2: RuLake federated search ────────────────────────
+            // Query the process-global RuLake instance for its cached/
+            // compressed candidates (additive second tier).
+            let lake_hits = lake_search(&namespace, &query_vec, candidate_k);
+
+            // ── Merge: union by key, max score wins ─────────────────────
+            // Start from HNSW candidates, then add any RuLake keys not
+            // already present (or upgrade their score if RuLake scored
+            // higher). We use a `HashMap<key, cosine_score>` for O(1)
+            // dedup before building the `Scored` slice.
+            let mut merged_scores: HashMap<String, f32> = HashMap::new();
+            for id in &ranked_ids {
+                if let Some(e) = by_key.get(id) {
                     let vec = embed(&entry_text(e));
-                    let sim = cosine_dense(&query_vec, &vec) as f64;
-                    let relevance = 0.85 * sim + 0.15 * recency_weight(&e.created_at);
+                    let sim = cosine_dense(&query_vec, &vec);
+                    merged_scores
+                        .entry(id.clone())
+                        .and_modify(|s| *s = s.max(sim))
+                        .or_insert(sim);
+                }
+            }
+            // RuLake scores are L2² distances (lower = closer). Convert
+            // to a similarity in [0, 1] with `1 / (1 + score)` so we can
+            // compare them on the same scale as cosine similarity.
+            for (key, lake_score) in &lake_hits {
+                if by_key.contains_key(key) {
+                    let sim = 1.0_f32 / (1.0 + lake_score);
+                    merged_scores
+                        .entry(key.clone())
+                        .and_modify(|s| *s = s.max(sim))
+                        .or_insert(sim);
+                }
+            }
+
+            let mut scored: Vec<Scored> = merged_scores
+                .iter()
+                .filter_map(|(key, &raw_sim)| by_key.get(key).map(|e| (e, raw_sim)))
+                .map(|(e, raw_sim)| {
+                    let vec = embed(&entry_text(e));
+                    let relevance = 0.85 * raw_sim as f64 + 0.15 * recency_weight(&e.created_at);
                     Scored {
                         entry: e.clone(),
                         relevance,
