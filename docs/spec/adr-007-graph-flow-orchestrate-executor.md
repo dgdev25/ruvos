@@ -1,0 +1,65 @@
+# ADR-007: `graph-flow` typed DAG executor for `orchestrate` (branching pipelines)
+
+**Status:** Accepted (2026-06-03)
+**Amends:** scope-ledger-v1.md §1 (`orchestrate.run` execution model); adds substrate crate `ruvos-graphflow`
+**Tier:** 2 · **Source:** rUvnet `rs-graph-llm` (`graph-flow` crate)
+
+## Context
+
+`orchestrate.run` executes its pipeline as a **linear `for` loop** over archetypes.
+That cannot branch ("if tests fail → loop back to coder"), fan out, or stop early
+on a condition. ADR-004 lets the orchestrator *compute* a plan; a richer plan
+needs a richer *executor*.
+
+rUvnet's **rs-graph-llm** contains **`graph-flow`** — a small, pure-Rust **typed
+DAG workflow executor** (concurrent task graph via `DashMap`, conditional edges,
+per-task status). Its sibling crates pull PostgreSQL + the Rig LLM client, but the
+**graph/runner core is independent** of those.
+
+## Decision
+
+1. **Vendor only the executor core** into a new pure-Rust substrate crate
+   **`substrate/ruvos-graphflow`** (clean-room, attributed, MIT): the node/edge
+   types, the conditional-edge model, and the concurrent runner. **Drop**
+   PostgreSQL session storage (rUvOS uses `ruvos-store`/redb) and the Rig LLM
+   backend (rUvOS executes steps via `agent.spawn`). Keep deps to `dashmap` +
+   `serde` (both already in the tree).
+
+2. **`orchestrate` executes a graph, not a list.** A plan (from a template or, per
+   ADR-004, from the GOAP planner) is compiled into a `graph-flow` graph where
+   each node runs an `agent.spawn` and edges carry **conditions** evaluated on the
+   step result (e.g. `tester.status == failed → coder`). Linear templates compile
+   to a straight-line graph, so **existing behavior is a special case** — no
+   regression.
+
+3. **Bounded loops.** Conditional back-edges (retry loops) are capped by a
+   `max_steps`/`max_revisits` guard surfaced in the response (`steps[]`,
+   `step_count` unchanged in shape; add `graph: {nodes, edges}` metadata). No new
+   tool.
+
+## Consequences
+
+- **+** `orchestrate` supports branch/retry/early-exit — real workflows, not just
+  straight lines. Natural execution target for GOAP plans (ADR-004).
+- **+** Pure Rust, minimal deps; PostgreSQL/Rig explicitly excluded.
+- **−** A second new substrate crate and a plan→graph compile step; only worth
+  doing **after** GOAP (ADR-004) creates plans worth branching on. Adopt **one at
+  a time** — GOAP first, graph-flow second.
+- **Zero-defect:** `ruvos-graphflow` is a workspace member; port graph-flow's core
+  tests; add a conditional-retry orchestration test.
+
+## Alternatives considered
+
+- **Depend on `rs-graph-llm` whole** — rejected: PostgreSQL + Rig deps violate the
+  single-binary policy.
+- **Extend the `for` loop with ad-hoc conditionals** — rejected: reinvents a DAG
+  engine badly; graph-flow is small, typed, and tested.
+- **Do nothing** — acceptable short-term; linear pipelines cover the four
+  templates. This ADR is **sequenced after** ADR-004 and may be deferred if GOAP
+  plans stay linear in practice.
+
+## Rollout
+
+Sequenced after ADR-004. Plan to be written when scheduled
+(`docs/superpowers/plans/<date>-graphflow-orchestrate.md`). Gate on whether real
+GOAP plans exhibit branching; if they stay linear, this stays deferred.
