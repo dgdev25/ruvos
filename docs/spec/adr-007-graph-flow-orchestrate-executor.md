@@ -1,6 +1,6 @@
 # ADR-007: `graph-flow` typed DAG executor for `orchestrate` (branching pipelines)
 
-**Status:** Accepted (2026-06-03)
+**Status:** Deferred (2026-06-03) — gate not met; see "Deferral decision" below
 **Amends:** scope-ledger-v1.md §1 (`orchestrate.run` execution model); adds substrate crate `ruvos-graphflow`
 **Tier:** 2 · **Source:** rUvnet `rs-graph-llm` (`graph-flow` crate)
 
@@ -58,8 +58,32 @@ per-task status). Its sibling crates pull PostgreSQL + the Rig LLM client, but t
   templates. This ADR is **sequenced after** ADR-004 and may be deferred if GOAP
   plans stay linear in practice.
 
+## Deferral decision (2026-06-03)
+
+Re-examined immediately after ADR-004 shipped, per the gate above. Two facts make
+graph-flow **dead machinery today**:
+
+1. **GOAP plans are linear.** `orchestrate.run` produces a straight chain of
+   archetypes; there is no branch for conditional edges to choose.
+2. **No outcome signal to branch on.** `agent.spawn` always returns
+   `status:"completed"` — there is no pass/fail/score a conditional edge (e.g.
+   "if tests fail → coder") could read. Every condition would evaluate the same
+   way, collapsing to the linear `for`-loop `orchestrate` already runs.
+
+Also, the extractable core is **~3,200 LOC** (not the ~600 estimated), and
+`context.rs` (1,061 LOC) would need splitting under the 500-line rule — a large
+cost for zero current benefit.
+
+**Prerequisite to revisit:** a real per-step **outcome signal** — agents (and
+`orchestrate` steps) returning a structured `success`/`failure`/score, so a
+conditional edge has something to test. Once that exists *and* a plan needs a
+retry/branch, vendor `graph-flow`'s in-memory core (graph.rs + task.rs +
+context.rs[split] + error.rs + storage.rs; drop `storage_postgres.rs` + `rig`).
+Until then this ADR stays Deferred — building it now would violate the project's
+"only if it makes sense" / zero-bloat discipline.
+
 ## Rollout
 
-Sequenced after ADR-004. Plan to be written when scheduled
+Sequenced after the outcome-signal prerequisite. Plan to be written when scheduled
 (`docs/superpowers/plans/<date>-graphflow-orchestrate.md`). Gate on whether real
 GOAP plans exhibit branching; if they stay linear, this stays deferred.
