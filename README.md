@@ -8,8 +8,9 @@
 >
 > **Running [`./setup.sh`](#install) will REMOVE Ruflo v2/v3 entirely** — it
 > uninstalls the old npm packages, clears their cache, and drops their stale MCP
-> registrations — and replaces them with the single `ruvos` v4 binary. If you want
-> to keep the old install, run `./setup.sh --keep-legacy`.
+> registrations — and replaces them with the single `ruvos` v4 binary. This
+> removal is **mandatory and not optional**: v4 cannot coexist with v2/v3 (Claude
+> Code would otherwise fall back to the legacy install).
 
 rUvOS is a Rust-native agent orchestration system. It runs as an **MCP server** that
 plugs into Claude Code, Codex CLI, or Gemini CLI and gives them persistent memory,
@@ -76,11 +77,13 @@ claude mcp list          # ruvos: ✓ Connected
 
 That's it — all 21 rUvOS tools are now available to Claude Code in every project.
 
+> **Note:** removing Ruflo v2/v3 is **mandatory** — there is no opt-out flag,
+> because v4 cannot coexist with the legacy install.
+
 **`setup.sh` flags:**
 
 | Flag | Effect |
 |------|--------|
-| `--keep-legacy` | Do **not** remove Ruflo v2/v3 (skip the clean-break removal) |
 | `--no-mcp` | Skip Claude Code MCP registration |
 | `--prefix DIR` | Install the binary into `DIR` (default `/usr/local/bin`, else `~/.local/bin`) |
 | `--help` | Show usage |

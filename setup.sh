@@ -18,8 +18,10 @@
 #
 # Re-running it is safe (idempotent).
 #
+# Removing Ruflo v2/v3 is MANDATORY and not optional: rUvOS v4 is a clean break,
+# is not backward compatible, and cannot coexist with the legacy install.
+#
 # Flags:
-#   --keep-legacy   Do NOT remove Ruflo v2/v3 (skip step 3)
 #   --no-mcp        Do NOT register with Claude Code (skip step 6)
 #   --prefix DIR    Install the binary into DIR (default: /usr/local/bin, else ~/.local/bin)
 #   -h | --help     Show this help
@@ -34,13 +36,12 @@ warn() { printf '%s\n' "${YELLOW}  ! $*${RESET}"; }
 die()  { printf '%s\n' "${RED}  ✗ $*${RESET}" >&2; exit 1; }
 
 # ----- args -----------------------------------------------------------------
-KEEP_LEGACY=0; NO_MCP=0; PREFIX=""
+NO_MCP=0; PREFIX=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --keep-legacy) KEEP_LEGACY=1 ;;
-    --no-mcp)      NO_MCP=1 ;;
-    --prefix)      PREFIX="${2:-}"; shift ;;
-    -h|--help)     grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-mcp)  NO_MCP=1 ;;
+    --prefix)  PREFIX="${2:-}"; shift ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown flag: $1 (use --help)" ;;
   esac
   shift
@@ -73,25 +74,24 @@ BIN="$REPO_DIR/target/release/ruvos"
 [ -x "$BIN" ] || die "build did not produce $BIN"
 ok "built: $($BIN --version)"
 
-# ----- 3. remove legacy Ruflo v2/v3 ----------------------------------------
-if [ "$KEEP_LEGACY" -eq 0 ]; then
-  say "Removing legacy Ruflo v2/v3 (clean break — rUvOS v4 is NOT backward compatible)"
-  if command -v npm >/dev/null 2>&1; then
-    npm uninstall -g ruflo            >/dev/null 2>&1 && ok "removed npm package: ruflo" || warn "npm 'ruflo' not installed"
-    npm uninstall -g @claude-flow/cli >/dev/null 2>&1 && ok "removed npm package: @claude-flow/cli" || warn "npm '@claude-flow/cli' not installed"
-    npm cache clean --force           >/dev/null 2>&1 || true
-    ok "cleared npm cache"
-  else
-    warn "npm not found — skipping npm package removal"
-  fi
-  # Drop stale MCP registrations pointing at the old CLI.
-  if command -v claude >/dev/null 2>&1; then
-    for old in ruflo claude-flow ruv-swarm; do
-      claude mcp remove "$old" >/dev/null 2>&1 && ok "removed stale MCP server: $old" || true
-    done
-  fi
+# ----- 3. remove legacy Ruflo v2/v3 (MANDATORY — clean break) --------------
+# rUvOS v4 is not backward compatible and cannot coexist with v2/v3: leaving the
+# old `ruflo`/claude-flow install in place causes Claude Code to fall back to it.
+# This removal is therefore unconditional.
+say "Removing legacy Ruflo v2/v3 (clean break — rUvOS v4 is NOT backward compatible)"
+if command -v npm >/dev/null 2>&1; then
+  npm uninstall -g ruflo            >/dev/null 2>&1 && ok "removed npm package: ruflo" || warn "npm 'ruflo' not installed"
+  npm uninstall -g @claude-flow/cli >/dev/null 2>&1 && ok "removed npm package: @claude-flow/cli" || warn "npm '@claude-flow/cli' not installed"
+  npm cache clean --force           >/dev/null 2>&1 || true
+  ok "cleared npm cache"
 else
-  warn "--keep-legacy set: leaving any Ruflo v2/v3 install in place"
+  warn "npm not found — skipping npm package removal"
+fi
+# Drop stale MCP registrations pointing at the old CLI.
+if command -v claude >/dev/null 2>&1; then
+  for old in ruflo claude-flow ruv-swarm; do
+    claude mcp remove "$old" >/dev/null 2>&1 && ok "removed stale MCP server: $old" || true
+  done
 fi
 
 # ----- 4. install the binary onto PATH -------------------------------------
