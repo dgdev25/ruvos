@@ -169,8 +169,11 @@ impl ToolHandler for OrchestrateRunHandler {
             let orchestration_id = Uuid::new_v4().to_string();
             let spawner = AgentSpawnHandler;
             let mut steps = Vec::new();
+            let mut all_ok = true;
 
             // Really run each archetype in order; each produces a real artifact.
+            // On the first failed step the pipeline stops (ADR-009): e.g. a failed
+            // `tester` does not proceed to `reviewer`.
             for archetype in &pipeline {
                 let step_prompt = format!("[{} orchestration] {}", label, task);
                 let spawned = spawner
@@ -180,19 +183,26 @@ impl ToolHandler for OrchestrateRunHandler {
                         "model": model
                     }))
                     .await?;
+                let success = spawned["success"].as_bool().unwrap_or(true);
                 steps.push(json!({
                     "archetype": archetype,
                     "agent_id": spawned["agent_id"],
                     "status": spawned["status"],
+                    "success": success,
                     "artifact_path": spawned["artifact_path"]
                 }));
+                if !success {
+                    all_ok = false;
+                    break;
+                }
             }
 
             Ok(json!({
                 "orchestration_id": orchestration_id,
                 "template": label,
                 "task": task,
-                "status": "completed",
+                "status": if all_ok { "completed" } else { "failed" },
+                "success": all_ok,
                 "planned": planned,
                 "plan_cost": plan_cost,
                 "step_count": steps.len(),

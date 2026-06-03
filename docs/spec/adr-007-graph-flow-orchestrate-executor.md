@@ -79,8 +79,13 @@ cost for zero current benefit.
 conditional edge has something to test. Once that exists *and* a plan needs a
 retry/branch, vendor `graph-flow`'s in-memory core (graph.rs + task.rs +
 context.rs[split] + error.rs + storage.rs; drop `storage_postgres.rs` + `rig`).
-Until then this ADR stays Deferred — building it now would violate the project's
-"only if it makes sense" / zero-bloat discipline.
+
+**Update (2026-06-03):** the prerequisite **now exists** — ADR-009 added a real
+`success`/`exit_code` outcome, and `orchestrate` already does the common case
+(**stop-on-failure**) inline. graph-flow remains **deferred** until a plan needs
+*more* than linear stop-on-failure (true conditional **retry/branch** loops, e.g.
+"on test failure → back to coder, max 2×"). At that point the ~3,200-LOC vendor is
+justified; until then inline handling is sufficient and leaner.
 
 ## Rollout
 

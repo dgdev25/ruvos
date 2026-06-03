@@ -337,9 +337,13 @@ artifact on disk and is saved in the shared store.
 🗣️ *"rUvOS, get a coder to write the POST /users handler."*
 ```jsonc
 {"name":"agent.spawn","arguments":{"archetype":"coder","prompt":"write the POST /users handler","model":"claude-haiku-4-5","traits":["backend"]}}
-// → { "agent_id":"7ed0…", "archetype":"coder", "status":"completed",
-//     "artifact_path":".ruvos/agents/7ed0…/output.md", "artifact_bytes":264 }
+// → { "agent_id":"7ed0…", "archetype":"coder", "status":"completed", "success":true,
+//     "exit_code":null, "artifact_path":".ruvos/agents/7ed0…/output.md", "artifact_bytes":264 }
 ```
+> When an external runner is configured (`RUVOS_AGENT_RUNNER`), `success`/`exit_code`
+> reflect the runner's real process exit status; `status` becomes `"failed"` on a
+> non-zero exit. `orchestrate.run` uses this to **stop a pipeline at the first
+> failed step** (a failed `tester` won't run `reviewer`).
 
 **`agent.status`** — see what agents exist and their state (all, or one by id).
 🗣️ *"rUvOS, what are my agents up to?"*

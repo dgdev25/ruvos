@@ -132,11 +132,31 @@ fn build_artifact(archetype: &str, prompt: &str) -> String {
 /// Execute the agent's task for real: write its work artifact to disk and,
 /// if a runner is configured, run it as a real subprocess. Returns
 /// (artifact_path, artifact_bytes, result_text).
-async fn execute_task(
+/// The real result of running an agent step (ADR-009).
+struct TaskOutcome {
+    artifact_path: String,
+    bytes: u64,
+    result: String,
+    /// Whether the step succeeded. Driven by the runner's process exit status;
+    /// `true` by default when no external runner is configured.
+    success: bool,
+    /// Runner process exit code, when a runner ran; `None` otherwise.
+    exit_code: Option<i32>,
+}
+
+async fn execute_task(agent_id: &str, archetype: &str, prompt: &str) -> Result<TaskOutcome> {
+    // Read the runner once and pass it in, so tests can drive run_task directly
+    // without racing on a process-global env var.
+    let runner = std::env::var("RUVOS_AGENT_RUNNER").ok();
+    run_task(agent_id, archetype, prompt, runner.as_deref()).await
+}
+
+async fn run_task(
     agent_id: &str,
     archetype: &str,
     prompt: &str,
-) -> Result<(String, u64, String)> {
+    runner: Option<&str>,
+) -> Result<TaskOutcome> {
     let dir = paths::data_root().join("agents").join(agent_id);
     tokio::fs::create_dir_all(&dir)
         .await
@@ -148,29 +168,50 @@ async fn execute_task(
         .await
         .map_err(|e| RuvosError::InternalError(format!("write artifact: {}", e)))?;
     let bytes = content.len() as u64;
+    let artifact_path = artifact.to_string_lossy().into_owned();
 
-    // Optional: run a real external runner (e.g. a wrapper around a CLI).
-    let result = if let Ok(runner) = std::env::var("RUVOS_AGENT_RUNNER") {
-        // `--` signals end-of-options so a prompt beginning with `-` can't be
-        // smuggled in as a flag to the runner binary (argv injection guard).
-        let output = tokio::process::Command::new(&runner)
-            .arg(archetype) // already validated against the archetype allowlist
-            .arg("--")
-            .arg(prompt)
-            .output()
-            .await
-            .map_err(|e| RuvosError::InternalError(format!("runner '{}': {}", runner, e)))?;
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    } else {
-        format!(
-            "{} agent completed: wrote {}-byte plan to {}",
-            archetype,
+    match runner {
+        // A real external runner (e.g. a wrapper around a CLI). Its process exit
+        // status is the genuine success/failure signal.
+        Some(runner) => {
+            // `--` signals end-of-options so a prompt beginning with `-` can't be
+            // smuggled in as a flag to the runner binary (argv injection guard).
+            let output = tokio::process::Command::new(runner)
+                .arg(archetype) // already validated against the archetype allowlist
+                .arg("--")
+                .arg(prompt)
+                .output()
+                .await
+                .map_err(|e| RuvosError::InternalError(format!("runner '{}': {}", runner, e)))?;
+            let success = output.status.success();
+            let mut result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !success {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stderr = stderr.trim();
+                if !stderr.is_empty() {
+                    result = format!("{result}\n[stderr] {stderr}").trim().to_string();
+                }
+            }
+            Ok(TaskOutcome {
+                artifact_path,
+                bytes,
+                result,
+                success,
+                exit_code: output.status.code(),
+            })
+        }
+        // No executor: artifact produced, assumed success (unchanged default).
+        None => Ok(TaskOutcome {
+            artifact_path: artifact_path.clone(),
             bytes,
-            artifact.display()
-        )
-    };
-
-    Ok((artifact.to_string_lossy().into_owned(), bytes, result))
+            result: format!(
+                "{} agent completed: wrote {}-byte plan to {}",
+                archetype, bytes, artifact_path
+            ),
+            success: true,
+            exit_code: None,
+        }),
+    }
 }
 
 // ============================================================================
@@ -222,8 +263,14 @@ impl ToolHandler for AgentSpawnHandler {
             let agent_id = Uuid::new_v4().to_string();
 
             // Real execution.
-            let (artifact_path, artifact_bytes, result) =
-                execute_task(&agent_id, &archetype, &prompt).await?;
+            let outcome = execute_task(&agent_id, &archetype, &prompt).await?;
+            // Status reflects the real outcome (ADR-009): the runner's exit
+            // status, or "completed" by default when no runner is configured.
+            let status = if outcome.success {
+                "completed"
+            } else {
+                "failed"
+            };
 
             // Persist the agent + an audit event to the redb-backed store.
             let record = agent_store::build_agent_record(
@@ -232,10 +279,10 @@ impl ToolHandler for AgentSpawnHandler {
                 &traits,
                 &model,
                 &prompt,
-                "completed",
-                &artifact_path,
-                artifact_bytes,
-                &result,
+                status,
+                &outcome.artifact_path,
+                outcome.bytes,
+                &outcome.result,
                 &chrono::Utc::now().to_rfc3339(),
             );
             agent_store::persist_spawn(&record)?;
@@ -248,10 +295,12 @@ impl ToolHandler for AgentSpawnHandler {
             Ok(json!({
                 "agent_id": agent_id,
                 "archetype": archetype,
-                "status": "completed",
-                "artifact_path": artifact_path,
-                "artifact_bytes": artifact_bytes,
-                "result": result
+                "status": status,
+                "success": outcome.success,
+                "exit_code": outcome.exit_code,
+                "artifact_path": outcome.artifact_path,
+                "artifact_bytes": outcome.bytes,
+                "result": outcome.result
             }))
         })
     }
@@ -390,6 +439,34 @@ mod tests {
             "artifact reflects archetype"
         );
         assert!(r["artifact_bytes"].as_u64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn no_runner_defaults_to_success() {
+        let _g = isolate();
+        let o = run_task("a1", "coder", "x", None).await.unwrap();
+        assert!(o.success, "no executor → assumed success");
+        assert_eq!(o.exit_code, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runner_exit_zero_is_success() {
+        let _g = isolate();
+        // `true` exits 0.
+        let o = run_task("a2", "coder", "x", Some("true")).await.unwrap();
+        assert!(o.success);
+        assert_eq!(o.exit_code, Some(0));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runner_nonzero_exit_is_failure() {
+        let _g = isolate();
+        // `false` exits 1 → a real failure signal.
+        let o = run_task("a3", "tester", "x", Some("false")).await.unwrap();
+        assert!(!o.success, "non-zero exit must be a failure");
+        assert_eq!(o.exit_code, Some(1));
     }
 
     #[tokio::test]
