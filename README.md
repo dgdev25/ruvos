@@ -1,54 +1,73 @@
-# rUvOS — The Agentic Operating System
+<p align="center">
+  <img src="assets/hero.svg" alt="rUvOS — The Agentic Operating System. RuVector is the kernel, rUvOS is the shell. v4.0.0-rc.1 · 24 MCP tools · 9 domains · 100% pure Rust · no SQLite, no Node, no daemon." width="100%">
+</p>
 
-> ⚠️ **NOT BACKWARD COMPATIBLE WITH RUFLO v2/v3**
->
-> **rUvOS v4 is a complete, clean-room Rust rewrite. It is _NOT_ compatible with
-> the Ruflo v2/v3 npm CLI** (the TypeScript monolith — `ruflo` / `@claude-flow/cli`).
-> There is **no migration path** and **no `v2:migrate`** — the clean break is
-> intentional.
->
-> **Running [`./setup.sh`](#install) uninstalls that v2/v3 npm CLI** (and clears
-> its npm cache), replacing it with the single `ruvos` v4 binary. It does **not**
-> touch the current `claude-flow` / `ruv-swarm` MCP servers or any Ruflo Claude
-> Code plugins — those **coexist fine** with rUvOS (verified: separate namespaces,
-> processes, and data dirs). When capabilities overlap, just name **rUvOS** in
-> your request to route to it.
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-4.0.0--rc.1-5ed0c0">
+  <img alt="built with Rust" src="https://img.shields.io/badge/built%20with-Rust-d9772a?logo=rust&logoColor=white">
+  <img alt="protocol MCP" src="https://img.shields.io/badge/protocol-MCP-7aa2f7">
+  <img alt="24 MCP tools" src="https://img.shields.io/badge/MCP%20tools-24-2ac3de">
+  <img alt="pure Rust" src="https://img.shields.io/badge/no%20SQLite%20·%20no%20Node-pure%20Rust-9ece6a">
+  <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
+</p>
 
-rUvOS is a Rust-native agent orchestration system. It runs as an **MCP server** that
-plugs into Claude Code, Codex CLI, or Gemini CLI and gives them persistent memory,
-resumable sessions, multi-agent coordination, a knowledge graph, safety guardrails,
-and signed provenance — all from a **single static binary, zero Node.js, zero
-external database.**
+---
 
-- **RuVector** is the kernel: self-learning vector search (HNSW + RaBitQ), graph,
-  local-AI substrate, cryptographic `.rvf` state containers.
-- **rUvOS** is the shell: agent orchestration, multi-CLI support, plugins, hooks.
+## What is this? (in one breath)
+
+**rUvOS gives Claude Code (or Codex / Gemini) a memory and a team.**
+
+Out of the box, an AI coding assistant forgets everything between sessions, works
+alone, and leaves no trace of *why* it did what it did. rUvOS fixes that. It's a
+single small program you run once; after that, your assistant can **remember**
+decisions across days, **resume** exactly where it left off, **spin up a team of
+specialist agents**, **coordinate across terminals**, and keep a **signed,
+tamper-evident log** of everything that happened — all stored on your own disk.
+
+It plugs in through the **Model Context Protocol (MCP)**, the standard way tools
+talk to AI assistants. You don't learn new commands — **you just talk**, and the
+assistant calls the right rUvOS tool for you.
+
+```
+🧠  Memory       remembers facts & decisions, recalls by meaning — survives restarts
+💾  Sessions     resumable work contexts as signed .rvf files; fork before risky changes
+👥  Agents       12 specialist archetypes (coder, tester, security, …) + pipelines
+🛡️  Safety       risk-checks destructive actions before they run
+📡  Relay        independent Claude Code instances discover & message each other
+🧾  Provenance   a signed audit log + cryptographic verification of every session file
+```
+
+…and it's **one static Rust binary** — no Node.js, no SQLite, no background daemon,
+no external database.
 
 > **The tagline:** *RuVector is the kernel, rUvOS is the shell.*
-
-**Status:** `v4.0.0-rc.1` — production-grade. **24 MCP tools**, real persistence,
-100% pure Rust (no SQLite, no bundled C), zero compiler/clippy warnings across the
-whole workspace.
+> RuVector is the self-learning vector + graph + crypto substrate; rUvOS is the
+> orchestration layer that turns it into tools your assistant can use.
 
 > ### 🙏 Built on the work of giants: [**rUv**](https://github.com/ruvnet)
 >
 > rUvOS exists because of **rUv (Reuven Cohen / [@ruvnet](https://github.com/ruvnet))** —
-> the original creator and visionary behind **Ruflo / claude-flow**, **RuVector**, the
-> **`.rvf`** format, **SONA**, **ruv-swarm**, **ruv-FANN**, and the entire agentic
-> substrate this project stands on. Every kernel capability here — the vector search,
-> the witness chains, the swarm transport, the self-optimizing learning — traces back
-> to rUv's research and code. rUvOS is a Rust-native consolidation of that ecosystem;
-> the hard, original ideas are his. **Huge thanks and full credit to rUv.** 🚀
+> the original creator behind **Ruflo / claude-flow**, **RuVector**, the **`.rvf`**
+> format, **SONA**, **ruv-swarm**, and **ruv-FANN**. Every kernel capability here —
+> the vector search, the witness chains, the swarm transport, the self-optimizing
+> learning — traces back to rUv's research and code. rUvOS is a Rust-native
+> consolidation of that ecosystem; the hard, original ideas are his. **Huge thanks
+> and full credit to rUv.** 🚀
+
+> ⚠️ **NOT BACKWARD COMPATIBLE WITH RUFLO v2/v3.**
+> rUvOS v4 is a clean-room Rust rewrite. It is **not** compatible with the Ruflo
+> v2/v3 npm CLI (`ruflo` / `@claude-flow/cli`). There's **no migration path** — the
+> clean break is intentional. Running [`./setup.sh`](#install) uninstalls that old
+> npm CLI but **leaves your `claude-flow` / `ruv-swarm` MCP servers and plugins
+> alone — they coexist fine** (separate namespaces, processes, and data dirs).
 
 ---
 
 ## Table of contents
 
-- [Install](#install)
-- [How you actually use it](#how-you-actually-use-it-just-talk)
-- [The 24 tools](#the-24-tools)
-- [A natural-language session](#a-natural-language-session)
-- [Feature reference — every tool, by example](#feature-reference--every-tool-by-example)
+- [Install](#install) · [How you actually use it](#how-you-actually-use-it-just-talk)
+- [The 24 tools](#the-24-tools) · [A natural-language session](#a-natural-language-session)
+- [Feature reference (every tool, by example)](#feature-reference--every-tool-by-example)
   - [memory](#memory--persistent-semantic-memory--knowledge-graph) ·
     [session](#session--resumable-signed-work-contexts) ·
     [agent](#agent--spawn-track-and-message-agents) ·
@@ -58,21 +77,21 @@ whole workspace.
     [gov](#gov--health-provenance--audit) ·
     [relay](#relay--cross-instance-coordination) ·
     [orchestrate](#orchestrate--multi-agent-orchestration-templates)
-- [Agent archetypes & traits](#agent-archetypes--traits)
-- [Where your data lives](#where-your-data-lives)
-- [Architecture](#architecture)
-- [Development](#development)
-- [Acknowledgments](#acknowledgments)
-- [License](#license)
+- [Agent archetypes & traits](#agent-archetypes--traits) · [Where your data lives](#where-your-data-lives)
+- [Architecture](#architecture) · [Development](#development) · [Acknowledgments](#acknowledgments) · [License](#license)
 
 ---
 
 ## Install
 
+<p align="center">
+  <img src="assets/diagrams/quickstart.svg" alt="Quickstart in 4 steps: 1) clone and run ./setup.sh, 2) restart Claude Code, 3) verify with 'claude mcp list' showing ruvos Connected, 4) just talk — all 24 tools available." width="100%">
+</p>
+
 ### One-shot (recommended)
 
-Clone and run the installer — it does **everything**: builds the binary, **removes
-any legacy Ruflo v2/v3**, installs `ruvos` onto your `PATH`, sets `RUVOS_HOME`,
+Clone and run the installer — it does **everything**: builds the binary, removes the
+legacy Ruflo v2/v3 npm CLI, installs `ruvos` onto your `PATH`, sets `RUVOS_HOME`,
 registers the MCP server with Claude Code, and verifies the result.
 
 ```bash
@@ -84,7 +103,7 @@ cd ruvos
 Then:
 
 1. **Restart Claude Code.** It loads MCP servers at startup, so a fresh start is
-   required to pick up the newly-registered `ruvos` server (and any binary update).
+   needed to pick up the newly-registered `ruvos` server.
 2. Open a new terminal (so `PATH`/`RUVOS_HOME` take effect) and confirm:
 
 ```bash
@@ -96,19 +115,12 @@ That's it — all 24 rUvOS tools are now available to Claude Code in every proje
 > **What `setup.sh` removes:** only the incompatible **v2/v3 npm CLI**
 > (`ruflo`, `@claude-flow/cli`) + its npm cache.
 > **What it leaves alone (both coexist with rUvOS):**
-> - `claude-flow` / `ruv-swarm` **MCP servers** — different tool namespace,
->   process, and data dir; no conflict. Name "rUvOS" in requests to disambiguate
->   overlapping capabilities.
-> - Ruflo **Claude Code plugins** (the `ruflo` bundle → `ruflo-*` agents/skills) —
->   user-managed; remove via `/plugin` only if you want a fully ruflo-free setup.
+> - `claude-flow` / `ruv-swarm` **MCP servers** — different namespace, process, and
+>   data dir; no conflict. Name "rUvOS" in requests to disambiguate.
+> - Ruflo **Claude Code plugins** — user-managed; remove via `/plugin` only if you want.
 
-**`setup.sh` flags:**
-
-| Flag | Effect |
-|------|--------|
-| `--no-mcp` | Skip Claude Code MCP registration |
-| `--prefix DIR` | Install the binary into `DIR` (default `/usr/local/bin`, else `~/.local/bin`) |
-| `--help` | Show usage |
+**`setup.sh` flags:** `--no-mcp` (skip MCP registration) · `--prefix DIR` (install
+location) · `--help`.
 
 ### Manual install (if you prefer)
 
@@ -121,25 +133,22 @@ claude mcp add ruvos --scope user -- ruvos mcp serve      # register with Claude
 claude mcp list                                           # ruvos: ✓ Connected
 ```
 
-> For a **system-wide** install (all users), use `sudo cp target/release/ruvos
-> /usr/local/bin/ruvos` instead — `sudo` is only needed there because
-> `/usr/local/bin` is root-owned. A per-user dir like `~/.cargo/bin` needs none.
-
-`RUVOS_HOME` defaults to `./.ruvos` in the current directory; set it to share one
-memory/session store across every project.
+> For a **system-wide** install, use `sudo cp target/release/ruvos /usr/local/bin/ruvos`
+> — `sudo` is only needed because `/usr/local/bin` is root-owned. A per-user dir like
+> `~/.cargo/bin` needs none. `RUVOS_HOME` defaults to `./.ruvos`; set it to share one
+> memory/session store across every project.
 
 ---
 
 ## How you actually use it: just talk
 
 **You do not type commands or keywords.** Once the MCP server is connected, Claude
-Code sees the 24 tools and decides which to call, based on what you ask.
+Code sees the 24 tools and decides which to call based on what you ask.
 
-> 💡 **Say "rUvOS" in your request.** If you also have other agent MCP servers or
-> plugins installed (e.g. legacy `ruflo` / `claude-flow`), several of them offer
-> overlapping capabilities (memory, swarms, …). Naming rUvOS explicitly —
-> *"use rUvOS to…"*, *"have rUvOS remember…"* — steers the request to rUvOS
-> instead of leaving the choice to chance. The examples below all do this.
+> 💡 **Say "rUvOS" in your request.** If you also run other agent MCP servers or
+> plugins (e.g. legacy `ruflo` / `claude-flow`), several offer overlapping
+> capabilities. Naming rUvOS explicitly — *"use rUvOS to…"*, *"have rUvOS
+> remember…"* — steers the request to rUvOS instead of leaving it to chance.
 
 | You say… | …and rUvOS handles it with |
 |----------|----------------------------|
@@ -152,19 +161,22 @@ Code sees the 24 tools and decides which to call, based on what you ask.
 | *"Check rUvOS system health"* | `gov.health` |
 | *"Show me the rUvOS audit log for the last hour"* | `gov.events` |
 
-> These are **representative** mappings, not guarantees. *Which* tool Claude calls
-> for a given sentence is its own runtime decision (model-dependent, not
-> deterministic). Naming rUvOS makes it far more reliable, but the only 100%
-> deterministic route is invoking the tool directly over MCP (see the feature
-> reference below). What rUvOS guarantees is that the tools are **available** and
-> **work** — every one is exercised by the test suite.
-
-For a specific tool, just name it — e.g. *"have rUvOS fork this session before the
-risky refactor"* → `session.fork`.
+> These are **representative** mappings, not guarantees. *Which* tool Claude picks
+> for a sentence is its own runtime decision. Naming rUvOS makes it far more
+> reliable; the only 100%-deterministic route is invoking the tool directly over
+> MCP (see the feature reference). What rUvOS guarantees: the tools are **available**
+> and **work** — every one is exercised by the test suite.
 
 ---
 
 ## The 24 tools
+
+<p align="center">
+  <img src="assets/diagrams/tools-map.svg" alt="Map of all 24 tools across 9 domains: memory (search, store, retrieve, list), session (create, resume, fork), agent (spawn, status, message), hooks (pre, post, route), intel (pattern_search, pattern_store), plugin (list, invoke), gov (health, witness_verify, events), relay (announce, list, send), orchestrate (run)." width="100%">
+</p>
+
+<details>
+<summary>📋 Table version (for AI / accessibility)</summary>
 
 | Domain | Tools | What they do |
 |--------|-------|--------------|
@@ -178,12 +190,21 @@ risky refactor"* → `session.fork`.
 | **relay** (3) | `announce`, `list`, `send` | Cross-instance coordination — independent Claude Code instances discover and message each other via pure file mailboxes (no daemon, no port, no DB) |
 | **orchestrate** (1) | `run` | Orchestration templates: `feature` / `bugfix` / `refactor` / `security` |
 
+</details>
+
 ---
 
 ## A natural-language session
 
 In Claude Code you never type tool calls — you talk, and Claude calls the tools.
-A typical session:
+Here's a typical session, end to end:
+
+<p align="center">
+  <img src="assets/diagrams/session-flow.svg" alt="A natural-language session: you ask rUvOS to build a POST /users endpoint and remember the design; Claude calls session.create, memory.store, then orchestrate.run (planner → coder → tester → reviewer, each leaving an artifact). The next day you ask to resume, and Claude calls session.resume and memory.search to restore context." width="100%">
+</p>
+
+<details>
+<summary>⌨️ Transcript version (for AI / accessibility)</summary>
 
 ```
 You:  Use rUvOS to build a POST /users endpoint with validation, and have it
@@ -203,6 +224,8 @@ Claude:
   → memory.search   { query: "users endpoint design", namespace: "users-api" }
 ```
 
+</details>
+
 Everything below shows the **same tools driven directly over MCP** — useful for
 scripting, CI, tests, or any MCP client. rUvOS speaks JSON-RPC on stdin/stdout;
 pipe one `initialize` line then `tools/call` lines into `ruvos mcp serve`.
@@ -212,8 +235,8 @@ pipe one `initialize` line then `tools/call` lines into `ruvos mcp serve`.
 ## Feature reference — every tool, by example
 
 Each tool below has a plain-English description, the phrase you'd typically say
-(🗣️), and a small example showing the call and what it returns. To run any of
-them yourself, wrap the call line with the transport boilerplate:
+(🗣️), and an example showing the call and what it returns. To run any of them
+yourself, wrap the call line with the transport boilerplate:
 
 ```bash
 printf '%s\n' \
@@ -227,21 +250,25 @@ printf '%s\n' \
 ### `memory` — persistent semantic memory + knowledge graph
 
 Vector search (HNSW + RaBitQ) with diversity and recency, plus a temporal
-knowledge graph. Survives restarts.
+knowledge graph. Survives restarts. Retrieval runs in tiers:
+
+<p align="center">
+  <img src="assets/diagrams/memory-retrieval.svg" alt="memory.search retrieval pipeline: the query (with optional filter_tags) fans out to Tier 1 ANN vector search (HNSW via ruvector-core, or ACORN filtered HNSW via ruvector-acorn when filter_tags is set, plus RaBitQ 1-bit) and Tier 2 RuLake federated candidates; results are merged (union by key, max score), re-ranked by MMR diversity + recency, and returned as top-k. A temporal knowledge graph additively contributes related_entities." width="100%">
+</p>
 
 **`memory.store`** — save a fact you want remembered later.
-🗣️ *"rUvOS, Remember we're using PostgreSQL for this project."*
+🗣️ *"rUvOS, remember we're using PostgreSQL for this project."*
 ```jsonc
 {"name":"memory.store","arguments":{"key":"db","value":"postgres connection pooling via pgbouncer","namespace":"proj","tags":["infra"]}}
 // → { "status":"stored", "key":"db", "namespace":"proj" }
 ```
 
 **`memory.search`** — recall by meaning, not exact words; also returns related
-entities from the knowledge graph. Pass optional `filter_tags` to restrict
-results to entries carrying *all* those tags — this routes retrieval through
-ACORN (predicate-agnostic filtered HNSW), which keeps recall high even when the
-tag filter is highly selective.
-🗣️ *"rUvOS, What did we decide about the database?"*
+entities from the knowledge graph. Pass optional `filter_tags` to restrict results
+to entries carrying *all* those tags — this routes retrieval through ACORN
+(predicate-agnostic filtered HNSW), which keeps recall high even when the tag
+filter is highly selective.
+🗣️ *"rUvOS, what did we decide about the database?"*
 ```jsonc
 {"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}
 // → { "count":1, "results":[{ "key":"db", "value":"postgres connection pooling…", "score":0.64 }],
@@ -267,27 +294,27 @@ tag filter is highly selective.
 
 ### `session` — resumable, signed work contexts
 
-A session is a signed `.rvf` container on disk. You can pick work back up later,
-and `fork` makes a copy-on-write branch with a cryptographic link to its parent.
+A session is a signed `.rvf` container on disk. You can pick work back up later, and
+`fork` makes a copy-on-write branch with a cryptographic link to its parent.
 
 **`session.create`** — start a session you can return to.
-🗣️ *"rUvOS, Let's start working on the users endpoint."*
+🗣️ *"rUvOS, let's start working on the users endpoint."*
 ```jsonc
 {"name":"session.create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}
 // → { "session_id":"6305…", "name":"users-endpoint", "rvf_path":".ruvos/rvf/6305….rvf", "status":"created" }
 ```
 
-**`session.resume`** — restore the full context of a past session (the signature
-is verified first).
-🗣️ *"rUvOS, Pick up where we left off yesterday."*
+**`session.resume`** — restore the full context of a past session (signature
+verified first).
+🗣️ *"rUvOS, pick up where we left off yesterday."*
 ```jsonc
 {"name":"session.resume","arguments":{"session_id":"6305…"}}
 // → { "found":true, "name":"users-endpoint", "state":{ "branch":"feat/users" }, "status":"resumed" }
 ```
 
-**`session.fork`** — branch a session before a risky change; the child links
-back to the parent.
-🗣️ *"rUvOS, Fork this before we try the big refactor."*
+**`session.fork`** — branch a session before a risky change; the child links back to
+the parent.
+🗣️ *"rUvOS, fork this before we try the big refactor."*
 ```jsonc
 {"name":"session.fork","arguments":{"source_session_id":"6305…"}}
 // → { "forked_id":"a1b2…", "source_session_id":"6305…", "status":"forked", "success":true }
@@ -297,11 +324,11 @@ back to the parent.
 
 ### `agent` — spawn, track, and message agents
 
-Spawn one of 12 archetypes (coder, tester, reviewer, …). Each produces a real
-work artifact on disk and is saved in the shared store.
+Spawn one of 12 archetypes (coder, tester, reviewer, …). Each produces a real work
+artifact on disk and is saved in the shared store.
 
 **`agent.spawn`** — put an agent to work on a prompt.
-🗣️ *"rUvOS, Get a coder to write the POST /users handler."*
+🗣️ *"rUvOS, get a coder to write the POST /users handler."*
 ```jsonc
 {"name":"agent.spawn","arguments":{"archetype":"coder","prompt":"write the POST /users handler","model":"claude-haiku-4-5","traits":["backend"]}}
 // → { "agent_id":"7ed0…", "archetype":"coder", "status":"completed",
@@ -309,14 +336,14 @@ work artifact on disk and is saved in the shared store.
 ```
 
 **`agent.status`** — see what agents exist and their state (all, or one by id).
-🗣️ *"rUvOS, What are my agents up to?"*
+🗣️ *"rUvOS, what are my agents up to?"*
 ```jsonc
 {"name":"agent.status","arguments":{}}
 // → { "count":2, "agents":[{ "agent_id":"7ed0…", "archetype":"coder", "status":"completed" }, … ] }
 ```
 
 **`agent.message`** — send a follow-up message to an agent.
-🗣️ *"rUvOS, Tell the coder to also add pagination."*
+🗣️ *"rUvOS, tell the coder to also add pagination."*
 ```jsonc
 {"name":"agent.message","arguments":{"agent_id":"7ed0…","message":"also add pagination"}}
 // → { "delivered":true, "message_id":"…", "message_count":1 }
@@ -326,12 +353,11 @@ work artifact on disk and is saved in the shared store.
 
 ### `hooks` — lifecycle hooks, safety & routing
 
-Safety checks before risky actions, model/archetype routing, and outcome
-recording that feeds learning.
+Safety checks before risky actions, model/archetype routing, and outcome recording
+that feeds learning.
 
-**`hooks.pre`** — risk-assess an action before it runs; flags destructive
-commands.
-🗣️ *"rUvOS, Is it safe to run this command?"*
+**`hooks.pre`** — risk-assess an action before it runs; flags destructive commands.
+🗣️ *"rUvOS, is it safe to run this command?"*
 ```jsonc
 {"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"<a destructive shell command>"}}}
 // → { "status":"ok", "blocked":true,
@@ -340,7 +366,7 @@ commands.
 ```
 
 **`hooks.route`** — pick the best archetype + model tier for a task.
-🗣️ *"rUvOS, Who should handle a security audit?"*
+🗣️ *"rUvOS, who should handle a security audit?"*
 ```jsonc
 {"name":"hooks.route","arguments":{"task":"audit auth flow for injection vulnerabilities"}}
 // → { "archetype":"security", "model":"claude-opus-4-8", "tier":3, "confidence":0.8 }
@@ -360,14 +386,14 @@ Remember the steps you took and how they turned out, then find similar past
 approaches later.
 
 **`intel.pattern_store`** — record a sequence of steps and its outcome.
-🗣️ *"rUvOS, Remember how we did that migration."*
+🗣️ *"rUvOS, remember how we did that migration."*
 ```jsonc
 {"name":"intel.pattern_store","arguments":{"trajectory":["read schema","write migration","run tests"],"outcome":"success: migration applied"}}
 // → { "status":"stored", "pattern_id":"…", "total_patterns":1 }
 ```
 
 **`intel.pattern_search`** — find past approaches similar to what you're doing now.
-🗣️ *"rUvOS, Have we done something like this before?"*
+🗣️ *"rUvOS, have we done something like this before?"*
 ```jsonc
 {"name":"intel.pattern_search","arguments":{"query":"database migration schema","top_k":5}}
 // → { "count":1, "patterns":[{ "outcome":"success: migration applied", "score":0.71, … }] }
@@ -382,14 +408,14 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 (command-injection guard).
 
 **`plugin.list`** — see what plugins are installed.
-🗣️ *"rUvOS, What plugins do I have?"*
+🗣️ *"rUvOS, what plugins do I have?"*
 ```jsonc
 {"name":"plugin.list","arguments":{}}
 // → { "count":0, "plugins":[] }
 ```
 
 **`plugin.invoke`** — run a command a plugin provides.
-🗣️ *"rUvOS, Run my-plugin's build command."*
+🗣️ *"rUvOS, run my-plugin's build command."*
 ```jsonc
 {"name":"plugin.invoke","arguments":{"plugin_name":"my-plugin","command":"build","args":["--release"]}}
 // → { "status":0, "stdout":"…", "stderr":"" }   // unknown plugin → status:1 + reason in stderr
@@ -400,7 +426,7 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 ### `gov` — health, provenance & audit
 
 **`gov.health`** — a real status report: tools, data dir, what's stored, safety score.
-🗣️ *"rUvOS, What's the system health?"*
+🗣️ *"rUvOS, what's the system health?"*
 ```jsonc
 {"name":"gov.health","arguments":{}}
 // → { "status":"ok", "version":"4.0.0-rc.1", "tool_count":24,
@@ -409,14 +435,14 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 ```
 
 **`gov.witness_verify`** — confirm a session file hasn't been tampered with.
-🗣️ *"rUvOS, Is this .rvf file still valid?"*
+🗣️ *"rUvOS, is this .rvf file still valid?"*
 ```jsonc
 {"name":"gov.witness_verify","arguments":{"rvf_path":".ruvos/rvf/6305….rvf"}}
 // → { "rvf_path":"…", "verified":true, "exists":true }
 ```
 
 **`gov.events`** — query the signed audit log of what happened.
-🗣️ *"rUvOS, Show me what happened in the last hour."*
+🗣️ *"rUvOS, show me what happened in the last hour."*
 ```jsonc
 {"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}
 // → { "count":2, "events":[{ "event_type":"agent.spawned", "agent_id":"7ed0…", "timestamp":… }, … ] }
@@ -426,11 +452,14 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 
 ### `relay` — cross-instance coordination
 
-Two independent Claude Code instances (e.g. one on the backend, one on the
-frontend) discover and message each other by sharing one `RUVOS_HOME`. **No
-daemon, no port, no database** — presence and messages are plain files, delivered
-the next time someone calls `relay.list`. Instances that go quiet for 60s are
-pruned automatically.
+Two independent Claude Code instances (e.g. one on the backend, one on the frontend)
+discover and message each other by sharing one `RUVOS_HOME`. **No daemon, no port,
+no database** — presence and messages are plain files, delivered the next time
+someone calls `relay.list`. Instances quiet for 60s are pruned automatically.
+
+<p align="center">
+  <img src="assets/diagrams/relay.svg" alt="Relay cross-instance coordination: Instance A (backend) calls relay.announce and relay.send, writing plain files into the shared $RUVOS_HOME/relays/ directory; Instance B (frontend) calls relay.list to read and drain its inbox. Messaging is bidirectional. No daemon, no port, no database; 60-second TTL liveness prunes stale instances; every announce/send is recorded in the signed gov.events audit log." width="100%">
+</p>
 
 ```bash
 # Both terminals point at the same relay directory:
@@ -438,15 +467,15 @@ export RUVOS_HOME=/home/you/.ruvos
 ```
 
 **`relay.announce`** — tell other instances who you are and what you're doing.
-🗣️ *"rUvOS, Let the other sessions know I'm on the backend."*
+🗣️ *"rUvOS, let the other sessions know I'm on the backend."*
 ```jsonc
 {"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}
 // → { "id":"A-uuid", "pid":…, "cwd":"…", "git_repo":"…", "summary":"backend: auth endpoints" }
 ```
 
-**`relay.list`** — discover other live instances and read your own inbox (drained
-on read). Scope is `machine`, `directory`, or `repo`.
-🗣️ *"rUvOS, Who else is working right now, and any messages for me?"*
+**`relay.list`** — discover other live instances and read your own inbox (drained on
+read). Scope is `machine`, `directory`, or `repo`.
+🗣️ *"rUvOS, who else is working right now, and any messages for me?"*
 ```jsonc
 {"name":"relay.list","arguments":{"scope":"machine"}}
 // → { "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }],
@@ -454,7 +483,7 @@ on read). Scope is `machine`, `directory`, or `repo`.
 ```
 
 **`relay.send`** — message another instance by id.
-🗣️ *"rUvOS, Ask the backend session to confirm the login shape."*
+🗣️ *"rUvOS, ask the backend session to confirm the login shape."*
 ```jsonc
 {"name":"relay.send","arguments":{"to":"A-uuid","body":"login form posts to /auth/login — confirm the shape?"}}
 // → { "delivered":true, "message_id":"…" }
@@ -472,7 +501,7 @@ Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
 `security` (security → coder → tester).
 
 **`orchestrate.run`** — run a whole pipeline for a task in one go.
-🗣️ *"rUvOS, Orchestrate a full feature pipeline for user auth."*
+🗣️ *"rUvOS, orchestrate a full feature pipeline for user auth."*
 ```jsonc
 {"name":"orchestrate.run","arguments":{"template":"feature","task":"build POST /users with validation"}}
 // → { "orchestration_id":"…", "template":"feature", "status":"completed", "step_count":4,
@@ -500,8 +529,15 @@ Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
 
 ## Where your data lives
 
-All state persists under `$RUVOS_HOME` (default `./.ruvos`). Disk is the source of
-truth — state survives restarts and is verifiable across processes.
+All state persists under `$RUVOS_HOME` (default `./.ruvos`). **Disk is the source of
+truth** — state survives restarts and is verifiable across processes.
+
+<p align="center">
+  <img src="assets/diagrams/data-layout.svg" alt="$RUVOS_HOME storage layout: a redb live store (store.redb — agents, tasks, events, messages, metrics) and signed .rvf snapshots (rvf/<id>.rvf — witness-chained session containers), plus JSON state files: memory.json, memory-graph.json, intel.json, safety/safety.json, agents/<id>/output.md, and the per-install signing key .rvf-key. No SQLite, no bundled C." width="100%">
+</p>
+
+<details>
+<summary>🗂️ Tree version (for AI / accessibility)</summary>
 
 ```
 $RUVOS_HOME/
@@ -515,6 +551,8 @@ $RUVOS_HOME/
 └── .rvf-key            # per-install signing key (0600; gitignored — never commit)
 ```
 
+</details>
+
 **Storage model:** `redb` (pure-Rust embedded DB) is the fast, queryable working
 store; `.rvf` containers are signed, tamper-evident snapshots for provenance and
 portability. No SQLite, no bundled C — the binary stays pure Rust.
@@ -523,34 +561,63 @@ portability. No SQLite, no bundled C — the binary stays pure Rust.
 
 ## Architecture
 
+rUvOS is two layers: a thin **orchestration shell** (6 crates) on top of the
+**RuVector kernel + substrate** (pure-Rust vector search, learning, graph, crypto,
+and distributed building blocks).
+
+<p align="center">
+  <img src="assets/diagrams/architecture.svg" alt="Two-layer architecture. Top: rUvOS orchestration shell (6 crates) — ruvos-cli, ruvos-mcp, ruvos-host, ruvos-plugin-host, ruvos-hooks, ruvos-session — runs on RuVector. Bottom: RuVector kernel + substrate (pure Rust), grouped into vector search (ruvector-core HNSW, ruvector-rabitq, ruvector-acorn), learning (sona), knowledge graph (ruvos-memory-graph), state & provenance (ruvos-store redb, rvf-crypto), safety (ruvos-safety), distributed (ruvector-raft, ruvector-replication, ruvector-cluster, ruvector-router-core), and federation & transport (rulake, rvf-federation, ruv-swarm-transport). Crates actively used by tool handlers are shown in teal; crates that are built and available but not yet consumed are shown dimmed." width="100%">
+</p>
+
+<details>
+<summary>🌳 Tree version (for AI / accessibility)</summary>
+
 ```
 crates/                    # rUvOS orchestration shell (the 6 new crates)
 ├── ruvos-cli              # clap CLI: `ruvos init`, `ruvos mcp serve`
 ├── ruvos-mcp              # JSON-RPC MCP server + the 24 tool handlers
 ├── ruvos-host             # CliHost trait + Claude/Codex adapters
 ├── ruvos-plugin-host      # plugin discovery + shell execution
-├── ruvos-hooks            # 8 hooks + SONA learning (pure Rust, no SQLite)
+├── ruvos-hooks            # hooks + SONA learning (pure Rust, no SQLite)
 └── ruvos-session          # .rvf containers + fork + witness-chain verify
 
 substrate/                 # RuVector kernel + vendored capabilities (all pure Rust)
-├── ruvector-core          # HNSW vector index + VectorDB (redb storage)
-├── ruvector-rabitq        # 1-bit quantized ANN search
-├── sona                   # self-optimizing pattern learning
-├── rvf-crypto             # SHAKE-256 witness chains + Ed25519
-├── ruvos-store            # redb store + signed .rvf snapshots
-├── ruvos-memory-graph     # temporal knowledge graph (petgraph)
-├── ruvos-safety           # behavioral guardrails / adaptive constraints
-├── rulake                 # federated vector search over many backends
-├── ruv-swarm-transport    # WebSocket + in-process agent messaging
-└── … (rvf-* container stack, ruvector-math, mcp-brain)
+  active in tools ───────────────────────────────────────────────
+  ├── ruvector-core         # HNSW vector index + VectorDB (redb storage)
+  ├── ruvector-rabitq       # 1-bit quantized ANN search
+  ├── ruvector-acorn        # predicate-agnostic filtered HNSW (tag-filtered search)
+  ├── sona                  # self-optimizing pattern learning
+  ├── rvf-crypto            # SHAKE-256 witness chains + HMAC attestation
+  ├── ruvos-store           # redb store + signed .rvf snapshots
+  ├── ruvos-memory-graph    # temporal knowledge graph (petgraph)
+  ├── ruvos-safety          # behavioral guardrails / adaptive constraints
+  ├── rulake                # federated vector search over many backends
+  └── ruv-swarm-transport   # WebSocket + in-process agent messaging
+  built & available (compiled + tested in CI, not yet wired to a tool) ──
+  ├── ruvector-raft         # Raft consensus for distributed metadata
+  ├── ruvector-replication  # data replication / sync
+  ├── ruvector-cluster      # clustering + sharding
+  ├── ruvector-router-core  # vector DB + neural routing engine
+  └── rvf-federation        # federated transfer learning (PII strip + diff-privacy)
+  (+ rvf-* container stack, ruvector-math, mcp-brain)
 ```
+
+</details>
+
+**Wiring status.** The teal crates are consumed by the live tool handlers today
+(e.g. `ruvector-acorn` powers tag-filtered `memory.search`). The dimmed crates are
+**built, linted, and tested as workspace members** so they stay green under the
+zero-defect policy and are ready to wire to a tool without a separate integration —
+they're available substrate, not dead code. Crates needing special toolchains
+(`rvf-wasm`, `rvf-ebpf`, `rvf-node`, `rvf-kernel`) and the local-inference runtime
+(`ruvllm`, deferred to v2) are intentionally held out of the workspace.
 
 **MCP protocol:** rUvOS implements the full handshake (`initialize` →
 `notifications/initialized` → `tools/list` → `tools/call`), so any MCP client
 (Claude Code, Codex CLI) discovers and calls the tools natively.
 
 Key decisions are recorded as ADRs in `docs/spec/` (e.g. ADR-001: redb + `.rvf`
-persistence and internal task ownership).
+persistence; ADR-002: relay; ADR-003: rename workflow → orchestrate).
 
 ---
 
@@ -572,8 +639,7 @@ cargo test  --workspace --jobs 4
 - **Zero-defect policy** — the entire workspace stays clean (0 errors, 0 warnings,
   0 failing tests) at all times, including vendored substrate crates.
 - **File size limit** — every `.rs` file ≤ 500 lines.
-- **One tool domain per scope** — new MCP tools require an ADR (current: 24 tools,
-  budget 80).
+- **One tool domain per scope** — new MCP tools require an ADR (current: 24 tools).
 
 ---
 
@@ -587,15 +653,15 @@ Rust:
 
 - **Ruflo / claude-flow** — the agent orchestration system rUvOS is the v4 rewrite of
 - **RuVector** — the self-learning vector + graph + local-AI kernel (`ruvector-core`,
-  `ruvector-rabitq`, `sona`, …)
-- **The `.rvf` format & witness chains** (`rvf-crypto`, `rvf-*`) — signed, tamper-evident
-  state containers
+  `ruvector-rabitq`, `ruvector-acorn`, `sona`, …)
+- **The `.rvf` format & witness chains** (`rvf-crypto`, `rvf-*`) — signed,
+  tamper-evident state containers
 - **ruv-swarm / ruv-FANN** — swarm coordination, transport, and neural forecasting
 - **RuLake**, **agentdb**, and the broader rUvnet research corpus
 
 The architecture, the hard algorithms, and the original vision are rUv's. rUvOS's
-contribution is a ruthless Rust-native consolidation — fewer tools, one static binary,
-zero-defect discipline — on top of that foundation. **Thank you, rUv.** 🙏🚀
+contribution is a ruthless Rust-native consolidation — fewer tools, one static
+binary, zero-defect discipline — on top of that foundation. **Thank you, rUv.** 🙏🚀
 
 Explore the originals at **https://github.com/ruvnet**.
 
