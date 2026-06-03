@@ -128,8 +128,11 @@ async fn execute_task(
 
     // Optional: run a real external runner (e.g. a wrapper around a CLI).
     let result = if let Ok(runner) = std::env::var("RUVOS_AGENT_RUNNER") {
+        // `--` signals end-of-options so a prompt beginning with `-` can't be
+        // smuggled in as a flag to the runner binary (argv injection guard).
         let output = tokio::process::Command::new(&runner)
-            .arg(archetype)
+            .arg(archetype) // already validated against the archetype allowlist
+            .arg("--")
             .arg(prompt)
             .output()
             .await

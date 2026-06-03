@@ -1,17 +1,20 @@
-//! COW-branch session forking — read parent, write a new child container.
+//! COW-branch session forking — read parent, write a child whose witness chain
+//! extends the parent's (real cryptographic lineage).
 
-use crate::rvf::{read_session, write_session};
+use crate::rvf::{chain_entries, read_container, write_container};
 use crate::Session;
 use uuid::Uuid;
 
 /// Fork a session for parallel exploration using copy-on-write semantics.
 ///
-/// Reads the parent `.rvf` (verifying its signature), creates a new session
-/// that inherits the parent's state snapshot, links back to the parent, and
-/// writes a fresh signed `.rvf` for the child. `base_dir` is where the new
-/// container is written (e.g. the `.rvf` data directory).
+/// Reads and verifies the parent `.rvf`, creates a child that inherits the
+/// parent's state snapshot and links back to the parent, then writes the child
+/// with a witness chain that **extends the parent's** — so the child's chain
+/// cryptographically proves its descent from the parent.
 pub async fn fork_session(parent_path: &str, base_dir: &str) -> anyhow::Result<Session> {
-    let parent = read_session(parent_path).await?;
+    let parent_container = read_container(parent_path).await?;
+    let parent = parent_container.payload.clone();
+    let parent_entries = chain_entries(&parent_container)?;
 
     let now = chrono::Utc::now().to_rfc3339();
     let child_id = Uuid::new_v4();
@@ -28,17 +31,19 @@ pub async fn fork_session(parent_path: &str, base_dir: &str) -> anyhow::Result<S
         state: parent.state.clone(),
     };
 
-    write_session(&child, &child_path).await?;
+    // Child chain = parent's entries + a new provenance entry for the child.
+    write_container(&child, &parent_entries, &child_path).await?;
     Ok(child)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rvf::write_session;
     use std::collections::BTreeMap;
 
     #[tokio::test]
-    async fn fork_inherits_state_and_links_parent() {
+    async fn fork_inherits_state_and_extends_lineage() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path().to_str().unwrap();
 
@@ -56,9 +61,10 @@ mod tests {
         assert_eq!(child.parent, Some(parent.id), "child must link to parent");
         assert_eq!(child.state, seeded, "child must inherit parent state (COW)");
         assert_ne!(child.id, parent.id, "child must have a distinct id");
-        assert!(
-            std::path::Path::new(&child.rvf_path).exists(),
-            "child .rvf file must be written to disk"
-        );
+
+        // Child container verifies and its chain extends the parent's (2 entries).
+        let child_container = read_container(&child.rvf_path).await.unwrap();
+        let entries = chain_entries(&child_container).unwrap();
+        assert_eq!(entries.len(), 2, "child lineage extends the parent chain");
     }
 }

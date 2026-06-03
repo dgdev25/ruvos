@@ -33,6 +33,21 @@ impl ToolHandler for GovWitnessVerifyHandler {
         Box::pin(async move {
             let rvf_path = params["rvf_path"].as_str().unwrap_or_default().to_string();
 
+            // Confine verification to the rUvOS data root: reject any path that
+            // (once resolved) escapes it, preventing reads of arbitrary files.
+            if let Ok(canonical) = std::fs::canonicalize(&rvf_path) {
+                let base = std::fs::canonicalize(paths::data_root())
+                    .unwrap_or_else(|_| paths::data_root());
+                if !canonical.starts_with(&base) {
+                    return Ok(json!({
+                        "rvf_path": rvf_path,
+                        "verified": false,
+                        "exists": true,
+                        "error": "path outside the rUvOS data directory"
+                    }));
+                }
+            }
+
             match ruvos_session::verify_signature(&rvf_path).await {
                 Ok(verified) => Ok(json!({
                     "rvf_path": rvf_path,

@@ -9,11 +9,16 @@ use ruvos_session::{fork_session, read_session, write_session, Session};
 use serde_json::{json, Value};
 
 /// Absolute path to a session's `.rvf` file.
-fn rvf_path_for(session_id: &str) -> String {
-    paths::sessions_dir()
+///
+/// `session_id` must be a plain UUID — this rejects path-traversal payloads
+/// (e.g. `../../etc/passwd`) before they can escape the sessions directory.
+fn rvf_path_for(session_id: &str) -> Result<String> {
+    uuid::Uuid::parse_str(session_id)
+        .map_err(|_| RuvosError::InvalidParams("session_id must be a UUID".to_string()))?;
+    Ok(paths::sessions_dir()
         .join(format!("{}.rvf", session_id))
         .to_string_lossy()
-        .into_owned()
+        .into_owned())
 }
 
 // ============================================================================
@@ -57,7 +62,8 @@ impl ToolHandler for SessionCreateHandler {
 
             let mut session = Session::new();
             session.name = name.clone();
-            let path = rvf_path_for(&session.id.to_string());
+            // session.id is a freshly generated UUID, so this never fails.
+            let path = rvf_path_for(&session.id.to_string())?;
             session.rvf_path = path.clone();
 
             // Optional initial state passed by the caller.
@@ -118,7 +124,17 @@ impl ToolHandler for SessionResumeHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let path = rvf_path_for(&session_id);
+            let path = match rvf_path_for(&session_id) {
+                Ok(p) => p,
+                Err(_) => {
+                    return Ok(json!({
+                        "session_id": session_id,
+                        "status": "not_found",
+                        "found": false,
+                        "error": "Session not found"
+                    }))
+                }
+            };
 
             match read_session(&path).await {
                 Ok(session) => Ok(json!({
@@ -184,7 +200,18 @@ impl ToolHandler for SessionForkHandler {
                 .unwrap_or_default()
                 .to_string();
 
-            let source_path = rvf_path_for(&source_session_id);
+            let source_path = match rvf_path_for(&source_session_id) {
+                Ok(p) => p,
+                Err(_) => {
+                    return Ok(json!({
+                        "forked_id": Value::Null,
+                        "source_session_id": source_session_id,
+                        "status": "source_not_found",
+                        "success": false,
+                        "error": "Source session not found"
+                    }))
+                }
+            };
             let base_dir = paths::sessions_dir().to_string_lossy().into_owned();
 
             match fork_session(&source_path, &base_dir).await {

@@ -1,15 +1,15 @@
 //! Memory domain tools (4): search, store, retrieve, list.
 //!
 //! Backed by a real JSON store on disk (source of truth, survives restarts).
-//! `memory.search` implements genuine retrieval: term-frequency cosine
-//! similarity against the query, MMR re-ranking for diversity, and a recency
-//! boost — no neural embeddings required, but a real ranking algorithm.
+//! `memory.search` runs real retrieval: embeddings + a real HNSW
+//! approximate-nearest-neighbour index (via `ruvector-core`), then MMR
+//! re-ranking for diversity and a recency boost. See `super::embedding`.
 
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::{paths, Result, RuvosError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,41 +57,7 @@ fn save_store(store: &Store) -> Result<()> {
 // Real ranking primitives
 // ---------------------------------------------------------------------------
 
-/// Lowercase alphanumeric word tokens.
-fn tokenize(text: &str) -> Vec<String> {
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
-}
-
-/// Term-frequency vector.
-fn tf_vector(tokens: &[String]) -> HashMap<String, f64> {
-    let mut v = HashMap::new();
-    for t in tokens {
-        *v.entry(t.clone()).or_insert(0.0) += 1.0;
-    }
-    v
-}
-
-/// Cosine similarity between two term-frequency vectors. Range [0, 1].
-fn cosine(a: &HashMap<String, f64>, b: &HashMap<String, f64>) -> f64 {
-    if a.is_empty() || b.is_empty() {
-        return 0.0;
-    }
-    let dot: f64 = a
-        .iter()
-        .map(|(k, va)| b.get(k).map(|vb| va * vb).unwrap_or(0.0))
-        .sum();
-    let na: f64 = a.values().map(|x| x * x).sum::<f64>().sqrt();
-    let nb: f64 = b.values().map(|x| x * x).sum::<f64>().sqrt();
-    if na == 0.0 || nb == 0.0 {
-        0.0
-    } else {
-        dot / (na * nb)
-    }
-}
+use super::embedding::{cosine_dense, embed, hnsw_rank};
 
 /// Recency weight in [0, 1]: newer entries score higher. Half-life ~30 days.
 fn recency_weight(created_at: &str) -> f64 {
@@ -111,11 +77,12 @@ fn entry_text(e: &MemoryEntry) -> String {
 struct Scored {
     entry: MemoryEntry,
     relevance: f64,
-    vec: HashMap<String, f64>,
+    vec: Vec<f32>,
 }
 
-/// MMR re-ranking: balances query relevance against diversity from already
-/// selected results. lambda=0.7 favors relevance while still de-duplicating.
+/// MMR re-ranking over real dense embeddings: balances query relevance against
+/// diversity from already-selected results. lambda=0.7 favors relevance while
+/// still de-duplicating near-identical hits.
 fn mmr_select(mut candidates: Vec<Scored>, top_k: usize, lambda: f64) -> Vec<Scored> {
     let mut selected: Vec<Scored> = Vec::new();
     while !candidates.is_empty() && selected.len() < top_k {
@@ -124,7 +91,7 @@ fn mmr_select(mut candidates: Vec<Scored>, top_k: usize, lambda: f64) -> Vec<Sco
         for (i, cand) in candidates.iter().enumerate() {
             let max_sim_to_selected = selected
                 .iter()
-                .map(|s| cosine(&cand.vec, &s.vec))
+                .map(|s| cosine_dense(&cand.vec, &s.vec) as f64)
                 .fold(0.0_f64, f64::max);
             let mmr = lambda * cand.relevance - (1.0 - lambda) * max_sim_to_selected;
             if mmr > best_score {
@@ -347,32 +314,44 @@ impl ToolHandler for MemorySearchHandler {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(5) as usize;
 
-            let query_vec = tf_vector(&tokenize(&query));
-
             let _guard = FILE_LOCK.lock().unwrap();
             let store = load_store();
 
-            let mut scored: Vec<Scored> = store
+            // All entries in the namespace, keyed for HNSW retrieval.
+            let entries: Vec<MemoryEntry> = store
                 .get(&namespace)
-                .map(|ns| {
-                    ns.values()
-                        .map(|e| {
-                            let vec = tf_vector(&tokenize(&entry_text(e)));
-                            // Relevance = lexical similarity blended with recency.
-                            let sim = cosine(&query_vec, &vec);
-                            let relevance = 0.85 * sim + 0.15 * recency_weight(&e.created_at);
-                            Scored {
-                                entry: e.clone(),
-                                relevance,
-                                vec,
-                            }
-                        })
-                        .collect()
-                })
+                .map(|ns| ns.values().cloned().collect())
                 .unwrap_or_default();
+            let by_key: BTreeMap<String, MemoryEntry> =
+                entries.iter().map(|e| (e.key.clone(), e.clone())).collect();
 
-            // Drop zero-relevance noise, then MMR-rank for diversity.
-            scored.retain(|s| s.relevance > 0.0);
+            // Real HNSW ANN retrieval over real embeddings. Pull a wider
+            // candidate set so MMR has room to diversify.
+            let items: Vec<(String, String)> = entries
+                .iter()
+                .map(|e| (e.key.clone(), entry_text(e)))
+                .collect();
+            let candidate_k = (top_k * 4).max(top_k);
+            let ranked_ids = hnsw_rank(&items, &query, candidate_k)
+                .map_err(|e| RuvosError::InternalError(format!("hnsw search: {}", e)))?;
+
+            // Blend the (dense cosine) relevance with a recency boost, then MMR.
+            let query_vec = embed(&query);
+            let mut scored: Vec<Scored> = ranked_ids
+                .iter()
+                .filter_map(|id| by_key.get(id))
+                .map(|e| {
+                    let vec = embed(&entry_text(e));
+                    let sim = cosine_dense(&query_vec, &vec) as f64;
+                    let relevance = 0.85 * sim + 0.15 * recency_weight(&e.created_at);
+                    Scored {
+                        entry: e.clone(),
+                        relevance,
+                        vec,
+                    }
+                })
+                .collect();
+
             scored.sort_by(|a, b| b.relevance.partial_cmp(&a.relevance).unwrap());
             let selected = mmr_select(scored, top_k, 0.7);
 
@@ -494,13 +473,30 @@ mod tests {
         assert_eq!(r["results"][0]["key"], "persisted");
     }
 
-    #[test]
-    fn cosine_and_tokenize_are_real() {
-        let a = tf_vector(&tokenize("hello world hello"));
-        let b = tf_vector(&tokenize("hello world"));
-        let sim = cosine(&a, &b);
-        assert!(sim > 0.9 && sim <= 1.0, "similar texts score high: {}", sim);
-        let c = tf_vector(&tokenize("completely different tokens"));
-        assert!(cosine(&a, &c) < 0.1, "dissimilar texts score low");
+    #[tokio::test]
+    async fn search_diversifies_near_duplicates_via_mmr() {
+        let _g = isolate();
+        // Two near-identical entries + one distinct; MMR should not return
+        // only the duplicates.
+        store("dup1", "database connection pooling postgres", "default").await;
+        store("dup2", "database connection pooling postgres", "default").await;
+        store("other", "database sharding strategy", "default").await;
+
+        let r = MemorySearchHandler
+            .execute(json!({"query": "database", "namespace": "default", "top_k": 2}))
+            .await
+            .unwrap();
+        let keys: Vec<String> = r["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["key"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(keys.len(), 2);
+        assert!(
+            keys.contains(&"other".to_string()),
+            "MMR should surface the distinct entry, not two duplicates: {:?}",
+            keys
+        );
     }
 }

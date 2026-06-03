@@ -15,9 +15,8 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 tracing = "0.1"
 anyhow = "1.0"
 chrono = { workspace = true }
-sha2 = "0.10"
-hmac = "0.12"
 hex = "0.4"
+rvf-crypto = { path = "../../substrate/rvf-crypto" }
 
 [dev-dependencies]
 tempfile = "3"

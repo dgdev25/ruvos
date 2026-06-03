@@ -20,6 +20,7 @@ ruvos-plugin-host = { path = "../ruvos-plugin-host" }
 ruvos-hooks = { path = "../ruvos-hooks" }
 ruvos-session = { path = "../ruvos-session" }
 ruvos-host = { path = "../ruvos-host" }
+ruvector-core = { path = "../../substrate/ruvector-core", default-features = false, features = ["hnsw", "storage"] }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }

@@ -1,12 +1,16 @@
 //! ruvos-session: real `.rvf` container write/read, fork (COW-branch),
-//! and HMAC-SHA256 signature verification.
+//! and a real SHAKE-256 witness chain (via `rvf-crypto`).
 //!
 //! An `.rvf` container is a JSON file on disk with two parts:
 //! - `payload`: session metadata + a memory snapshot + optional parent link
-//! - `signature`: a hex HMAC-SHA256 over the canonical payload bytes
+//! - `witness`: a hex-encoded SHAKE-256 hash-linked witness chain (rvf-crypto
+//!   `WITNESS_SEG`). Each entry chains to the previous via `prev_hash`, and the
+//!   final entry's `action_hash` attests the exact payload bytes.
 //!
-//! Verification recomputes the HMAC and compares it, so any tampering with the
-//! payload invalidates the container.
+//! Verification (a) replays the chain links and (b) checks the last entry's
+//! `action_hash` equals SHAKE-256 of the current payload — so tampering with
+//! either the payload or any chain entry is detected. Forking extends the
+//! parent's chain, giving real cryptographic lineage.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -17,17 +21,8 @@ pub mod rvf;
 pub mod verify;
 
 pub use fork::fork_session;
-pub use rvf::{read_session, write_session, RvfContainer};
-pub use verify::{sign_payload, verify_container, verify_signature};
-
-/// The signing key for `.rvf` containers. In a real deployment this comes from
-/// the environment / a keystore; we fall back to a fixed dev key so containers
-/// are still genuinely signed and verifiable in tests and local use.
-pub fn signing_key() -> Vec<u8> {
-    std::env::var("RUVOS_RVF_KEY")
-        .map(|s| s.into_bytes())
-        .unwrap_or_else(|_| b"ruvos-default-rvf-signing-key-v4".to_vec())
-}
+pub use rvf::{read_container, read_session, write_container, write_session, RvfContainer};
+pub use verify::{verify_container, verify_signature, witness_type_provenance};
 
 /// Session metadata + state, persisted inside an `.rvf` container.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

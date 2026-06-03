@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod echo;
+pub mod embedding;
 pub mod gov;
 pub mod handler;
 pub mod hooks;
