@@ -495,3 +495,18 @@ All 7 phases of the Ruflo v4 rewrite are complete and production-ready:
 **Production Ready:** Yes
 
 **Ready for production deployment and public release.**
+
+---
+
+## v3 → v4 Cutover (2026-06-03)
+
+**Status:** ✅ Complete - v4 is the only version
+
+Ruflo v3 has been completely removed:
+- ❌ npm package (`npx ruflo`) no longer available
+- ❌ v3 source code archived to `legacy/`
+- ✅ v4 binary is the only entry point
+- ✅ All work migrated to v4 (MCP server + 20 tools)
+
+Users should **not** install v3. The v4 binary is self-contained and requires no Node.js.
+

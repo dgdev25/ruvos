@@ -4,12 +4,12 @@ resolver = "2"
 # (9 essential for Phase 2-5 + 9 optional for Phase 5+). 11 dropped crates: clustering (raft, replication, cluster),
 # LLM (ruvllm), variants (acorn), and runtime targets (ebpf, kernel, wasm, node, server, federation, launch).
 members = [
-    "crates/ruflo-cli",
-    "crates/ruflo-mcp",
-    "crates/ruflo-host",
-    "crates/ruflo-plugin-host",
-    "crates/ruflo-hooks",
-    "crates/ruflo-session",
+    "crates/ruvos-cli",
+    "crates/ruvos-mcp",
+    "crates/ruvos-host",
+    "crates/ruvos-plugin-host",
+    "crates/ruvos-hooks",
+    "crates/ruvos-session",
     # 9 Essential RuVector crates (Phases 2-5)
     "substrate/mcp-brain",
     "substrate/ruvector-core",
@@ -28,12 +28,12 @@ members = [
     "substrate/rvf-import",
 ]
 default-members = [
-    "crates/ruflo-cli",
-    "crates/ruflo-mcp",
-    "crates/ruflo-host",
-    "crates/ruflo-plugin-host",
-    "crates/ruflo-hooks",
-    "crates/ruflo-session",
+    "crates/ruvos-cli",
+    "crates/ruvos-mcp",
+    "crates/ruvos-host",
+    "crates/ruvos-plugin-host",
+    "crates/ruvos-hooks",
+    "crates/ruvos-session",
 ]
 
 [workspace.package]
