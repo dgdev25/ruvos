@@ -45,7 +45,17 @@ whole workspace.
 - [Install](#install)
 - [How you actually use it](#how-you-actually-use-it-just-talk)
 - [The 24 tools](#the-24-tools)
-- [Worked examples](#worked-examples)
+- [A natural-language session](#a-natural-language-session)
+- [Feature reference — every tool, by example](#feature-reference--every-tool-by-example)
+  - [memory](#memory--persistent-semantic-memory--knowledge-graph) ·
+    [session](#session--resumable-signed-work-contexts) ·
+    [agent](#agent--spawn-track-and-message-agents) ·
+    [hooks](#hooks--lifecycle-hooks-safety--routing) ·
+    [intel](#intel--sona-trajectory-learning) ·
+    [plugin](#plugin--discover-and-run-plugins) ·
+    [gov](#gov--health-provenance--audit) ·
+    [relay](#relay--cross-instance-coordination) ·
+    [workflow](#workflow--multi-agent-orchestration-templates)
 - [Agent archetypes & traits](#agent-archetypes--traits)
 - [Where your data lives](#where-your-data-lives)
 - [Architecture](#architecture)
@@ -141,9 +151,10 @@ before we try the risky refactor"* → `session.fork`.
 
 ---
 
-## Worked examples
+## A natural-language session
 
-### Example A — natural-language session in Claude Code
+In Claude Code you never type tool calls — you talk, and Claude calls the tools.
+A typical session:
 
 ```
 You:  Build a POST /users endpoint with validation. Remember the design as we go.
@@ -152,10 +163,8 @@ Claude (using rUvOS automatically):
   → session.create  { name: "users-endpoint" }
   → memory.store    { key: "spec", value: "POST /users, zod validation, ...",
                       namespace: "users-api" }
-  → agent.spawn     { archetype: "coder",  prompt: "write POST /users handler",
-                      model: "claude-haiku-4-5" }
-  → agent.spawn     { archetype: "tester", prompt: "write endpoint tests" }
-  ...builds the endpoint...
+  → workflow.run    { workflow_type: "feature", task: "POST /users with validation" }
+  ...planner → coder → tester → reviewer run, each leaving a real artifact...
 
 [next day]
 You:  Resume the users endpoint work.
@@ -164,92 +173,203 @@ Claude:
   → memory.search   { query: "users endpoint design", namespace: "users-api" }
 ```
 
-### Example B — driving the tools directly over MCP (for scripting/testing)
+Everything below shows the **same tools driven directly over MCP** — useful for
+scripting, CI, tests, or any MCP client. rUvOS speaks JSON-RPC on stdin/stdout;
+pipe one `initialize` line then `tools/call` lines into `ruvos mcp serve`.
 
-rUvOS speaks JSON-RPC (MCP) on stdin/stdout. You can pipe requests straight to the
-binary — useful for tests, CI, or other MCP clients:
+---
 
-```bash
-printf '%s\n' \
-'{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
-'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.store","arguments":{"key":"db","value":"postgres connection pooling","namespace":"proj"}}}' \
-'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"database connection","namespace":"proj"}}}' \
-| ruvos mcp serve
+## Feature reference — every tool, by example
+
+> Each block shows the `tools/call` arguments and the shape of the result. To run
+> any of them yourself, wrap with the transport boilerplate:
+> ```bash
+> printf '%s\n' \
+> '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
+> '<the tools/call line below>' \
+> | ruvos mcp serve
+> ```
+
+### `memory` — persistent semantic memory + knowledge graph
+
+Vector search (HNSW + RaBitQ) with MMR diversity and recency, plus a temporal
+knowledge graph that returns `related_entities`. Survives restarts.
+
+```jsonc
+// memory.store — remember something (namespaced, optional tags)
+{"name":"memory.store","arguments":{"key":"db","value":"postgres connection pooling via pgbouncer","namespace":"proj","tags":["infra"]}}
+// → { "status":"stored", "key":"db", "namespace":"proj" }
+
+// memory.search — semantic recall + graph-derived related entities
+{"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}
+// → { "count":1, "results":[{ "key":"db", "value":"postgres connection pooling…", "score":0.64 }],
+//     "related_entities":[{ "name":"Postgres", "summary":"…" }] }
+
+// memory.retrieve — exact fetch by key
+{"name":"memory.retrieve","arguments":{"key":"db","namespace":"proj"}}
+// → { "found":true, "key":"db", "value":"postgres connection pooling…", "tags":["infra"] }
+
+// memory.list — everything in a namespace
+{"name":"memory.list","arguments":{"namespace":"proj"}}
+// → { "namespace":"proj", "count":1, "entries":[ … ] }
 ```
 
-`memory.search` returns ranked results plus graph-derived `related_entities`:
+### `session` — resumable, signed work contexts
 
-```json
-{
-  "query": "database connection",
-  "count": 1,
-  "results": [{ "key": "db", "value": "postgres connection pooling", "score": 0.64 }],
-  "related_entities": [{ "name": "Postgres", "summary": "..." }]
-}
+A session is a signed `.rvf` container on disk. `fork` is a copy-on-write branch
+with a cryptographic lineage link to its parent.
+
+```jsonc
+// session.create — start a session (optional initial state)
+{"name":"session.create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}
+// → { "session_id":"6305…", "name":"users-endpoint", "rvf_path":".ruvos/rvf/6305….rvf", "status":"created" }
+
+// session.resume — restore full context by id (verifies the signature first)
+{"name":"session.resume","arguments":{"session_id":"6305…"}}
+// → { "found":true, "name":"users-endpoint", "state":{ "branch":"feat/users" }, "status":"resumed" }
+
+// session.fork — COW-branch before a risky change; child links to the parent
+{"name":"session.fork","arguments":{"source_session_id":"6305…"}}
+// → { "forked_id":"a1b2…", "source_session_id":"6305…", "status":"forked", "success":true }
 ```
 
-### Example C — a real multi-agent workflow
+### `agent` — spawn, track, and message agents
 
-```bash
-printf '%s\n' \
-'{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
-'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"workflow.run","arguments":{"workflow_type":"feature","task":"build POST /users"}}}' \
-| ruvos mcp serve
+Spawn one of 12 archetypes; each produces a real work artifact on disk and is
+persisted in the shared store. Multiple Claude sessions can share the store.
+
+```jsonc
+// agent.spawn — run an archetype on a prompt
+{"name":"agent.spawn","arguments":{"archetype":"coder","prompt":"write the POST /users handler","model":"claude-haiku-4-5","traits":["backend"]}}
+// → { "agent_id":"7ed0…", "archetype":"coder", "status":"completed",
+//     "artifact_path":".ruvos/agents/7ed0…/output.md", "artifact_bytes":264 }
+
+// agent.status — list all agents, or one by id
+{"name":"agent.status","arguments":{}}
+// → { "count":2, "agents":[{ "agent_id":"7ed0…", "archetype":"coder", "status":"completed" }, … ] }
+
+// agent.message — send a message to a spawned agent
+{"name":"agent.message","arguments":{"agent_id":"7ed0…","message":"also add pagination"}}
+// → { "delivered":true, "message_id":"…", "message_count":1 }
 ```
 
-The `feature` template really spawns a `planner → coder → tester → reviewer`
-pipeline, each producing a real work artifact on disk.
+### `hooks` — lifecycle hooks, safety & routing
 
-### Example D — safety risk assessment + audit log
+`hooks.pre` runs a **safety risk assessment** for edit/command actions;
+`hooks.route` picks the best archetype + model tier for a task; `hooks.post`
+feeds outcomes back into learning.
 
-```bash
-# hooks.pre flags a destructive command before it runs
-'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"sudo rm -rf /var/data"}}}}'
-# → response includes: "safety": { "passed": false, "violations": [...] }, "blocked": true
+```jsonc
+// hooks.pre — safety gate before a destructive command
+{"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"sudo rm -rf /var/data"}}}
+// → { "status":"ok", "safety":{ "passed":false, "safety_score":0.7,
+//      "violations":[{ "constraint":"destructive_command", "level":"High", … }] }, "blocked":true }
 
-# gov.events — signed audit trail of what happened
-'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gov.events","arguments":{"since":0,"limit":20}}}'
+// hooks.route — task → archetype + model tier + confidence
+{"name":"hooks.route","arguments":{"task":"audit auth flow for injection vulnerabilities"}}
+// → { "archetype":"security", "model":"claude-opus-4-8", "tier":3, "confidence":0.8 }
+
+// hooks.post — record an outcome (feeds SONA learning + the queue)
+{"name":"hooks.post","arguments":{"kind":"task","payload":{"task":"build endpoint"},"success":true,"message":"green"}}
+// → { "status":"ok", … }
 ```
 
-### Example E — routing a task to the right model/archetype
+### `intel` — SONA trajectory learning
 
-```bash
-'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hooks.route","arguments":{"task":"audit auth flow for injection vulnerabilities"}}}'
-# → { "archetype": "security", "model": "claude-opus-4-8", "tier": 3, "confidence": 0.8 }
+Store the steps you took and how it turned out; later retrieve structurally
+similar past approaches (TF-cosine over disk + SONA cluster similarity).
+
+```jsonc
+// intel.pattern_store — remember a trajectory + its outcome
+{"name":"intel.pattern_store","arguments":{"trajectory":["read schema","write migration","run tests"],"outcome":"success: migration applied"}}
+// → { "status":"stored", "pattern_id":"…", "total_patterns":1 }
+
+// intel.pattern_search — find similar past trajectories
+{"name":"intel.pattern_search","arguments":{"query":"database migration schema","top_k":5}}
+// → { "count":1, "patterns":[{ "outcome":"success: migration applied", "score":0.71, … }] }
 ```
 
-### Example F — two instances coordinating via `relay`
+### `plugin` — discover and run plugins
 
-Two independent Claude Code instances — say one on the backend, one on the
-frontend — discover and message each other by sharing one `RUVOS_HOME`. No
-daemon, no port: presence and messages are plain files, delivered pull-based on
-the next `relay.list`.
+Plugins are markdown + shell commands discovered from `./.ruvos/plugins`,
+`~/.ruvos/plugins`, etc. `invoke` only runs commands declared in a plugin
+manifest (command-injection guard).
+
+```jsonc
+// plugin.list — what's installed
+{"name":"plugin.list","arguments":{}}
+// → { "count":0, "plugins":[] }
+
+// plugin.invoke — run a declared plugin command
+{"name":"plugin.invoke","arguments":{"plugin_name":"my-plugin","command":"build","args":["--release"]}}
+// → { "status":0, "stdout":"…", "stderr":"" }   // unknown plugin → status:1 + reason in stderr
+```
+
+### `gov` — health, provenance & audit
+
+```jsonc
+// gov.health — real introspection: tools, data dir, persisted counts, safety score
+{"name":"gov.health","arguments":{}}
+// → { "status":"ok", "version":"4.0.0-rc.1", "tool_count":24,
+//     "persisted":{ "agents":2, "memory_entries":1, "sessions":1, … },
+//     "safety":{ "score":1.0, "active_constraints":5, "recent_violations":0 } }
+
+// gov.witness_verify — verify an .rvf container's signature chain (tamper-evident)
+{"name":"gov.witness_verify","arguments":{"rvf_path":".ruvos/rvf/6305….rvf"}}
+// → { "rvf_path":"…", "verified":true, "exists":true }
+
+// gov.events — query the signed audit log (since / by agent / by type)
+{"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}
+// → { "count":2, "events":[{ "event_type":"agent.spawned", "agent_id":"7ed0…", "timestamp":… }, … ] }
+```
+
+### `relay` — cross-instance coordination
+
+Independent Claude Code instances (separate terminals/projects) discover and
+message each other by sharing one `RUVOS_HOME`. **No daemon, no port, no DB** —
+presence and messages are plain files, delivered pull-based on the next
+`relay.list`. Stale instances (no announce within 60s) are pruned automatically.
 
 ```bash
 # Both terminals point at the same relay directory:
-export RUVOS_HOME=/tmp/team-relays
+export RUVOS_HOME=/home/you/.ruvos
+```
+```jsonc
+// Terminal A — announce what this instance is working on
+{"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}
+// → { "id":"A-uuid", "pid":…, "cwd":"…", "git_repo":"…", "summary":"backend: auth endpoints" }
 
-# Terminal A — announces what it's working on, then sees nobody yet:
-'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}}'
-# → { "id": "A-uuid", "pid": ..., "cwd": "...", "summary": "backend: auth endpoints", ... }
+// Terminal B — announce, then list (discovers A) and drain own inbox
+{"name":"relay.announce","arguments":{"summary":"frontend: login form"}}
+{"name":"relay.list","arguments":{"scope":"machine"}}   // scope: machine | directory | repo
+// → { "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }], "inbox":[] }
 
-# Terminal B — announces, then lists and sees A:
-'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay.announce","arguments":{"summary":"frontend: login form"}}}'
-'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay.list","arguments":{"scope":"machine"}}}'
-# → { "scope":"machine", "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }], "inbox":[] }
+// Terminal B — send A a message by id
+{"name":"relay.send","arguments":{"to":"A-uuid","body":"login form posts to /auth/login — confirm the shape?"}}
+// → { "delivered":true, "message_id":"…" }
 
-# Terminal B — sends A a message by id:
-'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"relay.send","arguments":{"to":"A-uuid","body":"login form expects POST /auth/login — confirm the shape?"}}}'
-# → { "delivered": true, "message_id": "..." }
-
-# Terminal A — lists again; its inbox now carries B's message (and is drained on read):
-'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay.list","arguments":{"scope":"machine"}}}'
-# → { ..., "inbox":[{ "from":"B-uuid", "body":"login form expects POST /auth/login — confirm the shape?", ... }] }
+// Terminal A — list again; its inbox now carries B's message (drained on read)
+{"name":"relay.list","arguments":{"scope":"machine"}}
+// → { …, "inbox":[{ "from":"B-uuid", "body":"login form posts to /auth/login — confirm the shape?" }] }
 ```
 
-Stale instances (no `relay.announce` within 60s) are pruned automatically the
-next time anyone calls `relay.list`. Every `announce`/`send` is recorded in the
-signed `gov.events` audit log.
+Every `announce`/`send` is recorded in the signed `gov.events` audit log.
+
+### `workflow` — multi-agent orchestration templates
+
+One call runs an ordered agent pipeline; each step produces a real artifact.
+Templates: `feature` (planner→coder→tester→reviewer), `bugfix`
+(researcher→coder→tester), `refactor` (architect→coder→reviewer), `security`
+(security→coder→tester).
+
+```jsonc
+// workflow.run — spawn the whole pipeline for a task
+{"name":"workflow.run","arguments":{"workflow_type":"feature","task":"build POST /users with validation"}}
+// → { "workflow_id":"…", "workflow_type":"feature", "status":"completed", "step_count":4,
+//     "steps":[ { "archetype":"planner", "agent_id":"…", "artifact_path":"…" },
+//               { "archetype":"coder", … }, { "archetype":"tester", … },
+//               { "archetype":"reviewer", … } ] }
+```
 
 ---
 
