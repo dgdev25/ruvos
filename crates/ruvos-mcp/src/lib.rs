@@ -15,7 +15,7 @@ pub mod protocol;
 pub mod server;
 pub mod tools;
 
-pub use error::{Result, rUvOSError};
+pub use error::{Result, RuvosError};
 pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 pub use server::{serve, JsonRpcServer};
 pub use tools::{create_registry, tool_registry, ToolRegistry};

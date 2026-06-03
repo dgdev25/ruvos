@@ -1,4 +1,4 @@
-use ruflo_plugin_host::parser::{extract_body, parse_frontmatter};
+use ruvos_plugin_host::parser::{extract_body, parse_frontmatter};
 
 #[test]
 fn test_parse_skill_frontmatter() {

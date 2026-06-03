@@ -54,7 +54,7 @@ impl ToolRegistry {
         let handler = self
             .handlers
             .get(method)
-            .ok_or(crate::rUvOSError::MethodNotFound)?;
+            .ok_or(crate::RuvosError::MethodNotFound)?;
 
         handler.validate(&params)?;
         handler.execute(params).await

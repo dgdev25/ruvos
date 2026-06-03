@@ -1,4 +1,4 @@
-use ruflo_plugin_host::{discover::PluginDiscoverer, PluginManifest};
+use ruvos_plugin_host::{discover::PluginDiscoverer, PluginManifest};
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -8,14 +8,14 @@ fn create_test_plugin_dir(parent: &TempDir, name: &str) -> (PathBuf, PluginManif
     fs::create_dir_all(&plugin_dir).expect("create plugin dir");
 
     let manifest = PluginManifest {
-        plugin: ruflo_plugin_host::PluginInfo {
+        plugin: ruvos_plugin_host::PluginInfo {
             name: name.to_string(),
             version: "1.0.0".to_string(),
             description: format!("{} plugin", name),
             license: "MIT".to_string(),
             authors: vec!["Test Author".to_string()],
         },
-        capabilities: ruflo_plugin_host::PluginCapabilities {
+        capabilities: ruvos_plugin_host::PluginCapabilities {
             agents: vec![],
             skills: vec![],
             commands: vec![],

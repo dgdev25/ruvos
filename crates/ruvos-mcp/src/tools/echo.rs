@@ -19,13 +19,13 @@ impl ToolHandler for EchoHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
 
         if params.get("message").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'message' field (string)".to_string(),
             ));
         }

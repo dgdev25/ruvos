@@ -1,4 +1,4 @@
-//! `ruflo init` command: initialize a new rUvOS project.
+//! `ruvos init` command: initialize a new rUvOS project.
 
 use tracing::info;
 
@@ -8,7 +8,7 @@ pub async fn init(name: Option<String>) -> anyhow::Result<()> {
     info!("Creating new project: {}", project_name);
 
     // TODO: Create project structure:
-    // - .ruflo/ directory
+    // - .ruvos/ directory
     // - Default config (TOML)
     // - Plugin registry path
     // - Session storage path

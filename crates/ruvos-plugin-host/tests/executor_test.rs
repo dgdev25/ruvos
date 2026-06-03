@@ -1,4 +1,4 @@
-use ruflo_plugin_host::{ExecutionRequest, PluginExecutor};
+use ruvos_plugin_host::{ExecutionRequest, PluginExecutor};
 
 #[tokio::test]
 async fn test_execute_simple_command() {

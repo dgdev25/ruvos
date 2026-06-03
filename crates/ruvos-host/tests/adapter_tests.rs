@@ -1,6 +1,6 @@
 //! Integration tests for CliHost adapters.
 
-use ruflo_host::{
+use ruvos_host::{
     host::{AgentEvent, AgentRequest, CliError, CliHost, ToolCall},
     ClaudeHost, CodexHost,
 };
@@ -216,7 +216,7 @@ async fn test_claude_stream_with_multiple_traits() {
 
 #[tokio::test]
 async fn test_model_spec_factory() {
-    use ruflo_host::host::ModelSpec;
+    use ruvos_host::host::ModelSpec;
 
     let model = ModelSpec::new("test-model", 2, 100000);
     assert_eq!(model.name, "test-model");

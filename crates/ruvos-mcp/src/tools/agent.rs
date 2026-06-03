@@ -136,7 +136,7 @@ impl AgentRegistry {
         if let Some(queue) = self.message_queues.get_mut(agent_id) {
             queue.push_back(message);
         } else {
-            return Err(crate::rUvOSError::ValidationError(format!(
+            return Err(crate::RuvosError::ValidationError(format!(
                 "Agent not found: {}",
                 agent_id
             )));
@@ -172,22 +172,22 @@ impl ToolHandler for AgentSpawnHandler {
         params
             .get("archetype")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| crate::rUvOSError::ValidationError("Missing: archetype".into()))?;
+            .ok_or_else(|| crate::RuvosError::ValidationError("Missing: archetype".into()))?;
 
         params
             .get("prompt")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| crate::rUvOSError::ValidationError("Missing: prompt".into()))?;
+            .ok_or_else(|| crate::RuvosError::ValidationError("Missing: prompt".into()))?;
 
         params
             .get("model")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| crate::rUvOSError::ValidationError("Missing: model".into()))?;
+            .ok_or_else(|| crate::RuvosError::ValidationError("Missing: model".into()))?;
 
         // Validate archetype
         let archetype = params.get("archetype").unwrap().as_str().unwrap();
         if !VALID_ARCHETYPES.contains(&archetype) {
-            return Err(crate::rUvOSError::ValidationError(format!(
+            return Err(crate::RuvosError::ValidationError(format!(
                 "Invalid archetype: {}. Must be one of: {}",
                 archetype,
                 VALID_ARCHETYPES.join(", ")
@@ -197,7 +197,7 @@ impl ToolHandler for AgentSpawnHandler {
         // Optional budget validation
         if let Some(budget) = params.get("budget").and_then(|v| v.as_u64()) {
             if budget == 0 {
-                return Err(crate::rUvOSError::ValidationError(
+                return Err(crate::RuvosError::ValidationError(
                     "Budget must be > 0".into(),
                 ));
             }
@@ -242,7 +242,7 @@ impl ToolHandler for AgentSpawnHandler {
                     "created_at": agent.created_at,
                 }))
             } else {
-                Err(crate::rUvOSError::InternalError(
+                Err(crate::RuvosError::InternalError(
                     "Registry not initialized".into(),
                 ))
             }
@@ -287,7 +287,7 @@ impl ToolHandler for AgentStatusHandler {
                             "message_count": agent.message_count,
                         }))
                     } else {
-                        Err(crate::rUvOSError::ValidationError(format!(
+                        Err(crate::RuvosError::ValidationError(format!(
                             "Agent not found: {}",
                             id
                         )))
@@ -316,7 +316,7 @@ impl ToolHandler for AgentStatusHandler {
                     }))
                 }
             } else {
-                Err(crate::rUvOSError::InternalError(
+                Err(crate::RuvosError::InternalError(
                     "Registry not initialized".into(),
                 ))
             }
@@ -339,12 +339,12 @@ impl ToolHandler for AgentMessageHandler {
         params
             .get("agent_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| crate::rUvOSError::ValidationError("Missing: agent_id".into()))?;
+            .ok_or_else(|| crate::RuvosError::ValidationError("Missing: agent_id".into()))?;
 
         params
             .get("message")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| crate::rUvOSError::ValidationError("Missing: message".into()))?;
+            .ok_or_else(|| crate::RuvosError::ValidationError("Missing: message".into()))?;
 
         Ok(())
     }
@@ -370,7 +370,7 @@ impl ToolHandler for AgentMessageHandler {
                     "status": "enqueued",
                 }))
             } else {
-                Err(crate::rUvOSError::InternalError(
+                Err(crate::RuvosError::InternalError(
                     "Registry not initialized".into(),
                 ))
             }

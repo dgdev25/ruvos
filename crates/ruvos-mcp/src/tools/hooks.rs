@@ -53,23 +53,23 @@ impl ToolHandler for HooksPreHandler {
     fn validate(&self, params: &Value) -> Result<()> {
         // Validate required fields: kind, payload
         if !params.is_object() {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "params must be an object".to_string(),
             ));
         }
 
         let obj = params.as_object().ok_or_else(|| {
-            crate::rUvOSError::ValidationError("params must be an object".to_string())
+            crate::RuvosError::ValidationError("params must be an object".to_string())
         })?;
 
         if !obj.contains_key("kind") {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "missing required field: kind".to_string(),
             ));
         }
 
         if !obj.contains_key("payload") {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "missing required field: payload".to_string(),
             ));
         }
@@ -82,11 +82,11 @@ impl ToolHandler for HooksPreHandler {
 
         Box::pin(async move {
             let obj = params.as_object().ok_or_else(|| {
-                crate::rUvOSError::InvalidParams("params must be an object".to_string())
+                crate::RuvosError::InvalidParams("params must be an object".to_string())
             })?;
 
             let kind_str = obj.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
-                crate::rUvOSError::InvalidParams("kind must be a string".to_string())
+                crate::RuvosError::InvalidParams("kind must be a string".to_string())
             })?;
 
             let hook_kind = match kind_str {
@@ -95,7 +95,7 @@ impl ToolHandler for HooksPreHandler {
                 "command" => HookKind::Command,
                 "session" => HookKind::Session,
                 _ => {
-                    return Err(crate::rUvOSError::InvalidParams(format!(
+                    return Err(crate::RuvosError::InvalidParams(format!(
                         "invalid hook kind: {}",
                         kind_str
                     )))
@@ -110,7 +110,7 @@ impl ToolHandler for HooksPreHandler {
             let response = dispatcher
                 .dispatch_pre(hook_kind, payload)
                 .await
-                .map_err(|e| crate::rUvOSError::InternalError(e.to_string()))?;
+                .map_err(|e| crate::RuvosError::InternalError(e.to_string()))?;
 
             Ok(json!({
                 "status": response.status,
@@ -151,29 +151,29 @@ impl ToolHandler for HooksPostHandler {
     fn validate(&self, params: &Value) -> Result<()> {
         // Validate required fields: kind, payload, success, message, metadata
         if !params.is_object() {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "params must be an object".to_string(),
             ));
         }
 
         let obj = params.as_object().ok_or_else(|| {
-            crate::rUvOSError::ValidationError("params must be an object".to_string())
+            crate::RuvosError::ValidationError("params must be an object".to_string())
         })?;
 
         if !obj.contains_key("kind") {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "missing required field: kind".to_string(),
             ));
         }
 
         if !obj.contains_key("payload") {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "missing required field: payload".to_string(),
             ));
         }
 
         if !obj.contains_key("success") {
-            return Err(crate::rUvOSError::ValidationError(
+            return Err(crate::RuvosError::ValidationError(
                 "missing required field: success".to_string(),
             ));
         }
@@ -187,11 +187,11 @@ impl ToolHandler for HooksPostHandler {
 
         Box::pin(async move {
             let obj = params.as_object().ok_or_else(|| {
-                crate::rUvOSError::InvalidParams("params must be an object".to_string())
+                crate::RuvosError::InvalidParams("params must be an object".to_string())
             })?;
 
             let kind_str = obj.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
-                crate::rUvOSError::InvalidParams("kind must be a string".to_string())
+                crate::RuvosError::InvalidParams("kind must be a string".to_string())
             })?;
 
             let hook_kind = match kind_str {
@@ -200,7 +200,7 @@ impl ToolHandler for HooksPostHandler {
                 "command" => HookKind::Command,
                 "session" => HookKind::Session,
                 _ => {
-                    return Err(crate::rUvOSError::InvalidParams(format!(
+                    return Err(crate::RuvosError::InvalidParams(format!(
                         "invalid hook kind: {}",
                         kind_str
                     )))
@@ -216,7 +216,7 @@ impl ToolHandler for HooksPostHandler {
                 .get("success")
                 .and_then(|v| v.as_bool())
                 .ok_or_else(|| {
-                    crate::rUvOSError::InvalidParams("success must be a boolean".to_string())
+                    crate::RuvosError::InvalidParams("success must be a boolean".to_string())
                 })?;
 
             let message = obj
@@ -238,7 +238,7 @@ impl ToolHandler for HooksPostHandler {
             let response = dispatcher
                 .dispatch_post(hook_kind, payload, outcome)
                 .await
-                .map_err(|e| crate::rUvOSError::InternalError(e.to_string()))?;
+                .map_err(|e| crate::RuvosError::InternalError(e.to_string()))?;
 
             Ok(json!({
                 "status": response.status,

@@ -49,7 +49,7 @@ impl ToolHandler for SessionCreateHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
@@ -57,7 +57,7 @@ impl ToolHandler for SessionCreateHandler {
         // Optional 'name' field validation
         if let Some(name) = params.get("name") {
             if !name.is_string() && !name.is_null() {
-                return Err(crate::rUvOSError::InvalidParams(
+                return Err(crate::RuvosError::InvalidParams(
                     "'name' must be a string or null".to_string(),
                 ));
             }
@@ -120,13 +120,13 @@ impl ToolHandler for SessionResumeHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
 
         if params.get("session_id").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'session_id' field (string)".to_string(),
             ));
         }
@@ -184,7 +184,7 @@ impl ToolHandler for SessionForkHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
@@ -194,7 +194,7 @@ impl ToolHandler for SessionForkHandler {
             .and_then(|v| v.as_str())
             .is_none()
         {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'source_session_id' field (string)".to_string(),
             ));
         }

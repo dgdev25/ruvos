@@ -1,47 +1,67 @@
-// crates/ruflo-mcp/tests/integration_test.rs
-//! End-to-end integration test for MCP echo round-trip.
-//! Validates that the MCP server can be spawned and respond to requests correctly.
+// crates/ruvos-mcp/tests/integration_test.rs
+//! End-to-end integration test for the MCP protocol handshake.
+//! Validates that the rUvOS MCP server speaks real MCP: initialize, tools/list,
+//! and tools/call — the exact sequence an MCP client (Claude Code) performs.
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::thread;
 
-#[test]
-fn test_mcp_echo_round_trip() {
-    // Build the binary first
-    let build = Command::new("cargo")
-        .args(["build", "--release", "-p", "ruflo-cli"])
-        .output()
-        .expect("failed to build ruflo-cli");
-
-    if !build.status.success() {
-        panic!(
-            "cargo build failed: {}",
-            String::from_utf8_lossy(&build.stderr)
-        );
+/// Read the next JSON-RPC response line (skipping any tracing output on stdout).
+fn read_response(reader: &mut impl BufRead) -> Value {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        reader.read_line(&mut line).expect("failed to read response");
+        if line.trim().is_empty() {
+            panic!("reached EOF without finding JSON response");
+        }
+        if line.trim().starts_with('{') {
+            return serde_json::from_str(&line).expect("failed to parse response JSON");
+        }
     }
+}
 
-    // Spawn the MCP server
+fn send(stdin: &mut ChildStdin, req: &Value) {
+    stdin
+        .write_all(format!("{}\n", req).as_bytes())
+        .expect("failed to write request");
+}
+
+fn spawn_server() -> Child {
+    let build = Command::new("cargo")
+        .args(["build", "--release", "-p", "ruvos-cli"])
+        .output()
+        .expect("failed to build ruvos-cli");
+    assert!(
+        build.status.success(),
+        "cargo build failed: {}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let binary_path = format!("{}/../../target/release/ruflo-cli", manifest_dir);
+    let binary_path = format!("{}/../../target/release/ruvos", manifest_dir);
 
-    let mut child = Command::new(&binary_path)
+    Command::new(&binary_path)
         .args(["mcp", "serve"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn ruflo mcp serve");
+        .expect("failed to spawn ruvos mcp serve")
+}
 
-    // Note: child is wait()'ed on via kill() below
+#[test]
+fn test_mcp_protocol_handshake() {
+    let mut child = spawn_server();
 
     let mut stdin = child.stdin.take().expect("failed to get stdin");
     let stdout = child.stdout.take().expect("failed to get stdout");
     let stderr = child.stderr.take().expect("failed to get stderr");
     let mut reader = BufReader::new(stdout);
 
-    // Spawn a thread to consume stderr so it doesn't block the process
+    // Drain stderr so tracing output doesn't block the process.
     thread::spawn(move || {
         let mut stderr_reader = BufReader::new(stderr);
         let mut line = String::new();
@@ -50,64 +70,58 @@ fn test_mcp_echo_round_trip() {
         }
     });
 
-    // Send echo request
-    let request = json!({
-        "jsonrpc": "2.0",
-        "method": "echo.test",
-        "params": {"message": "integration-test-123"},
-        "id": "test-1"
-    });
+    // 1. initialize — the client's first message.
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0", "id": 0, "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                       "clientInfo": {"name": "test", "version": "1"}}
+        }),
+    );
+    let init = read_response(&mut reader);
+    assert_eq!(init["result"]["serverInfo"]["name"], "ruvos");
+    assert_eq!(init["result"]["protocolVersion"], "2024-11-05");
 
-    let request_str = format!("{}\n", request);
-    stdin
-        .write_all(request_str.as_bytes())
-        .expect("failed to write request");
-    drop(stdin); // Close stdin so server knows we're done
+    // 2. initialized notification — no response expected.
+    send(
+        &mut stdin,
+        &json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+    );
 
-    // Read response lines until we find a JSON response
-    let mut response_line = String::new();
-    loop {
-        response_line.clear();
-        reader
-            .read_line(&mut response_line)
-            .expect("failed to read response");
-
-        if response_line.trim().is_empty() {
-            panic!("reached EOF without finding JSON response");
-        }
-
-        // Skip non-JSON lines (like tracing output that went to stdout)
-        if response_line.trim().starts_with('{') {
-            break;
-        }
-    }
-
-    // Parse and verify response
-    let response: Value =
-        serde_json::from_str(&response_line).expect("failed to parse response JSON");
-
-    // Assertions
-    assert_eq!(response["jsonrpc"], "2.0", "jsonrpc version mismatch");
+    // 3. tools/list — must return objects with name + inputSchema, not bare strings.
+    send(
+        &mut stdin,
+        &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+    );
+    let list = read_response(&mut reader);
+    let tools = list["result"]["tools"].as_array().expect("tools array");
+    assert_eq!(tools.len(), 20, "expected all 20 rUvOS tools");
+    assert!(tools.iter().any(|t| t["name"] == "session.create"));
     assert!(
-        response["error"].is_null(),
-        "response contains error: {}",
-        response["error"]
-    );
-    assert!(
-        !response["result"].is_null(),
-        "response missing result field"
-    );
-    assert_eq!(
-        response["result"]["echo"], "integration-test-123",
-        "echo value mismatch"
-    );
-    assert_eq!(response["id"], "test-1", "request ID mismatch");
-    assert!(
-        !response["result"]["timestamp"].is_null(),
-        "timestamp missing"
+        tools.iter().all(|t| t["inputSchema"].is_object()),
+        "every tool must expose an inputSchema"
     );
 
-    // Clean up
+    // 4. tools/call — dispatch a real tool and verify MCP content envelope.
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "session.create", "arguments": {"name": "itest"}}
+        }),
+    );
+    let call = read_response(&mut reader);
+    assert!(call["error"].is_null(), "tools/call errored: {}", call["error"]);
+    assert_eq!(call["result"]["isError"], false);
+    assert_eq!(call["result"]["content"][0]["type"], "text");
+    assert_eq!(call["result"]["structuredContent"]["status"], "created");
+    assert!(
+        call["result"]["structuredContent"]["session_id"].is_string(),
+        "session.create must return a session_id"
+    );
+
+    drop(stdin);
     let _ = child.kill();
     let _ = child.wait();
 }

@@ -1,4 +1,4 @@
-//! `ruflo mcp serve` command: start the JSON-RPC MCP server on stdio.
+//! `ruvos mcp serve` command: start the JSON-RPC MCP server on stdio.
 
 use ruvos_mcp::serve as mcp_serve;
 

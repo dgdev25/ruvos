@@ -31,7 +31,7 @@ pub struct PluginCapabilities {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PluginCompat {
-    pub ruflo_min: Option<String>,
+    pub ruvos_min: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

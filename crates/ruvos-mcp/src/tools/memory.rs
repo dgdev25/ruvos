@@ -48,19 +48,19 @@ impl ToolHandler for MemorySearchHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
 
         if params.get("query").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'query' field (string)".to_string(),
             ));
         }
 
         if params.get("namespace").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'namespace' field (string)".to_string(),
             ));
         }
@@ -133,25 +133,25 @@ impl ToolHandler for MemoryStoreHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
 
         if params.get("key").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'key' field (string)".to_string(),
             ));
         }
 
         if params.get("value").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'value' field (string)".to_string(),
             ));
         }
 
         if params.get("namespace").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'namespace' field (string)".to_string(),
             ));
         }
@@ -234,19 +234,19 @@ impl ToolHandler for MemoryRetrieveHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
 
         if params.get("key").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'key' field (string)".to_string(),
             ));
         }
 
         if params.get("namespace").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'namespace' field (string)".to_string(),
             ));
         }
@@ -297,13 +297,13 @@ impl ToolHandler for MemoryListHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
 
         if params.get("namespace").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::rUvOSError::InvalidParams(
+            return Err(crate::RuvosError::InvalidParams(
                 "missing 'namespace' field (string)".to_string(),
             ));
         }

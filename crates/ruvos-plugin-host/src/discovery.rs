@@ -15,8 +15,8 @@ pub struct PluginManifest {
 /// Discover all available plugins from filesystem.
 pub async fn discover_plugins() -> anyhow::Result<Vec<PluginManifest>> {
     // TODO: Search discovery paths in order:
-    // 1. ./.ruflo/plugins/
-    // 2. ~/.ruflo/plugins/
+    // 1. ./.ruvos/plugins/
+    // 2. ~/.ruvos/plugins/
     // 3. $RUFLO_HOME/plugins/
     // 4. <workspace>/crates/ruvos-plugin-host/registry/
     // For each directory found, parse plugin.toml and README.md

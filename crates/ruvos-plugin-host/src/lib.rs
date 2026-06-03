@@ -1,8 +1,8 @@
 //! ruvos-plugin-host: Plugin discovery (markdown + YAML frontmatter), manifest parsing.
 //!
 //! Discovery order (first match wins):
-//! 1. ./.ruflo/plugins/<name>/
-//! 2. ~/.ruflo/plugins/<name>/
+//! 1. ./.ruvos/plugins/<name>/
+//! 2. ~/.ruvos/plugins/<name>/
 //! 3. $RUFLO_HOME/plugins/<name>/
 //! 4. <workspace>/crates/ruvos-plugin-host/registry/<name>/
 

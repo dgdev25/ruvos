@@ -1,7 +1,7 @@
 // crates/ruvos-mcp/src/error.rs
 
 #[derive(Debug)]
-pub enum rUvOSError {
+pub enum RuvosError {
     // JSON-RPC protocol errors
     ParseError(String),     // -32700
     InvalidRequest(String), // -32600
@@ -14,30 +14,30 @@ pub enum rUvOSError {
     ValidationError(String),
 }
 
-impl rUvOSError {
+impl RuvosError {
     pub fn json_rpc_code(&self) -> i32 {
         match self {
-            rUvOSError::ParseError(_) => -32700,
-            rUvOSError::InvalidRequest(_) => -32600,
-            rUvOSError::MethodNotFound => -32601,
-            rUvOSError::InvalidParams(_) => -32602,
-            rUvOSError::InternalError(_)
-            | rUvOSError::HandlerError(_)
-            | rUvOSError::ValidationError(_) => -32000,
+            RuvosError::ParseError(_) => -32700,
+            RuvosError::InvalidRequest(_) => -32600,
+            RuvosError::MethodNotFound => -32601,
+            RuvosError::InvalidParams(_) => -32602,
+            RuvosError::InternalError(_)
+            | RuvosError::HandlerError(_)
+            | RuvosError::ValidationError(_) => -32000,
         }
     }
 
     pub fn message(&self) -> String {
         match self {
-            rUvOSError::ParseError(msg) => format!("Parse error: {}", msg),
-            rUvOSError::InvalidRequest(msg) => format!("Invalid Request: {}", msg),
-            rUvOSError::MethodNotFound => "Method not found".to_string(),
-            rUvOSError::InvalidParams(msg) => format!("Invalid params: {}", msg),
-            rUvOSError::InternalError(msg) => format!("Internal error: {}", msg),
-            rUvOSError::HandlerError(msg) => format!("Handler error: {}", msg),
-            rUvOSError::ValidationError(msg) => format!("Validation error: {}", msg),
+            RuvosError::ParseError(msg) => format!("Parse error: {}", msg),
+            RuvosError::InvalidRequest(msg) => format!("Invalid Request: {}", msg),
+            RuvosError::MethodNotFound => "Method not found".to_string(),
+            RuvosError::InvalidParams(msg) => format!("Invalid params: {}", msg),
+            RuvosError::InternalError(msg) => format!("Internal error: {}", msg),
+            RuvosError::HandlerError(msg) => format!("Handler error: {}", msg),
+            RuvosError::ValidationError(msg) => format!("Validation error: {}", msg),
         }
     }
 }
 
-pub type Result<T> = std::result::Result<T, rUvOSError>;
+pub type Result<T> = std::result::Result<T, RuvosError>;

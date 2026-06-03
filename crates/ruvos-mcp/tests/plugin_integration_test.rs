@@ -1,4 +1,4 @@
-// crates/ruflo-mcp/tests/plugin_integration_test.rs
+// crates/ruvos-mcp/tests/plugin_integration_test.rs
 //! End-to-end integration tests for plugin system (plugin.list and plugin.invoke).
 //! Validates that the MCP server can discover plugins and invoke commands end-to-end.
 
@@ -10,13 +10,12 @@ use std::thread;
 /// Test plugin.list integration end-to-end
 /// Spawns the MCP server and validates plugin discovery response structure
 #[tokio::test]
-#[ignore]
 async fn test_plugin_list_integration() {
     // Build the binary first
     let build = Command::new("cargo")
-        .args(["build", "--release", "-p", "ruflo-cli"])
+        .args(["build", "--release", "-p", "ruvos-cli"])
         .output()
-        .expect("failed to build ruflo-cli");
+        .expect("failed to build ruvos-cli");
 
     if !build.status.success() {
         panic!(
@@ -27,7 +26,7 @@ async fn test_plugin_list_integration() {
 
     // Spawn the MCP server
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let binary_path = format!("{}/../../target/release/ruflo-cli", manifest_dir);
+    let binary_path = format!("{}/../../target/release/ruvos", manifest_dir);
 
     let mut child = Command::new(&binary_path)
         .args(["mcp", "serve"])
@@ -35,7 +34,7 @@ async fn test_plugin_list_integration() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn ruflo mcp serve");
+        .expect("failed to spawn ruvos mcp serve");
 
     let mut stdin = child.stdin.take().expect("failed to get stdin");
     let stdout = child.stdout.take().expect("failed to get stdout");
@@ -51,11 +50,11 @@ async fn test_plugin_list_integration() {
         }
     });
 
-    // Send plugin.list request
+    // Send plugin.list via MCP tools/call envelope
     let request = json!({
         "jsonrpc": "2.0",
-        "method": "plugin.list",
-        "params": {},
+        "method": "tools/call",
+        "params": { "name": "plugin.list", "arguments": {} },
         "id": "plugin-list-1"
     });
 
@@ -94,18 +93,11 @@ async fn test_plugin_list_integration() {
         "response contains error: {}",
         response["error"]
     );
-    assert!(
-        !response["result"].is_null(),
-        "response missing result field"
-    );
-    assert!(
-        !response["result"]["count"].is_null(),
-        "result missing count field"
-    );
     assert_eq!(response["id"], "plugin-list-1", "request ID mismatch");
+    assert_eq!(response["result"]["isError"], false, "tool reported error");
 
-    // Verify result is a valid object with plugins array and count
-    let result = &response["result"];
+    // Tool output is under the MCP structuredContent envelope
+    let result = &response["result"]["structuredContent"];
     assert!(
         result["plugins"].is_array(),
         "plugins field must be an array"
@@ -120,13 +112,12 @@ async fn test_plugin_list_integration() {
 /// Test plugin.invoke integration end-to-end
 /// Spawns the MCP server and validates plugin invocation response structure
 #[tokio::test]
-#[ignore]
 async fn test_plugin_invoke_integration() {
     // Build the binary first
     let build = Command::new("cargo")
-        .args(["build", "--release", "-p", "ruflo-cli"])
+        .args(["build", "--release", "-p", "ruvos-cli"])
         .output()
-        .expect("failed to build ruflo-cli");
+        .expect("failed to build ruvos-cli");
 
     if !build.status.success() {
         panic!(
@@ -137,7 +128,7 @@ async fn test_plugin_invoke_integration() {
 
     // Spawn the MCP server
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let binary_path = format!("{}/../../target/release/ruflo-cli", manifest_dir);
+    let binary_path = format!("{}/../../target/release/ruvos", manifest_dir);
 
     let mut child = Command::new(&binary_path)
         .args(["mcp", "serve"])
@@ -145,7 +136,7 @@ async fn test_plugin_invoke_integration() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn ruflo mcp serve");
+        .expect("failed to spawn ruvos mcp serve");
 
     let mut stdin = child.stdin.take().expect("failed to get stdin");
     let stdout = child.stdout.take().expect("failed to get stdout");
@@ -161,14 +152,18 @@ async fn test_plugin_invoke_integration() {
         }
     });
 
-    // Send plugin.invoke request with echo command
+    // Send plugin.invoke via MCP tools/call for a plugin that does not exist.
+    // The security layer must reject commands not declared in a plugin manifest.
     let request = json!({
         "jsonrpc": "2.0",
-        "method": "plugin.invoke",
+        "method": "tools/call",
         "params": {
-            "plugin_name": "test-plugin",
-            "command": "echo",
-            "args": ["hello", "world"]
+            "name": "plugin.invoke",
+            "arguments": {
+                "plugin_name": "test-plugin",
+                "command": "echo",
+                "args": ["hello", "world"]
+            }
         },
         "id": "plugin-invoke-1"
     });
@@ -201,20 +196,23 @@ async fn test_plugin_invoke_integration() {
     let response: Value =
         serde_json::from_str(&response_line).expect("failed to parse response JSON");
 
-    // Assertions
+    // Assertions: invoking an undeclared plugin command must be rejected,
+    // not silently executed (command-injection guard). The guard surfaces as a
+    // non-zero status with the reason in stderr, never as a successful exec.
     assert_eq!(response["jsonrpc"], "2.0", "jsonrpc version mismatch");
     assert_eq!(response["id"], "plugin-invoke-1", "request ID mismatch");
 
-    // Verify result fields
-    let result = &response["result"];
-    assert!(!result["status"].is_null(), "result missing status field");
-    assert!(!result["stdout"].is_null(), "result missing stdout field");
-    assert!(!result["stderr"].is_null(), "result missing stderr field");
-
-    // Verify field types
-    assert!(result["status"].is_number(), "status must be a number");
-    assert!(result["stdout"].is_string(), "stdout must be a string");
-    assert!(result["stderr"].is_string(), "stderr must be a string");
+    let result = &response["result"]["structuredContent"];
+    assert_eq!(result["status"], 1, "unknown plugin must yield non-zero status");
+    assert_eq!(result["stdout"], "", "rejected command must not produce stdout");
+    assert!(
+        result["stderr"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("not found"),
+        "stderr must explain the rejection, got: {}",
+        result["stderr"]
+    );
 
     // Clean up
     let _ = child.kill();

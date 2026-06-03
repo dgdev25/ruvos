@@ -1,7 +1,7 @@
 //! Plugin domain tools (2): list, invoke
 
 use super::handler::{ExecuteFuture, ToolHandler};
-use crate::{error::rUvOSError, Result};
+use crate::{error::RuvosError, Result};
 use ruvos_plugin_host::{create_discoverer, create_executor, types::ExecutionRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -52,23 +52,23 @@ impl ToolHandler for PluginListHandler {
             // Try to discover plugins in standard locations
             let mut all_plugins = Vec::new();
 
-            // 1. ./.ruflo/plugins/
-            if let Ok(plugins) = discoverer.discover_in_directory(Path::new("./.ruflo/plugins")) {
+            // 1. ./.ruvos/plugins/
+            if let Ok(plugins) = discoverer.discover_in_directory(Path::new("./.ruvos/plugins")) {
                 all_plugins.extend(plugins);
             }
 
-            // 2. ~/.ruflo/plugins/
+            // 2. ~/.ruvos/plugins/
             if let Ok(home_dir) = std::env::var("HOME") {
-                let home_plugins = Path::new(&home_dir).join(".ruflo/plugins");
+                let home_plugins = Path::new(&home_dir).join(".ruvos/plugins");
                 if let Ok(plugins) = discoverer.discover_in_directory(&home_plugins) {
                     all_plugins.extend(plugins);
                 }
             }
 
             // 3. $RUFLO_HOME/plugins/
-            if let Ok(ruflo_home) = std::env::var("RUFLO_HOME") {
-                let ruflo_plugins = Path::new(&ruflo_home).join("plugins");
-                if let Ok(plugins) = discoverer.discover_in_directory(&ruflo_plugins) {
+            if let Ok(ruvos_home) = std::env::var("RUFLO_HOME") {
+                let ruvos_plugins = Path::new(&ruvos_home).join("plugins");
+                if let Ok(plugins) = discoverer.discover_in_directory(&ruvos_plugins) {
                     all_plugins.extend(plugins);
                 }
             }
@@ -125,19 +125,19 @@ impl ToolHandler for PluginInvokeHandler {
     fn validate(&self, params: &Value) -> Result<()> {
         // Validate required fields: plugin_name, command
         if !params.is_object() {
-            return Err(rUvOSError::ValidationError(
+            return Err(RuvosError::ValidationError(
                 "Parameters must be a JSON object".to_string(),
             ));
         }
 
         if params.get("plugin_name").is_none() {
-            return Err(rUvOSError::ValidationError(
+            return Err(RuvosError::ValidationError(
                 "Missing required parameter: plugin_name".to_string(),
             ));
         }
 
         if params.get("command").is_none() {
-            return Err(rUvOSError::ValidationError(
+            return Err(RuvosError::ValidationError(
                 "Missing required parameter: command".to_string(),
             ));
         }
@@ -220,19 +220,19 @@ async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<
 
     // Locations to search for plugins
     let search_paths = vec![
-        Path::new("./.ruflo/plugins").to_path_buf(),
+        Path::new("./.ruvos/plugins").to_path_buf(),
         {
             if let Ok(home) = std::env::var("HOME") {
-                Path::new(&home).join(".ruflo/plugins")
+                Path::new(&home).join(".ruvos/plugins")
             } else {
-                Path::new("./.ruflo/plugins").to_path_buf()
+                Path::new("./.ruvos/plugins").to_path_buf()
             }
         },
         {
-            if let Ok(ruflo_home) = std::env::var("RUFLO_HOME") {
-                Path::new(&ruflo_home).join("plugins")
+            if let Ok(ruvos_home) = std::env::var("RUFLO_HOME") {
+                Path::new(&ruvos_home).join("plugins")
             } else {
-                Path::new("./.ruflo/plugins").to_path_buf()
+                Path::new("./.ruvos/plugins").to_path_buf()
             }
         },
     ];
@@ -251,7 +251,7 @@ async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<
                     // Plugin found but command not in manifest
                     let available_commands: Vec<&str> =
                         plugin.commands.iter().map(|c| c.name.as_str()).collect();
-                    return Err(rUvOSError::ValidationError(format!(
+                    return Err(RuvosError::ValidationError(format!(
                         "Command '{}' not found in plugin '{}'. Available commands: {}",
                         command,
                         plugin_name,
@@ -263,7 +263,7 @@ async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<
     }
 
     // Plugin not found
-    Err(rUvOSError::ValidationError(format!(
+    Err(RuvosError::ValidationError(format!(
         "Plugin '{}' not found in any search path",
         plugin_name
     )))
