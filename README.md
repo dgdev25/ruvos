@@ -1,6 +1,6 @@
 # rUvOS — The Agentic Operating System
 
-> # ⚠️ NOT BACKWARD COMPATIBLE WITH RUFLO v2/v3
+> ⚠️ **NOT BACKWARD COMPATIBLE WITH RUFLO v2/v3**
 >
 > **rUvOS v4 is a complete, clean-room Rust rewrite. It is _NOT_ compatible with
 > Ruflo v2/v3** (the TypeScript/npm `ruflo` and `@claude-flow/cli` packages). There
@@ -116,11 +116,11 @@ memory/session store across every project.
 ## How you actually use it: just talk
 
 **You do not type commands or keywords.** Once the MCP server is connected, Claude
-Code sees the 24 tools and calls them on its own, based on what you ask — exactly
+Code sees the 24 tools and decides which to call, based on what you ask — exactly
 like it uses any other MCP server. You speak normally:
 
-| You say… | rUvOS tool Claude calls |
-|----------|-------------------------|
+| You say… | …and Claude is likely to reach for |
+|----------|-------------------------------------|
 | *"Help me build a POST /users endpoint"* | `session.create`, `agent.spawn` |
 | *"Remember we're using PostgreSQL for this project"* | `memory.store` |
 | *"What did we decide about the database schema?"* | `memory.search` |
@@ -130,8 +130,16 @@ like it uses any other MCP server. You speak normally:
 | *"What's the system health?"* | `gov.health` |
 | *"Show me what happened in the last hour"* | `gov.events` (audit log) |
 
-You only get explicit if you *want* a specific tool — e.g. *"fork this session
-before we try the risky refactor"* → `session.fork`.
+> These are **representative** mappings, not guarantees. *Which* tool Claude
+> calls for a given sentence is its own runtime decision (model-dependent, not
+> deterministic) — the same as any MCP server. What rUvOS guarantees is that the
+> tools are **available** and **work**: every one is exercised by the test suite
+> and the [feature reference](#feature-reference--every-tool-by-example) below
+> shows each producing real output. To prove a specific mapping yourself, ask
+> Claude and watch which tool it calls, or invoke the tool directly over MCP.
+
+You can also be explicit when you want a specific tool — e.g. *"fork this session
+before the risky refactor"* → `session.fork`.
 
 ---
 
