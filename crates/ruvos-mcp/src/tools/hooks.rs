@@ -3,8 +3,10 @@
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::Result;
 use ruvos_hooks::{HookDispatcher, HookKind, HookOutcome};
+use ruvos_safety::{SafetyLevel, ValidationRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookPayload {
@@ -108,16 +110,91 @@ impl ToolHandler for HooksPreHandler {
                 .unwrap_or(Value::Object(Default::default()));
 
             let response = dispatcher
-                .dispatch_pre(hook_kind, payload)
+                .dispatch_pre(hook_kind, payload.clone())
                 .await
                 .map_err(|e| crate::RuvosError::InternalError(e.to_string()))?;
 
-            Ok(json!({
+            let mut out = json!({
                 "status": response.status,
                 "routing": response.routing,
                 "context": response.context,
-            }))
+            });
+
+            // Additive risk assessment for edit / command pre-hooks: run the
+            // payload content through the shared SafetyEngine.
+            if matches!(hook_kind, HookKind::Edit | HookKind::Command) {
+                let (safety, blocked) = Self::assess_risk(hook_kind, &payload);
+                if let Value::Object(ref mut map) = out {
+                    map.insert("safety".to_string(), safety);
+                    map.insert("blocked".to_string(), json!(blocked));
+                }
+            }
+
+            Ok(out)
         })
+    }
+}
+
+impl HooksPreHandler {
+    /// Extract the most relevant text to scan from a hook payload, preferring
+    /// well-known fields and falling back to the stringified payload.
+    fn extract_content(payload: &Value) -> String {
+        for key in ["content", "command", "cmd", "text", "code", "diff"] {
+            if let Some(s) = payload.get(key).and_then(|v| v.as_str()) {
+                return s.to_string();
+            }
+        }
+        match payload {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        }
+    }
+
+    /// Validate the payload through the process-global SafetyEngine and return
+    /// `(safety_json, blocked)`. `blocked` is true when a Critical or High
+    /// violation is detected, signalling the action is risky.
+    fn assess_risk(kind: HookKind, payload: &Value) -> (Value, bool) {
+        let action = match kind {
+            HookKind::Edit => "file_write",
+            HookKind::Command => "command",
+            _ => "unknown",
+        };
+        let mut context = HashMap::new();
+        context.insert("action".to_string(), action.to_string());
+
+        let request = ValidationRequest {
+            content: Self::extract_content(payload),
+            context,
+            safety_level: SafetyLevel::Medium,
+        };
+
+        let engine = crate::safety::engine();
+        let resp = {
+            let guard = engine.lock().unwrap_or_else(|p| p.into_inner());
+            guard.validate(&request)
+        };
+
+        let blocked = resp.violations.iter().any(|v| v.level >= SafetyLevel::High);
+
+        let violations: Vec<Value> = resp
+            .violations
+            .iter()
+            .map(|v| {
+                json!({
+                    "constraint": v.constraint_name,
+                    "level": v.level.to_string(),
+                    "message": v.message,
+                })
+            })
+            .collect();
+
+        let safety = json!({
+            "passed": resp.passed,
+            "safety_score": resp.safety_score,
+            "violations": violations,
+        });
+
+        (safety, blocked)
     }
 }
 
@@ -249,205 +326,64 @@ impl ToolHandler for HooksPostHandler {
     }
 }
 
-/// Routes a task to the best archetype + model tier using real keyword
-/// heuristics over the task text. Returns a confidence based on how strongly
-/// the task matched a known archetype's signal words.
-pub struct HooksRouteHandler;
-
-impl HooksRouteHandler {
-    /// (archetype, signal keywords, model tier).
-    const RULES: &'static [(&'static str, &'static [&'static str], u32)] = &[
-        ("tester", &["test", "spec", "tdd", "coverage", "assert"], 2),
-        (
-            "security",
-            &["security", "vuln", "auth", "exploit", "threat", "injection"],
-            3,
-        ),
-        (
-            "perf",
-            &[
-                "perf",
-                "performance",
-                "optimize",
-                "latency",
-                "benchmark",
-                "profil",
-            ],
-            3,
-        ),
-        (
-            "reviewer",
-            &["review", "lint", "quality", "style", "refactor"],
-            3,
-        ),
-        (
-            "architect",
-            &["architect", "design", "interface", "boundary", "system"],
-            3,
-        ),
-        (
-            "planner",
-            &["plan", "decompose", "roadmap", "milestone", "breakdown"],
-            3,
-        ),
-        (
-            "devops",
-            &[
-                "deploy",
-                "ci",
-                "cd",
-                "pipeline",
-                "docker",
-                "kubernetes",
-                "infra",
-            ],
-            2,
-        ),
-        (
-            "data",
-            &["schema", "migration", "database", "sql", "query", "table"],
-            2,
-        ),
-        (
-            "docs",
-            &["document", "docs", "readme", "guide", "tutorial"],
-            2,
-        ),
-        (
-            "researcher",
-            &["research", "investigate", "explore", "find", "discover"],
-            2,
-        ),
-        (
-            "coordinator",
-            &[
-                "coordinate",
-                "orchestrate",
-                "swarm",
-                "multi-agent",
-                "delegate",
-            ],
-            3,
-        ),
-        (
-            "coder",
-            &["implement", "build", "code", "endpoint", "function", "fix"],
-            2,
-        ),
-    ];
-
-    fn model_for_tier(tier: u32) -> &'static str {
-        match tier {
-            3 => "claude-opus-4-8",
-            2 => "claude-haiku-4-5",
-            _ => "claude-haiku-4-5",
-        }
-    }
-
-    fn route(task: &str) -> (String, &'static str, u32, f64) {
-        let lower = task.to_lowercase();
-        let mut best = ("coder", 2u32, 0usize);
-        for (archetype, keywords, tier) in Self::RULES {
-            let hits = keywords.iter().filter(|k| lower.contains(**k)).count();
-            if hits > best.2 {
-                best = (archetype, *tier, hits);
-            }
-        }
-        // Confidence scales with the number of matched signal words (capped).
-        let confidence = if best.2 == 0 {
-            0.3 // default fallback to coder, low confidence
-        } else {
-            (0.5 + 0.15 * best.2 as f64).min(0.95)
-        };
-        (
-            best.0.to_string(),
-            Self::model_for_tier(best.1),
-            best.1,
-            confidence,
-        )
-    }
-}
-
-impl ToolHandler for HooksRouteHandler {
-    fn name(&self) -> &'static str {
-        "route"
-    }
-
-    fn domain(&self) -> &'static str {
-        "hooks"
-    }
-
-    fn validate(&self, params: &Value) -> Result<()> {
-        if params.get("task").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::RuvosError::InvalidParams(
-                "missing 'task' field (string)".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn execute(&self, params: Value) -> ExecuteFuture {
-        Box::pin(async move {
-            let task = params["task"].as_str().unwrap_or_default().to_string();
-            let (archetype, model, tier, confidence) = Self::route(&task);
-            Ok(json!({
-                "task": task,
-                "archetype": archetype,
-                "model": model,
-                "tier": tier,
-                "confidence": (confidence * 1000.0).round() / 1000.0
-            }))
-        })
-    }
-}
+pub use super::hooks_route::HooksRouteHandler;
 
 #[cfg(test)]
-mod route_tests {
+mod safety_tests {
     use super::*;
 
-    #[tokio::test]
-    async fn routes_testing_task_to_tester() {
-        let r = HooksRouteHandler
-            .execute(json!({"task": "write tests for the users endpoint"}))
-            .await
-            .unwrap();
-        assert_eq!(r["archetype"], "tester");
-        assert!(r["confidence"].as_f64().unwrap() > 0.3);
+    fn isolate() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        crate::paths::set_test_root(dir.path().to_path_buf());
+        dir
     }
 
     #[tokio::test]
-    async fn routes_security_task_to_opus_tier() {
-        let r = HooksRouteHandler
-            .execute(json!({"task": "audit auth flow for injection vulnerabilities"}))
+    async fn pre_command_flags_destructive_command() {
+        let _g = isolate();
+        let r = HooksPreHandler::new()
+            .execute(json!({
+                "kind": "command",
+                "payload": { "command": "rm -rf /var/data" }
+            }))
             .await
             .unwrap();
-        assert_eq!(r["archetype"], "security");
-        assert_eq!(r["model"], "claude-opus-4-8");
-        assert_eq!(r["tier"], 3);
+
+        // A dangerous pattern must be surfaced and the action blocked.
+        assert_eq!(r["blocked"], true, "destructive command must be blocked");
+        let violations = r["safety"]["violations"].as_array().unwrap();
+        assert!(!violations.is_empty(), "expected at least one violation");
+        assert!(r["safety"]["passed"] == false);
     }
 
     #[tokio::test]
-    async fn routes_build_task_to_coder() {
-        let r = HooksRouteHandler
-            .execute(json!({"task": "implement the POST /users endpoint"}))
+    async fn pre_command_allows_safe_command() {
+        let _g = isolate();
+        let r = HooksPreHandler::new()
+            .execute(json!({
+                "kind": "command",
+                "payload": { "command": "ls -la" }
+            }))
             .await
             .unwrap();
-        assert_eq!(r["archetype"], "coder");
+
+        assert_eq!(r["blocked"], false, "safe command must not be blocked");
+        assert_eq!(r["safety"]["passed"], true);
     }
 
     #[tokio::test]
-    async fn unknown_task_falls_back_low_confidence() {
-        let r = HooksRouteHandler
-            .execute(json!({"task": "asdf qwerty zxcv"}))
+    async fn pre_task_has_no_safety_field() {
+        let _g = isolate();
+        let r = HooksPreHandler::new()
+            .execute(json!({
+                "kind": "task",
+                "payload": { "content": "rm -rf /tmp" }
+            }))
             .await
             .unwrap();
-        assert_eq!(r["archetype"], "coder");
-        assert!(r["confidence"].as_f64().unwrap() <= 0.3);
-    }
 
-    #[test]
-    fn route_requires_task() {
-        assert!(HooksRouteHandler.validate(&json!({})).is_err());
-        assert!(HooksRouteHandler.validate(&json!({"task": "x"})).is_ok());
+        // Risk assessment is only wired for edit/command; task is untouched.
+        assert!(r.get("safety").is_none());
+        assert!(r.get("blocked").is_none());
     }
 }

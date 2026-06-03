@@ -126,6 +126,18 @@ impl ToolHandler for GovHealthHandler {
             let agents = Self::count_flat(paths::agents_file());
             let intel_patterns = Self::count_flat(paths::intel_file());
 
+            // Safety subsystem introspection via the shared SafetyEngine.
+            let (safety_score, active_constraints, recent_violations) = {
+                let engine = crate::safety::engine();
+                let guard = engine.lock().unwrap_or_else(|p| p.into_inner());
+                let one_hour_ago = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+                (
+                    guard.safety_score(),
+                    guard.constraints().len() as u64,
+                    guard.violations_since(&one_hour_ago).len() as u64,
+                )
+            };
+
             Ok(json!({
                 "status": "ok",
                 "version": env!("CARGO_PKG_VERSION"),
@@ -145,6 +157,11 @@ impl ToolHandler for GovHealthHandler {
                     "memory": "ok",
                     "plugin": "ok",
                     "hooks": "ok"
+                },
+                "safety": {
+                    "score": safety_score,
+                    "active_constraints": active_constraints,
+                    "recent_violations": recent_violations
                 }
             }))
         })
@@ -207,6 +224,23 @@ mod tests {
         assert_eq!(r["tool_count"], 20);
         assert!(r["pid"].as_u64().unwrap() > 0, "real process id");
         assert_eq!(r["persisted"]["sessions"], 0);
+    }
+
+    #[tokio::test]
+    async fn health_includes_safety_score() {
+        let _g = isolate();
+        let r = GovHealthHandler.execute(json!({})).await.unwrap();
+
+        // Safety subsystem must be reported with a score and constraint count.
+        let safety = &r["safety"];
+        let score = safety["score"].as_f64().expect("safety.score is a number");
+        assert!(
+            (0.0..=1.0).contains(&score),
+            "safety score must be in [0,1], got {score}"
+        );
+        // The engine ships with 5 default constraints.
+        assert_eq!(safety["active_constraints"], 5);
+        assert_eq!(safety["recent_violations"], 0);
     }
 
     #[test]

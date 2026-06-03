@@ -6,6 +6,7 @@ pub mod embedding;
 pub mod gov;
 pub mod handler;
 pub mod hooks;
+pub mod hooks_route;
 pub mod intel;
 pub mod memory;
 pub mod plugin;

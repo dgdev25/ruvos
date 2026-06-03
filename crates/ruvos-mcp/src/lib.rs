@@ -13,6 +13,7 @@
 pub mod error;
 pub mod paths;
 pub mod protocol;
+pub mod safety;
 pub mod server;
 pub mod tools;
 
