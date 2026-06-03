@@ -176,6 +176,7 @@ fn save_store(store: &Store) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 use super::embedding::{acorn_rank, cosine_dense, embed, hnsw_rank};
+use super::retrieval::{bm25_rank, rrf_fuse};
 
 /// Recency weight in [0, 1]: newer entries score higher. Half-life ~30 days.
 fn recency_weight(created_at: &str) -> f64 {
@@ -482,7 +483,7 @@ impl ToolHandler for MemorySearchHandler {
             // filtered HNSW): it keeps recall high at low selectivity, where
             // post-filtering plain-HNSW candidates would return too few hits.
             // Without a filter, the plain HNSW path is unchanged.
-            let ranked_ids = if filter_tags.is_empty() {
+            let dense_ids = if filter_tags.is_empty() {
                 hnsw_rank(&items, &query, candidate_k)
                     .map_err(|e| RuvosError::InternalError(format!("hnsw search: {}", e)))?
             } else {
@@ -490,6 +491,21 @@ impl ToolHandler for MemorySearchHandler {
                 acorn_rank(&items, &query, candidate_k, &keep)
                     .map_err(|e| RuvosError::InternalError(format!("acorn search: {}", e)))?
             };
+
+            // Hybrid: fuse the dense ranking with a sparse BM25 ranking (ADR-005).
+            // BM25 catches exact/rare-term matches dense vectors miss; under a tag
+            // filter it runs over the matching subset so it can't surface non-hits.
+            let bm25_items: Vec<(String, String)> = if filter_tags.is_empty() {
+                items.clone()
+            } else {
+                entries
+                    .iter()
+                    .filter(|e| passes_filter(e))
+                    .map(|e| (e.key.clone(), entry_text(e)))
+                    .collect()
+            };
+            let bm25_ids = bm25_rank(&bm25_items, &query, candidate_k);
+            let ranked_ids = rrf_fuse(&[&dense_ids, &bm25_ids], candidate_k);
 
             // Blend the (dense cosine) relevance with a recency boost, then MMR.
             let query_vec = embed(&query);

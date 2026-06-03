@@ -14,6 +14,7 @@ pub mod orchestrate;
 pub mod orchestrate_plan;
 pub mod plugin;
 pub mod relay;
+pub mod retrieval;
 pub mod session;
 
 use serde::{Deserialize, Serialize};
