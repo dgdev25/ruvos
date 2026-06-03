@@ -16,8 +16,10 @@ use serde_json::{json, Value};
 /// Best-effort `gov.events` write. Never fails the relay call — provenance is
 /// auxiliary to the operation itself.
 fn record_event(event_type: &str, payload: Value) {
-    let ev = EventRecord::new(event_type, payload);
-    let _ = crate::store::store().put_event(&ev);
+    if let Some(s) = crate::store::try_store() {
+        let ev = EventRecord::new(event_type, payload);
+        let _ = s.put_event(&ev);
+    }
 }
 
 // ============================================================================

@@ -8,10 +8,20 @@
 //! `metadata`, plus the construction of `EventRecord`s and the message-count
 //! query used by `agent.status` and `agent.message`.
 
-use crate::store::store;
+use crate::store::try_store;
 use crate::{Result, RuvosError};
-use ruvos_store::{AgentRecord, EventRecord, MessageRecord};
+use ruvos_store::{AgentRecord, EventRecord, MessageRecord, Store};
 use serde_json::{json, Value};
+
+/// Acquire a transient store handle, or a clear error if another instance holds
+/// the lock. The handle releases the lock when dropped at the end of the caller.
+fn acquire() -> Result<Store> {
+    try_store().ok_or_else(|| {
+        RuvosError::InternalError(
+            "ruvos-store is busy (held by another instance); try again".to_string(),
+        )
+    })
+}
 
 /// The synthetic "from" agent used for system-originated messages so that the
 /// store's `messages_between(SYSTEM, agent_id)` query yields the agent's inbox.
@@ -73,7 +83,7 @@ fn meta_str(rec: &AgentRecord, key: &str) -> String {
 
 /// Persist a new agent record + an `agent.spawned` event.
 pub fn persist_spawn(rec: &AgentRecord) -> Result<()> {
-    let s = store();
+    let s = acquire()?;
     s.put_agent(rec).map_err(|e| store_err("put_agent", e))?;
 
     let mut ev = EventRecord::new(
@@ -89,9 +99,10 @@ pub fn persist_spawn(rec: &AgentRecord) -> Result<()> {
     Ok(())
 }
 
-/// Count messages addressed to an agent (system → agent inbox).
-pub fn message_count(agent_id: &str) -> u64 {
-    let s = store();
+/// Count messages addressed to an agent (system → agent inbox), reusing an
+/// already-open store handle (redb forbids a second open of the same file in
+/// the same process, so callers must pass their handle rather than re-open).
+fn message_count(s: &Store, agent_id: &str) -> u64 {
     s.messages_between(SYSTEM_AGENT, agent_id, usize::MAX)
         .map(|m| m.len() as u64)
         .unwrap_or(0)
@@ -99,12 +110,12 @@ pub fn message_count(agent_id: &str) -> u64 {
 
 /// Fetch one agent as a `agent.status` JSON view, or `None` if absent.
 pub fn status_view(agent_id: &str, transport_live: bool) -> Result<Option<Value>> {
-    let s = store();
+    let s = acquire()?;
     let rec = s
         .get_agent(agent_id)
         .map_err(|e| store_err("get_agent", e))?;
     Ok(rec.map(|a| {
-        let count = message_count(&a.id);
+        let count = message_count(&s, &a.id);
         json!({
             "found": true,
             "agent_id": a.id,
@@ -120,12 +131,12 @@ pub fn status_view(agent_id: &str, transport_live: bool) -> Result<Option<Value>
 
 /// List all agents as the `agent.status` summary view.
 pub fn list_view() -> Result<Vec<Value>> {
-    let s = store();
+    let s = acquire()?;
     let agents = s.list_agents().map_err(|e| store_err("list_agents", e))?;
     Ok(agents
         .into_iter()
         .map(|a| {
-            let count = message_count(&a.id);
+            let count = message_count(&s, &a.id);
             json!({
                 "agent_id": a.id,
                 "archetype": a.agent_type,
@@ -140,7 +151,7 @@ pub fn list_view() -> Result<Vec<Value>> {
 /// Append a message to an agent (if it exists). Returns
 /// `Some((message_id, new_count))` on delivery, `None` if the agent is unknown.
 pub fn append_message(agent_id: &str, content: &str) -> Result<Option<(String, u64)>> {
-    let s = store();
+    let s = acquire()?;
     let exists = s
         .get_agent(agent_id)
         .map_err(|e| store_err("get_agent", e))?
@@ -157,5 +168,5 @@ pub fn append_message(agent_id: &str, content: &str) -> Result<Option<(String, u
     ev.agent_id = Some(agent_id.to_string());
     s.put_event(&ev).map_err(|e| store_err("put_event", e))?;
 
-    Ok(Some((msg_id, message_count(agent_id))))
+    Ok(Some((msg_id, message_count(&s, agent_id))))
 }

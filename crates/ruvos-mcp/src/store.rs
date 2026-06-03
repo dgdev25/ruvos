@@ -1,55 +1,82 @@
-//! Process-global [`ruvos_store::Store`] accessor (redb-backed swarm state).
+//! Transient [`ruvos_store::Store`] access (redb-backed swarm state).
 //!
-//! redb takes an exclusive process-level file lock, so there may be only one
-//! open [`Store`] handle per database path per process. This module enforces
-//! that by caching a single, leaked `Store` per resolved data root.
+//! redb takes an **exclusive process-level file lock** for as long as a `Store`
+//! handle is open, so a long-lived handle would stop any second rUvOS instance
+//! sharing the same `$RUVOS_HOME` from opening the store at all (it would error
+//! with "Database already open").
 //!
-//! In production a single store backs the whole process (rooted at
-//! [`crate::paths::data_root`]). Under `cfg(test)` the accessor caches one
-//! store per (thread-local) data root, so parallel tests that call
-//! [`crate::paths::set_test_root`] never share a redb file — mirroring the
-//! isolation pattern in [`crate::safety`].
+//! To let multiple instances share one data root, we open the store **only for
+//! the duration of a single operation** and drop it immediately, releasing the
+//! lock. Concurrent instances therefore interleave; the brief open contention
+//! window is handled with a short bounded retry. Opening never panics — if the
+//! store genuinely can't be acquired, callers receive `None` and degrade
+//! gracefully (relay audit is skipped; agent tools return a clear "store busy"
+//! error) rather than crashing the MCP server.
+//!
+//! The rUvOS MCP server processes one request at a time over stdio, so there is
+//! no intra-process concurrency on the store; contention is only ever between
+//! separate instances, which the retry resolves.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::time::Duration;
 
-use lazy_static::lazy_static;
 use ruvos_store::Store;
 
 use crate::paths;
 
-/// Path to the redb database file under the data root.
+/// Path to the redb database file under the current data root.
 fn db_path() -> PathBuf {
     paths::data_root().join("store.redb")
 }
 
-/// Open a store at the current data root, ensuring the root exists first.
-fn open_store() -> Store {
+/// True if an open error is a transient cross-instance lock conflict (vs. a real
+/// corruption/IO error).
+fn is_lock_conflict(err: &anyhow::Error) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("already open") || msg.contains("acquire lock") || msg.contains("locked")
+}
+
+/// Open a fresh, owned `Store` at the current data root, or `None` if it cannot
+/// be acquired. Retries briefly on cross-instance lock contention. The returned
+/// `Store` releases the redb lock as soon as it is dropped, so callers should
+/// keep it only for the operation at hand.
+pub fn try_store() -> Option<Store> {
     let _ = paths::ensure_root();
-    let path = db_path();
-    Store::open(&path.to_string_lossy())
-        .expect("ruvos-store: failed to open redb store at data root")
-}
+    let path = db_path().to_string_lossy().into_owned();
 
-lazy_static! {
-    /// Maps a resolved db path to its dedicated, leaked `Store` handle so that
-    /// at most one redb handle exists per path per process.
-    static ref STORES: Mutex<HashMap<PathBuf, &'static Store>> = Mutex::new(HashMap::new());
-}
-
-/// Process-global store for the current data root.
-///
-/// The returned `&'static Store` is shared by every caller resolving to the
-/// same data root. `Store` is internally synchronized (redb transactions), so
-/// no outer lock is required.
-pub fn store() -> &'static Store {
-    let key = db_path();
-    let mut map = STORES.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(s) = map.get(&key) {
-        return s;
+    const MAX_TRIES: u32 = 12;
+    const BASE_DELAY_MS: u64 = 20;
+    for attempt in 0..MAX_TRIES {
+        match Store::open(&path) {
+            Ok(s) => return Some(s),
+            Err(e) if is_lock_conflict(&e) && attempt + 1 < MAX_TRIES => {
+                std::thread::sleep(Duration::from_millis(BASE_DELAY_MS));
+                continue;
+            }
+            Err(e) => {
+                tracing::debug!("ruvos-store unavailable at {}: {}", path, e);
+                return None;
+            }
+        }
     }
-    let leaked: &'static Store = Box::leak(Box::new(open_store()));
-    map.insert(key, leaked);
-    leaked
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_and_reopen_releases_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::paths::set_test_root(dir.path().to_path_buf());
+        // First handle opens; dropping it must release the lock so a second
+        // transient open succeeds (this is what lets instances interleave).
+        {
+            let s = try_store().expect("first open");
+            drop(s);
+        }
+        let s2 = try_store().expect("second open after release");
+        drop(s2);
+    }
 }

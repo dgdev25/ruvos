@@ -125,8 +125,9 @@ impl ToolHandler for GovHealthHandler {
                 .unwrap_or(0);
             let memory_entries = Self::count_nested(paths::memory_file());
             // Agents now live in the redb-backed store, not a flat JSON file.
-            let agents = crate::store::store()
-                .list_agents()
+            // Best-effort: 0 if the store is held by another instance.
+            let agents = crate::store::try_store()
+                .and_then(|s| s.list_agents().ok())
                 .map(|a| a.len() as u64)
                 .unwrap_or(0);
             let intel_patterns = Self::count_flat(paths::intel_file());
@@ -202,7 +203,11 @@ impl ToolHandler for GovEventsHandler {
             let agent_id = params.get("agent_id").and_then(|v| v.as_str());
             let event_type = params.get("event_type").and_then(|v| v.as_str());
 
-            let s = crate::store::store();
+            // Best-effort: if the store is held by another instance, report an
+            // empty (but successful) result rather than failing the call.
+            let Some(s) = crate::store::try_store() else {
+                return Ok(json!({ "count": 0, "events": [], "store_busy": true }));
+            };
             let events = if let Some(id) = agent_id {
                 s.events_by_agent(id, limit)
             } else if let Some(et) = event_type {
