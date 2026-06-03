@@ -11,6 +11,7 @@ pub mod hooks_route;
 pub mod intel;
 pub mod memory;
 pub mod orchestrate;
+pub mod orchestrate_plan;
 pub mod plugin;
 pub mod relay;
 pub mod session;
