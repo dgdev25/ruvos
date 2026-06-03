@@ -87,9 +87,10 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         // Memory (4)
         ToolMetadata {
             name: "memory.search".to_string(),
-            description: "Semantic search with MMR diversity + recency weighting; optional \
-                          filter_tags restricts results to entries carrying all given tags \
-                          (predicate-aware ACORN filtered HNSW)"
+            description: "Hybrid search — fuses dense vectors (HNSW/RaBitQ/ACORN) with BM25 \
+                          lexical ranking (RRF), then MMR diversity + recency; optional \
+                          filter_tags restricts to entries with all given tags, and optional \
+                          feedback:[{key,useful}] trains a bandit that reweights future results"
                 .to_string(),
             domain: "memory".to_string(),
         },

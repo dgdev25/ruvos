@@ -249,8 +249,11 @@ printf '%s\n' \
 
 ### `memory` — persistent semantic memory + knowledge graph
 
-Vector search (HNSW + RaBitQ) with diversity and recency, plus a temporal
-knowledge graph. Survives restarts. Retrieval runs in tiers:
+**Hybrid** vector search (HNSW + RaBitQ) **fused with BM25 lexical ranking** via
+reciprocal rank fusion — so exact/rare-term matches aren't missed — plus MMR
+diversity, recency, and a temporal knowledge graph. A **bandit feedback loop**
+(optional `feedback:[{key,useful}]`) makes ranking self-improving: entries that
+prove useful surface first next time. Survives restarts. Retrieval runs in tiers:
 
 <p align="center">
   <img src="assets/diagrams/memory-retrieval.svg" alt="memory.search retrieval pipeline: the query (with optional filter_tags) fans out to Tier 1 ANN vector search (HNSW via ruvector-core, or ACORN filtered HNSW via ruvector-acorn when filter_tags is set, plus RaBitQ 1-bit) and Tier 2 RuLake federated candidates; results are merged (union by key, max score), re-ranked by MMR diversity + recency, and returned as top-k. A temporal knowledge graph additively contributes related_entities." width="100%">
@@ -276,6 +279,9 @@ filter is highly selective.
 
 // tag-filtered: only entries tagged "decision" AND "db", best match first
 {"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","filter_tags":["decision","db"]}}
+
+// teach the bandit which result was useful — future searches rank it higher
+{"name":"memory.search","arguments":{"query":"database","namespace":"proj","feedback":[{"key":"db","useful":true}]}}
 ```
 
 **`memory.retrieve`** — fetch one entry by its exact key.

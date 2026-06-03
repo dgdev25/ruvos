@@ -1,6 +1,6 @@
 # ADR-005: Hybrid (BM25 + dense) retrieval and a bandit feedback loop for `memory`
 
-**Status:** Accepted (2026-06-03)
+**Status:** Implemented (2026-06-03) — Task 4 (implicit retrieve-after-search signal) deferred; explicit `feedback` is the primary signal
 **Amends:** scope-ledger-v1.md §1 (`memory.search`, `memory.retrieve`)
 **Tier:** 1 · **Source:** rUvnet `agentdb` (algorithms; **rebuilt in Rust**, not imported)
 

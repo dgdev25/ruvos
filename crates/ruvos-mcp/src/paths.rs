@@ -47,6 +47,11 @@ pub fn intel_file() -> PathBuf {
     data_root().join("intel.json")
 }
 
+/// Path to the JSON-backed memory-retrieval bandit reward store.
+pub fn memory_rewards_file() -> PathBuf {
+    data_root().join("memory-rewards.json")
+}
+
 /// Path to the JSON-backed agent registry.
 pub fn agents_file() -> PathBuf {
     data_root().join("agents.json")

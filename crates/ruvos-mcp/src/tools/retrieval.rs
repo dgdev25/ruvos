@@ -10,6 +10,7 @@
 //! here too; its persistence + wiring is applied in `memory.rs`.
 
 use super::embedding::tokenize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 const K1: f32 = 1.2;
@@ -95,7 +96,7 @@ pub fn rrf_fuse(rankings: &[&[String]], k: usize) -> Vec<String> {
 /// Beta-Bernoulli bandit reward for a `(namespace, key)` memory entry.
 /// `mean()` is the posterior probability the entry is useful; cold entries use a
 /// neutral prior (α=β=1 → mean 0.5) so ranking is unaffected before any feedback.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Reward {
     pub alpha: f32,
     pub beta: f32,

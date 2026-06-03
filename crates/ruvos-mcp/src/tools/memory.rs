@@ -171,12 +171,46 @@ fn save_store(store: &Store) -> Result<()> {
     Ok(())
 }
 
+// ── Bandit reward store ─────────────────────────────────────────────────────
+//
+// Per-(namespace,key) Beta-Bernoulli reward, persisted as JSON alongside the
+// memory store. Used to nudge ranking toward entries that proved useful.
+// Keyed by "{namespace}\u{1}{key}". A missing key defaults to a neutral prior,
+// so ranking is unaffected before any feedback exists.
+
+type Rewards = BTreeMap<String, Reward>;
+
+fn reward_key(namespace: &str, key: &str) -> String {
+    format!("{namespace}\u{1}{key}")
+}
+
+fn load_rewards() -> Rewards {
+    match std::fs::read(paths::memory_rewards_file()) {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Err(_) => Rewards::new(),
+    }
+}
+
+fn save_rewards(rewards: &Rewards) -> Result<()> {
+    paths::ensure_root()
+        .map_err(|e| RuvosError::InternalError(format!("cannot create data dir: {}", e)))?;
+    let path = paths::memory_rewards_file();
+    let bytes = serde_json::to_vec_pretty(rewards)
+        .map_err(|e| RuvosError::InternalError(format!("serialize rewards: {}", e)))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &bytes)
+        .map_err(|e| RuvosError::InternalError(format!("write rewards: {}", e)))?;
+    std::fs::rename(&tmp, &path)
+        .map_err(|e| RuvosError::InternalError(format!("commit rewards: {}", e)))?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Real ranking primitives
 // ---------------------------------------------------------------------------
 
 use super::embedding::{acorn_rank, cosine_dense, embed, hnsw_rank};
-use super::retrieval::{bm25_rank, rrf_fuse};
+use super::retrieval::{bm25_rank, rrf_fuse, Reward};
 
 /// Recency weight in [0, 1]: newer entries score higher. Half-life ~30 days.
 fn recency_weight(created_at: &str) -> f64 {
@@ -459,6 +493,27 @@ impl ToolHandler for MemorySearchHandler {
             let _guard = FILE_LOCK.lock().unwrap();
             let store = load_store();
 
+            // Bandit feedback (ADR-005): `feedback:[{key, useful}]` records which
+            // results proved useful, reweighting future ranking. Applied first so
+            // the effect is visible within the same call.
+            let mut rewards = load_rewards();
+            if let Some(fb) = params.get("feedback").and_then(|v| v.as_array()) {
+                let mut changed = false;
+                for item in fb {
+                    if let Some(key) = item.get("key").and_then(|v| v.as_str()) {
+                        let useful = item.get("useful").and_then(|v| v.as_bool()).unwrap_or(true);
+                        rewards
+                            .entry(reward_key(&namespace, key))
+                            .or_default()
+                            .update(useful);
+                        changed = true;
+                    }
+                }
+                if changed {
+                    save_rewards(&rewards)?;
+                }
+            }
+
             // All entries in the namespace, keyed for retrieval.
             let entries: Vec<MemoryEntry> = store
                 .get(&namespace)
@@ -551,7 +606,15 @@ impl ToolHandler for MemorySearchHandler {
                 .filter_map(|(key, &raw_sim)| by_key.get(key).map(|e| (e, raw_sim)))
                 .map(|(e, raw_sim)| {
                     let vec = embed(&entry_text(e));
-                    let relevance = 0.85 * raw_sim as f64 + 0.15 * recency_weight(&e.created_at);
+                    // Bandit tilt: a neutral (un-fed-back) entry has weight 0.75,
+                    // proven-useful entries approach 1.0 — biases without dominating.
+                    let bandit = rewards
+                        .get(&reward_key(&namespace, &e.key))
+                        .copied()
+                        .unwrap_or_default()
+                        .weight() as f64;
+                    let relevance =
+                        (0.85 * raw_sim as f64 + 0.15 * recency_weight(&e.created_at)) * bandit;
                     Scored {
                         entry: e.clone(),
                         relevance,
@@ -621,6 +684,36 @@ mod tests {
             .execute(json!({"key": key, "value": value, "namespace": ns}))
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn bandit_feedback_promotes_used_entry() {
+        let _g = isolate();
+        // Two entries with identical text → identical relevance before feedback.
+        store("win", "alpha beta gamma", "p").await;
+        store("lose", "alpha beta gamma", "p").await;
+
+        // Repeatedly tell search that "win" was useful.
+        for _ in 0..6 {
+            MemorySearchHandler
+                .execute(json!({
+                    "query": "alpha", "namespace": "p",
+                    "feedback": [{"key": "win", "useful": true}]
+                }))
+                .await
+                .unwrap();
+        }
+        // A plain search now ranks the repeatedly-useful entry first.
+        let r = MemorySearchHandler
+            .execute(json!({"query": "alpha", "namespace": "p", "top_k": 2}))
+            .await
+            .unwrap();
+        assert_eq!(
+            r["results"][0]["key"], "win",
+            "bandit must promote the entry that proved useful"
+        );
+        // Reward table persisted to disk.
+        assert!(paths::memory_rewards_file().exists());
     }
 
     #[tokio::test]
