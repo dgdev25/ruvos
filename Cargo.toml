@@ -26,6 +26,10 @@ members = [
     "substrate/rvf-index",
     "substrate/rvf-runtime",
     "substrate/rvf-import",
+    # Integrated from rUvnet ecosystem (self-contained, zero external refs)
+    "substrate/rulake",
+    "substrate/ruv-swarm-transport",
+    "substrate/ruv-swarm-persistence",
 ]
 default-members = [
     "crates/ruvos-cli",

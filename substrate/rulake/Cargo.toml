@@ -1,0 +1,39 @@
+[package]
+name = "rulake"
+version = "2.3.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT OR Apache-2.0"
+description = "ruLake — vector-native federation intermediary over heterogeneous backends"
+
+[[bin]]
+name = "rulake-demo"
+path = "src/bin/rulake-demo.rs"
+
+[dependencies]
+ruvector-rabitq = { path = "../ruvector-rabitq" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+# Witness digest for the table.rulake.json bundle (ADR-155).
+sha3 = "0.10"
+hex = "0.4"
+# needed by the bin; tests already pull these via dev-deps.
+rand = "0.8"
+rand_distr = "0.4"
+# Parallel fan-out for federated search (ADR-155).
+rayon = "1.10"
+
+[dev-dependencies]
+# Bench harness for the ADR-157 kernel-plane baseline. Dev-only — not
+# exposed to downstream consumers, no runtime cost.
+criterion = "0.5"
+
+[[bench]]
+name = "kernel_l2"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

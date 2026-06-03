@@ -1,0 +1,39 @@
+[package]
+name = "ruv-swarm-transport"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT OR Apache-2.0"
+description = "Transport layer for rUvOS swarm communication — WebSocket and in-process"
+
+[dependencies]
+tokio = { version = "1.40", features = ["net", "io-util", "rt", "full"] }
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+dashmap = "6"
+futures = "0.3"
+parking_lot = "0.12"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+tungstenite = "0.24"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+bincode = "1.3"
+rmp-serde = "1.1"
+flate2 = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+crossbeam = { version = "0.8", features = ["crossbeam-channel"] }
+url = "2.5"
+backoff = { version = "0.4", features = ["tokio"] }
+futures-util = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+rand = "0.8"
+
+[features]
+default = ["websocket"]
+websocket = []

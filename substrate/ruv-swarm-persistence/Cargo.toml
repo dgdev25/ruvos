@@ -1,0 +1,30 @@
+[package]
+name = "ruv-swarm-persistence"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT OR Apache-2.0"
+description = "Persistence layer with SQLite and ORM for rUvOS swarm"
+
+[dependencies]
+async-trait = "0.1"
+thiserror = "2.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+tracing = "0.1"
+parking_lot = "0.12"
+futures = "0.3"
+rusqlite = { version = "0.31", features = ["bundled", "backup", "modern_sqlite", "serde_json"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+fastrand = "2.0"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
+[features]
+default = ["rusqlite-backend"]
+rusqlite-backend = []
