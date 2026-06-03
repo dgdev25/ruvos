@@ -13,7 +13,9 @@ fn read_response(reader: &mut impl BufRead) -> Value {
     let mut line = String::new();
     loop {
         line.clear();
-        reader.read_line(&mut line).expect("failed to read response");
+        reader
+            .read_line(&mut line)
+            .expect("failed to read response");
         if line.trim().is_empty() {
             panic!("reached EOF without finding JSON response");
         }
@@ -112,7 +114,11 @@ fn test_mcp_protocol_handshake() {
         }),
     );
     let call = read_response(&mut reader);
-    assert!(call["error"].is_null(), "tools/call errored: {}", call["error"]);
+    assert!(
+        call["error"].is_null(),
+        "tools/call errored: {}",
+        call["error"]
+    );
     assert_eq!(call["result"]["isError"], false);
     assert_eq!(call["result"]["content"][0]["type"], "text");
     assert_eq!(call["result"]["structuredContent"]["status"], "created");

@@ -49,22 +49,22 @@ pub fn create_registry() -> ToolRegistry {
     // Register hooks tools
     registry.register(Box::new(hooks::HooksPreHandler::new()));
     registry.register(Box::new(hooks::HooksPostHandler::new()));
-    registry.register(Box::new(hooks::HooksRouteStub));
+    registry.register(Box::new(hooks::HooksRouteHandler));
 
     // Register intel tools
-    registry.register(Box::new(intel::IntelPatternSearchStub));
-    registry.register(Box::new(intel::IntelPatternStoreStub));
+    registry.register(Box::new(intel::IntelPatternSearchHandler));
+    registry.register(Box::new(intel::IntelPatternStoreHandler));
 
     // Register plugin tools
     registry.register(Box::new(plugin::PluginListHandler::new()));
     registry.register(Box::new(plugin::PluginInvokeHandler::new()));
 
     // Register gov tools
-    registry.register(Box::new(gov::GovWitnessVerifyStub));
-    registry.register(Box::new(gov::GovHealthStub));
+    registry.register(Box::new(gov::GovWitnessVerifyHandler));
+    registry.register(Box::new(gov::GovHealthHandler));
 
     // Register workflow tools
-    registry.register(Box::new(workflow::WorkflowRunStub));
+    registry.register(Box::new(workflow::WorkflowRunHandler));
 
     registry
 }
@@ -218,34 +218,40 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn test_all_stubs_execute_successfully() {
+    async fn test_all_tools_execute_successfully() {
+        // Isolate persistence to a temp dir so this doesn't touch ./.ruvos.
+        let dir = tempfile::tempdir().unwrap();
+        crate::paths::set_test_root(dir.path().to_path_buf());
+
         let registry = create_registry();
 
         let tests = vec![
             ("echo.test", json!({"message": "test"})),
             (
-                "memory.search",
-                json!({"query": "test", "namespace": "test"}),
-            ),
-            (
                 "memory.store",
-                json!({"key": "test", "value": "test", "namespace": "test"}),
+                json!({"key": "k", "value": "v", "namespace": "test"}),
             ),
-            (
-                "memory.retrieve",
-                json!({"key": "test", "namespace": "test"}),
-            ),
+            ("memory.search", json!({"query": "v", "namespace": "test"})),
+            ("memory.retrieve", json!({"key": "k", "namespace": "test"})),
             ("memory.list", json!({"namespace": "test"})),
             ("session.create", json!({})),
             (
                 "agent.spawn",
-                json!({"archetype": "coder", "prompt": "test", "model": "claude-3-haiku"}),
+                json!({"archetype": "coder", "prompt": "test", "model": "claude-haiku-4-5"}),
             ),
-            ("hooks.route", json!({"task": "test"})),
-            ("intel.pattern_search", json!({"query": "test"})),
+            ("agent.status", json!({})),
+            ("hooks.route", json!({"task": "implement an endpoint"})),
+            (
+                "intel.pattern_store",
+                json!({"trajectory": ["a", "b"], "outcome": "ok"}),
+            ),
+            ("intel.pattern_search", json!({"query": "a"})),
             ("plugin.list", json!({})),
             ("gov.health", json!({})),
-            ("workflow.run", json!({"workflow_type": "feature"})),
+            (
+                "workflow.run",
+                json!({"workflow_type": "feature", "task": "ship it"}),
+            ),
         ];
 
         for (method, params) in tests {

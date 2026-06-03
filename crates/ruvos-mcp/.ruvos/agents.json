@@ -1,0 +1,15 @@
+{
+  "b2283eae-c40c-416e-a999-d266da3ec326": {
+    "id": "b2283eae-c40c-416e-a999-d266da3ec326",
+    "archetype": "coder",
+    "traits": [],
+    "model": "claude-3-haiku",
+    "prompt": "test",
+    "status": "completed",
+    "created_at": "2026-06-03T06:56:52.401028980+00:00",
+    "artifact_path": "./.ruvos/agents/b2283eae-c40c-416e-a999-d266da3ec326/output.md",
+    "artifact_bytes": 200,
+    "result": "coder agent completed: wrote 200-byte plan to ./.ruvos/agents/b2283eae-c40c-416e-a999-d266da3ec326/output.md",
+    "messages": []
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "version": "rvf-1",
+  "payload": {
+    "id": "3813020d-d474-4368-a537-f4d2d71663fc",
+    "rvf_path": "./.ruvos/rvf/3813020d-d474-4368-a537-f4d2d71663fc.rvf",
+    "name": "itest",
+    "created_at": "2026-06-03T06:57:45.406907259+00:00",
+    "updated_at": "2026-06-03T06:57:45.406907259+00:00",
+    "state": {}
+  },
+  "signature": "8d5899afd92ebe62d0d0c5464fca56b2d6bd2cc234bf3d5bb6e97bcc885768a6"
+}

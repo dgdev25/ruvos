@@ -1,39 +1,23 @@
-//! Session domain tools (3): create, resume, fork
+//! Session domain tools (3): create, resume, fork.
 //!
-//! Phase 5v1 implementation with in-memory storage.
-//! Real .rvf container integration deferred to Phase 5 refinement.
+//! Backed by real signed `.rvf` containers on disk (via `ruvos-session`).
+//! Disk is the source of truth, so sessions survive process restarts.
 
 use super::handler::{ExecuteFuture, ToolHandler};
-use crate::Result;
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use crate::{paths, Result, RuvosError};
+use ruvos_session::{fork_session, read_session, write_session, Session};
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionId(pub Uuid);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionMetadata {
-    pub id: SessionId,
-    pub name: Option<String>,
-    pub rvf_path: String,
-    pub created_at: String,
-    pub parent_id: Option<String>, // For fork tracking
-}
-
-// In-memory storage: session_id -> metadata
-type SessionStore = Arc<RwLock<HashMap<String, SessionMetadata>>>;
-
-// Global session store instance (Phase 5v1 only; Phase 5+ will use RVF containers)
-lazy_static::lazy_static! {
-    static ref SESSION_STORE: SessionStore = Arc::new(RwLock::new(HashMap::new()));
+/// Absolute path to a session's `.rvf` file.
+fn rvf_path_for(session_id: &str) -> String {
+    paths::sessions_dir()
+        .join(format!("{}.rvf", session_id))
+        .to_string_lossy()
+        .into_owned()
 }
 
 // ============================================================================
-// session.create handler
+// session.create
 // ============================================================================
 
 pub struct SessionCreateHandler;
@@ -49,54 +33,49 @@ impl ToolHandler for SessionCreateHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::RuvosError::InvalidParams(
+            return Err(RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
-
-        // Optional 'name' field validation
         if let Some(name) = params.get("name") {
             if !name.is_string() && !name.is_null() {
-                return Err(crate::RuvosError::InvalidParams(
+                return Err(RuvosError::InvalidParams(
                     "'name' must be a string or null".to_string(),
                 ));
             }
         }
-
         Ok(())
     }
 
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
-            let session_id = Uuid::new_v4();
-            let session_id_str = session_id.to_string();
-            let now = Utc::now().to_rfc3339();
-
-            // Extract optional name
             let name = params
                 .get("name")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                .unwrap_or("")
+                .to_string();
 
-            let rvf_path = format!(".rvf/{}", session_id_str);
+            let mut session = Session::new();
+            session.name = name.clone();
+            let path = rvf_path_for(&session.id.to_string());
+            session.rvf_path = path.clone();
 
-            let metadata = SessionMetadata {
-                id: SessionId(session_id),
-                name: name.clone(),
-                rvf_path: rvf_path.clone(),
-                created_at: now.clone(),
-                parent_id: None,
-            };
+            // Optional initial state passed by the caller.
+            if let Some(obj) = params.get("state").and_then(|v| v.as_object()) {
+                for (k, v) in obj {
+                    session.state.insert(k.clone(), v.to_string());
+                }
+            }
 
-            // Store in memory
-            let mut store = SESSION_STORE.write().unwrap();
-            store.insert(session_id_str.clone(), metadata);
+            write_session(&session, &path)
+                .await
+                .map_err(|e| RuvosError::InternalError(format!("failed to write .rvf: {}", e)))?;
 
             Ok(json!({
-                "session_id": session_id_str,
-                "name": name,
-                "rvf_path": rvf_path,
-                "created_at": now,
+                "session_id": session.id.to_string(),
+                "name": if name.is_empty() { Value::Null } else { Value::String(name) },
+                "rvf_path": path,
+                "created_at": session.created_at,
                 "status": "created"
             }))
         })
@@ -104,7 +83,7 @@ impl ToolHandler for SessionCreateHandler {
 }
 
 // ============================================================================
-// session.resume handler
+// session.resume
 // ============================================================================
 
 pub struct SessionResumeHandler;
@@ -120,17 +99,15 @@ impl ToolHandler for SessionResumeHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::RuvosError::InvalidParams(
+            return Err(RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
-
         if params.get("session_id").and_then(|v| v.as_str()).is_none() {
-            return Err(crate::RuvosError::InvalidParams(
+            return Err(RuvosError::InvalidParams(
                 "missing 'session_id' field (string)".to_string(),
             ));
         }
-
         Ok(())
     }
 
@@ -139,36 +116,35 @@ impl ToolHandler for SessionResumeHandler {
             let session_id = params
                 .get("session_id")
                 .and_then(|v| v.as_str())
-                .unwrap()
+                .unwrap_or_default()
                 .to_string();
+            let path = rvf_path_for(&session_id);
 
-            let store = SESSION_STORE.read().unwrap();
-            let metadata = store.get(&session_id).cloned();
-
-            if let Some(meta) = metadata {
-                Ok(json!({
-                    "session_id": session_id,
-                    "name": meta.name,
-                    "rvf_path": meta.rvf_path,
-                    "created_at": meta.created_at,
-                    "parent_id": meta.parent_id,
+            match read_session(&path).await {
+                Ok(session) => Ok(json!({
+                    "session_id": session.id.to_string(),
+                    "name": if session.name.is_empty() { Value::Null } else { Value::String(session.name) },
+                    "rvf_path": session.rvf_path,
+                    "created_at": session.created_at,
+                    "updated_at": session.updated_at,
+                    "parent_id": session.parent.map(|p| p.to_string()),
+                    "state": session.state,
                     "status": "resumed",
                     "found": true
-                }))
-            } else {
-                Ok(json!({
+                })),
+                Err(_) => Ok(json!({
                     "session_id": session_id,
                     "status": "not_found",
                     "found": false,
                     "error": "Session not found"
-                }))
+                })),
             }
         })
     }
 }
 
 // ============================================================================
-// session.fork handler
+// session.fork
 // ============================================================================
 
 pub struct SessionForkHandler;
@@ -184,21 +160,19 @@ impl ToolHandler for SessionForkHandler {
 
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
-            return Err(crate::RuvosError::InvalidParams(
+            return Err(RuvosError::InvalidParams(
                 "params must be an object".to_string(),
             ));
         }
-
         if params
             .get("source_session_id")
             .and_then(|v| v.as_str())
             .is_none()
         {
-            return Err(crate::RuvosError::InvalidParams(
+            return Err(RuvosError::InvalidParams(
                 "missing 'source_session_id' field (string)".to_string(),
             ));
         }
-
         Ok(())
     }
 
@@ -207,47 +181,28 @@ impl ToolHandler for SessionForkHandler {
             let source_session_id = params
                 .get("source_session_id")
                 .and_then(|v| v.as_str())
-                .unwrap()
+                .unwrap_or_default()
                 .to_string();
 
-            let new_session_id = Uuid::new_v4().to_string();
-            let now = Utc::now().to_rfc3339();
+            let source_path = rvf_path_for(&source_session_id);
+            let base_dir = paths::sessions_dir().to_string_lossy().into_owned();
 
-            let store = SESSION_STORE.read().unwrap();
-            let source_meta = store.get(&source_session_id).cloned();
-
-            drop(store);
-
-            if let Some(source) = source_meta {
-                // Create new metadata with parent tracking
-                let forked_rvf_path = format!(".rvf/{}", new_session_id);
-                let new_metadata = SessionMetadata {
-                    id: SessionId(Uuid::parse_str(&new_session_id).unwrap()),
-                    name: source.name.clone().map(|n| format!("{}-fork", n)),
-                    rvf_path: forked_rvf_path,
-                    created_at: now.clone(),
-                    parent_id: Some(source_session_id.clone()),
-                };
-
-                let mut store = SESSION_STORE.write().unwrap();
-                store.insert(new_session_id.clone(), new_metadata);
-
-                Ok(json!({
-                    "forked_id": new_session_id,
+            match fork_session(&source_path, &base_dir).await {
+                Ok(child) => Ok(json!({
+                    "forked_id": child.id.to_string(),
                     "source_session_id": source_session_id,
-                    "rvf_path": format!(".rvf/{}", new_session_id),
-                    "created_at": now,
+                    "rvf_path": child.rvf_path,
+                    "created_at": child.created_at,
                     "status": "forked",
                     "success": true
-                }))
-            } else {
-                Ok(json!({
-                    "forked_id": None::<String>,
+                })),
+                Err(_) => Ok(json!({
+                    "forked_id": Value::Null,
                     "source_session_id": source_session_id,
                     "status": "source_not_found",
                     "success": false,
                     "error": "Source session not found"
-                }))
+                })),
             }
         })
     }
@@ -257,189 +212,106 @@ impl ToolHandler for SessionForkHandler {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_session_create() {
-        let handler = SessionCreateHandler;
-        let params = json!({"name": "test-session"});
-
-        let result = handler.execute(params).await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert!(response.get("session_id").is_some());
-        assert!(response.get("rvf_path").is_some());
-        assert!(response.get("created_at").is_some());
-        assert_eq!(response.get("status").unwrap(), "created");
+    /// Give each test a private data dir (thread-local; no cross-test races).
+    fn isolate() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        crate::paths::set_test_root(dir.path().to_path_buf());
+        dir
     }
 
     #[tokio::test]
-    async fn test_session_create_no_name() {
+    async fn create_writes_a_real_rvf_file() {
+        let _g = isolate();
         let handler = SessionCreateHandler;
-        let params = json!({});
+        let resp = handler.execute(json!({"name": "test"})).await.unwrap();
 
-        let result = handler.execute(params).await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert!(response.get("session_id").is_some());
-        // When no name is provided, it's serialized as null
-        assert!(response.get("name").is_some());
-        assert!(response.get("name").unwrap().is_null());
-    }
-
-    #[tokio::test]
-    async fn test_session_resume_found() {
-        let create_handler = SessionCreateHandler;
-        let create_result = create_handler.execute(json!({"name": "test"})).await;
-        let session_id = create_result
-            .unwrap()
-            .get("session_id")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_string();
-
-        let resume_handler = SessionResumeHandler;
-        let resume_result = resume_handler
-            .execute(json!({"session_id": session_id.clone()}))
-            .await;
-
-        assert!(resume_result.is_ok());
-        let response = resume_result.unwrap();
-        assert_eq!(response.get("status").unwrap(), "resumed");
-        assert_eq!(
-            response
-                .get("session_id")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string(),
-            session_id
+        assert_eq!(resp["status"], "created");
+        let path = resp["rvf_path"].as_str().unwrap();
+        assert!(
+            std::path::Path::new(path).exists(),
+            "session.create must write a real .rvf file at {}",
+            path
         );
-        assert!(response.get("found").unwrap().as_bool().unwrap());
     }
 
     #[tokio::test]
-    async fn test_session_resume_not_found() {
-        let handler = SessionResumeHandler;
-        let params = json!({"session_id": "nonexistent-id"});
+    async fn resume_reads_persisted_session() {
+        let _g = isolate();
+        let create = SessionCreateHandler
+            .execute(json!({"name": "persisted", "state": {"k": "v"}}))
+            .await
+            .unwrap();
+        let id = create["session_id"].as_str().unwrap().to_string();
 
-        let result = handler.execute(params).await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert_eq!(response.get("status").unwrap(), "not_found");
-        assert!(!response.get("found").unwrap().as_bool().unwrap());
+        let resume = SessionResumeHandler
+            .execute(json!({"session_id": id}))
+            .await
+            .unwrap();
+        assert_eq!(resume["status"], "resumed");
+        assert_eq!(resume["found"], true);
+        assert_eq!(resume["name"], "persisted");
+        // state value was stored JSON-encoded
+        assert!(resume["state"]["k"].as_str().unwrap().contains('v'));
     }
 
     #[tokio::test]
-    async fn test_session_fork() {
-        let create_handler = SessionCreateHandler;
-        let create_result = create_handler.execute(json!({"name": "original"})).await;
-        let source_id = create_result
-            .unwrap()
-            .get("session_id")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_string();
+    async fn resume_missing_returns_not_found() {
+        let _g = isolate();
+        let resume = SessionResumeHandler
+            .execute(json!({"session_id": "00000000-0000-0000-0000-000000000000"}))
+            .await
+            .unwrap();
+        assert_eq!(resume["status"], "not_found");
+        assert_eq!(resume["found"], false);
+    }
 
-        let fork_handler = SessionForkHandler;
-        let fork_result = fork_handler
+    #[tokio::test]
+    async fn fork_creates_linked_child_on_disk() {
+        let _g = isolate();
+        let create = SessionCreateHandler
+            .execute(json!({"name": "orig", "state": {"shared": "data"}}))
+            .await
+            .unwrap();
+        let source_id = create["session_id"].as_str().unwrap().to_string();
+
+        let fork = SessionForkHandler
             .execute(json!({"source_session_id": source_id.clone()}))
-            .await;
+            .await
+            .unwrap();
+        assert_eq!(fork["status"], "forked");
+        assert_eq!(fork["success"], true);
 
-        assert!(fork_result.is_ok());
-        let response = fork_result.unwrap();
-        assert_eq!(response.get("status").unwrap(), "forked");
-        assert!(response.get("success").unwrap().as_bool().unwrap());
-        assert!(response.get("forked_id").is_some());
-        assert_eq!(
-            response
-                .get("source_session_id")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string(),
-            source_id.clone()
-        );
-
-        // Verify the forked session can be resumed
-        let forked_id = response
-            .get("forked_id")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .to_string();
-
-        let resume_handler = SessionResumeHandler;
-        let resume_result = resume_handler
-            .execute(json!({"session_id": forked_id.clone()}))
-            .await;
-
-        assert!(resume_result.is_ok());
-        let resume_response = resume_result.unwrap();
-        assert_eq!(resume_response.get("status").unwrap(), "resumed");
-        assert_eq!(
-            resume_response
-                .get("parent_id")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string(),
-            source_id.clone()
-        );
+        let forked_id = fork["forked_id"].as_str().unwrap().to_string();
+        let resume = SessionResumeHandler
+            .execute(json!({"session_id": forked_id}))
+            .await
+            .unwrap();
+        assert_eq!(resume["status"], "resumed");
+        assert_eq!(resume["parent_id"].as_str().unwrap(), source_id);
+        // COW: child inherited parent's state
+        assert!(resume["state"]["shared"].as_str().unwrap().contains("data"));
     }
 
     #[tokio::test]
-    async fn test_session_fork_source_not_found() {
-        let handler = SessionForkHandler;
-        let params = json!({"source_session_id": "nonexistent-source"});
-
-        let result = handler.execute(params).await;
-        assert!(result.is_ok());
-
-        let response = result.unwrap();
-        assert_eq!(response.get("status").unwrap(), "source_not_found");
-        assert!(!response.get("success").unwrap().as_bool().unwrap());
+    async fn fork_missing_source_fails() {
+        let _g = isolate();
+        let fork = SessionForkHandler
+            .execute(json!({"source_session_id": "00000000-0000-0000-0000-000000000000"}))
+            .await
+            .unwrap();
+        assert_eq!(fork["status"], "source_not_found");
+        assert_eq!(fork["success"], false);
     }
 
     #[test]
-    fn test_session_create_validation() {
-        let handler = SessionCreateHandler;
-
-        let invalid_params = json!({"not_an_object": 123});
-        let result = handler.validate(&invalid_params);
-        assert!(result.is_ok()); // object is still valid
-
-        let params_with_invalid_name = json!({"name": 123});
-        let result = handler.validate(&params_with_invalid_name);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_session_resume_validation() {
-        let handler = SessionResumeHandler;
-
-        let invalid_params = json!({});
-        let result = handler.validate(&invalid_params);
-        assert!(result.is_err());
-
-        let valid_params = json!({"session_id": "some-id"});
-        let result = handler.validate(&valid_params);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_session_fork_validation() {
-        let handler = SessionForkHandler;
-
-        let invalid_params = json!({});
-        let result = handler.validate(&invalid_params);
-        assert!(result.is_err());
-
-        let valid_params = json!({"source_session_id": "some-id"});
-        let result = handler.validate(&valid_params);
-        assert!(result.is_ok());
+    fn validation_rules() {
+        assert!(SessionCreateHandler
+            .validate(&json!({"name": 123}))
+            .is_err());
+        assert!(SessionResumeHandler.validate(&json!({})).is_err());
+        assert!(SessionForkHandler.validate(&json!({})).is_err());
+        assert!(SessionResumeHandler
+            .validate(&json!({"session_id": "x"}))
+            .is_ok());
     }
 }

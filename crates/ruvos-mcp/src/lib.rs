@@ -11,6 +11,7 @@
 //! - **workflow** (1): run
 
 pub mod error;
+pub mod paths;
 pub mod protocol;
 pub mod server;
 pub mod tools;

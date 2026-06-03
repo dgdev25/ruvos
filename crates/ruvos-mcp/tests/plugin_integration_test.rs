@@ -203,8 +203,14 @@ async fn test_plugin_invoke_integration() {
     assert_eq!(response["id"], "plugin-invoke-1", "request ID mismatch");
 
     let result = &response["result"]["structuredContent"];
-    assert_eq!(result["status"], 1, "unknown plugin must yield non-zero status");
-    assert_eq!(result["stdout"], "", "rejected command must not produce stdout");
+    assert_eq!(
+        result["status"], 1,
+        "unknown plugin must yield non-zero status"
+    );
+    assert_eq!(
+        result["stdout"], "",
+        "rejected command must not produce stdout"
+    );
     assert!(
         result["stderr"]
             .as_str()

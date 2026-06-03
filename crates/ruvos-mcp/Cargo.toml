@@ -18,6 +18,9 @@ chrono.workspace = true
 lazy_static = "1.4"
 ruvos-plugin-host = { path = "../ruvos-plugin-host" }
 ruvos-hooks = { path = "../ruvos-hooks" }
+ruvos-session = { path = "../ruvos-session" }
+ruvos-host = { path = "../ruvos-host" }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }
+tempfile = "3"
