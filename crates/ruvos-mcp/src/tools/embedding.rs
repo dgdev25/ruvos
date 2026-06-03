@@ -10,6 +10,7 @@
 //! alternative using `ruvector-rabitq`'s `RabitqPlusIndex`: 1-bit quantization
 //! with exact rerank, zero disk I/O.
 
+use ruvector_acorn::{AcornIndexGamma, FilteredIndex};
 use ruvector_core::types::DbOptions;
 use ruvector_core::{DistanceMetric, SearchQuery, VectorDB, VectorEntry};
 use ruvector_rabitq::{AnnIndex, RabitqPlusIndex};
@@ -131,6 +132,39 @@ pub fn rabitq_rank(
     Ok(results.into_iter().map(|r| ids[r.id].clone()).collect())
 }
 
+/// Predicate-aware ANN ranking via ACORN (predicate-agnostic filtered HNSW).
+///
+/// Builds a dense γ=2 graph over `items` and, during traversal, expands the
+/// neighbours of *every* visited node — including ones that fail `keep` —
+/// before discarding non-matching nodes from the result. This keeps recall
+/// high even when `keep` admits only a small fraction of items (low
+/// selectivity), the exact case where pre-filtering then running plain HNSW
+/// over the subset collapses (the beam exhausts before finding `k` matches).
+///
+/// `keep` receives the position of an item in `items`. Returns up to `k` ids
+/// (nearest-first) that satisfy `keep`.
+pub fn acorn_rank(
+    items: &[(String, String)],
+    query: &str,
+    k: usize,
+    keep: &dyn Fn(usize) -> bool,
+) -> anyhow::Result<Vec<String>> {
+    if items.is_empty() || k == 0 {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<String> = items.iter().map(|(id, _)| id.clone()).collect();
+    let data: Vec<Vec<f32>> = items.iter().map(|(_, text)| embed(text)).collect();
+
+    let index = AcornIndexGamma::build(data)?;
+    // `k` is the traversal budget; it must not exceed the graph size.
+    let budget = k.min(ids.len());
+    let hits = index.search(&embed(query), budget, &|pos: u32| keep(pos as usize))?;
+    Ok(hits
+        .into_iter()
+        .map(|(pos, _)| ids[pos as usize].clone())
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,5 +241,35 @@ mod tests {
     fn rabitq_empty_items_yield_empty() {
         let ranked = rabitq_rank(&[], "anything", 5).unwrap();
         assert!(ranked.is_empty());
+    }
+
+    #[test]
+    fn acorn_respects_predicate_and_ranks_by_relevance() {
+        let items = vec![
+            (
+                "db1".to_string(),
+                "postgres database connection".to_string(),
+            ),
+            ("db2".to_string(), "mysql database indexing".to_string()),
+            ("ui".to_string(), "react frontend button".to_string()),
+            ("net".to_string(), "tcp socket timeout".to_string()),
+        ];
+        // Keep only the two "db*" items; query is database-related.
+        let keep = |pos: usize| items[pos].0.starts_with("db");
+        let ranked = acorn_rank(&items, "database connection", 4, &keep).unwrap();
+        assert!(!ranked.is_empty(), "ACORN must return matching candidates");
+        assert!(
+            ranked.iter().all(|id| id.starts_with("db")),
+            "predicate must exclude non-matching items, got {:?}",
+            ranked
+        );
+        assert_eq!(ranked[0], "db1", "most relevant matching item ranks first");
+    }
+
+    #[test]
+    fn acorn_empty_predicate_yields_empty() {
+        let items = vec![("a".to_string(), "alpha".to_string())];
+        let ranked = acorn_rank(&items, "alpha", 5, &|_| false).unwrap();
+        assert!(ranked.is_empty(), "no item passes the predicate");
     }
 }

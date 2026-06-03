@@ -175,7 +175,7 @@ fn save_store(store: &Store) -> Result<()> {
 // Real ranking primitives
 // ---------------------------------------------------------------------------
 
-use super::embedding::{cosine_dense, embed, hnsw_rank};
+use super::embedding::{acorn_rank, cosine_dense, embed, hnsw_rank};
 
 /// Recency weight in [0, 1]: newer entries score higher. Half-life ~30 days.
 fn recency_weight(created_at: &str) -> f64 {
@@ -444,11 +444,21 @@ impl ToolHandler for MemorySearchHandler {
                 .or_else(|| params.get("limit"))
                 .and_then(|v| v.as_u64())
                 .unwrap_or(5) as usize;
+            // Optional predicate: only return entries carrying ALL of these tags.
+            let filter_tags: Vec<String> = params
+                .get("filter_tags")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
 
             let _guard = FILE_LOCK.lock().unwrap();
             let store = load_store();
 
-            // All entries in the namespace, keyed for HNSW retrieval.
+            // All entries in the namespace, keyed for retrieval.
             let entries: Vec<MemoryEntry> = store
                 .get(&namespace)
                 .map(|ns| ns.values().cloned().collect())
@@ -456,15 +466,30 @@ impl ToolHandler for MemorySearchHandler {
             let by_key: BTreeMap<String, MemoryEntry> =
                 entries.iter().map(|e| (e.key.clone(), e.clone())).collect();
 
-            // ── Tier 1: HNSW ANN retrieval ─────────────────────────────
+            // Tag predicate over the candidate set. `true` for every entry when
+            // no `filter_tags` are given (the search then behaves as before).
+            let passes_filter =
+                |e: &MemoryEntry| -> bool { filter_tags.iter().all(|t| e.tags.contains(t)) };
+
+            // ── Tier 1: ANN retrieval ──────────────────────────────────
             // Pull a wider candidate set so MMR has room to diversify.
             let items: Vec<(String, String)> = entries
                 .iter()
                 .map(|e| (e.key.clone(), entry_text(e)))
                 .collect();
             let candidate_k = (top_k * 4).max(top_k);
-            let ranked_ids = hnsw_rank(&items, &query, candidate_k)
-                .map_err(|e| RuvosError::InternalError(format!("hnsw search: {}", e)))?;
+            // With a tag filter, route through ACORN (predicate-agnostic
+            // filtered HNSW): it keeps recall high at low selectivity, where
+            // post-filtering plain-HNSW candidates would return too few hits.
+            // Without a filter, the plain HNSW path is unchanged.
+            let ranked_ids = if filter_tags.is_empty() {
+                hnsw_rank(&items, &query, candidate_k)
+                    .map_err(|e| RuvosError::InternalError(format!("hnsw search: {}", e)))?
+            } else {
+                let keep = |pos: usize| entries.get(pos).map(&passes_filter).unwrap_or(false);
+                acorn_rank(&items, &query, candidate_k, &keep)
+                    .map_err(|e| RuvosError::InternalError(format!("acorn search: {}", e)))?
+            };
 
             // Blend the (dense cosine) relevance with a recency boost, then MMR.
             let query_vec = embed(&query);
@@ -494,7 +519,9 @@ impl ToolHandler for MemorySearchHandler {
             // to a similarity in [0, 1] with `1 / (1 + score)` so we can
             // compare them on the same scale as cosine similarity.
             for (key, lake_score) in &lake_hits {
-                if by_key.contains_key(key) {
+                // Respect the tag filter on this tier too — RuLake is unaware
+                // of the predicate, so a non-matching key must not slip in.
+                if by_key.get(key).is_some_and(&passes_filter) {
                     let sim = 1.0_f32 / (1.0 + lake_score);
                     merged_scores
                         .entry(key.clone())

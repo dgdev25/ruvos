@@ -237,12 +237,18 @@ knowledge graph. Survives restarts.
 ```
 
 **`memory.search`** — recall by meaning, not exact words; also returns related
-entities from the knowledge graph.
+entities from the knowledge graph. Pass optional `filter_tags` to restrict
+results to entries carrying *all* those tags — this routes retrieval through
+ACORN (predicate-agnostic filtered HNSW), which keeps recall high even when the
+tag filter is highly selective.
 🗣️ *"rUvOS, What did we decide about the database?"*
 ```jsonc
 {"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}
 // → { "count":1, "results":[{ "key":"db", "value":"postgres connection pooling…", "score":0.64 }],
 //     "related_entities":[{ "name":"Postgres", "summary":"…" }] }
+
+// tag-filtered: only entries tagged "decision" AND "db", best match first
+{"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","filter_tags":["decision","db"]}}
 ```
 
 **`memory.retrieve`** — fetch one entry by its exact key.

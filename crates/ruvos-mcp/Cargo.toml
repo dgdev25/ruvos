@@ -23,6 +23,7 @@ ruvos-safety = { path = "../../substrate/ruvos-safety" }
 ruvos-host = { path = "../ruvos-host" }
 ruvector-core = { path = "../../substrate/ruvector-core", default-features = false, features = ["hnsw", "storage"] }
 ruvector-rabitq = { path = "../../substrate/ruvector-rabitq" }
+ruvector-acorn = { path = "../../substrate/ruvector-acorn" }
 ruvector-sona = { path = "../../substrate/sona" }
 rulake = { path = "../../substrate/rulake" }
 ruv-swarm-transport = { path = "../../substrate/ruv-swarm-transport" }
