@@ -16,7 +16,7 @@ external database.**
 100% pure Rust (no SQLite, no bundled C), zero compiler/clippy warnings across the
 whole workspace.
 
-> ### 🙏 Built on the work of [**rUv**](https://github.com/ruvnet)
+> ### 🙏 Built on the work of giants: [**rUv**](https://github.com/ruvnet)
 >
 > rUvOS exists because of **rUv (Reuven Cohen / [@ruvnet](https://github.com/ruvnet))** —
 > the original creator and visionary behind **Ruflo / claude-flow**, **RuVector**, the
