@@ -57,6 +57,11 @@ pub fn memory_graph_file() -> PathBuf {
     data_root().join("memory-graph.json")
 }
 
+/// Directory holding cross-instance relay presence records + inboxes.
+pub fn relays_dir() -> PathBuf {
+    data_root().join("relays")
+}
+
 /// Ensure the data root exists, returning it.
 pub fn ensure_root() -> std::io::Result<PathBuf> {
     let root = data_root();

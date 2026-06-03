@@ -24,7 +24,7 @@ external database.**
 
 > **The tagline:** *RuVector is the kernel, rUvOS is the shell.*
 
-**Status:** `v4.0.0-rc.1` — production-grade. **21 MCP tools**, real persistence,
+**Status:** `v4.0.0-rc.1` — production-grade. **24 MCP tools**, real persistence,
 100% pure Rust (no SQLite, no bundled C), zero compiler/clippy warnings across the
 whole workspace.
 
@@ -44,7 +44,7 @@ whole workspace.
 
 - [Install](#install)
 - [How you actually use it](#how-you-actually-use-it-just-talk)
-- [The 21 tools](#the-21-tools)
+- [The 24 tools](#the-24-tools)
 - [Worked examples](#worked-examples)
 - [Agent archetypes & traits](#agent-archetypes--traits)
 - [Where your data lives](#where-your-data-lives)
@@ -75,7 +75,7 @@ Then open a new terminal (so `PATH`/`RUVOS_HOME` take effect) and check it:
 claude mcp list          # ruvos: ✓ Connected
 ```
 
-That's it — all 21 rUvOS tools are now available to Claude Code in every project.
+That's it — all 24 rUvOS tools are now available to Claude Code in every project.
 
 > **Note:** removing Ruflo v2/v3 is **mandatory** — there is no opt-out flag,
 > because v4 cannot coexist with the legacy install.
@@ -106,7 +106,7 @@ memory/session store across every project.
 ## How you actually use it: just talk
 
 **You do not type commands or keywords.** Once the MCP server is connected, Claude
-Code sees the 21 tools and calls them on its own, based on what you ask — exactly
+Code sees the 24 tools and calls them on its own, based on what you ask — exactly
 like it uses any other MCP server. You speak normally:
 
 | You say… | rUvOS tool Claude calls |
@@ -125,7 +125,7 @@ before we try the risky refactor"* → `session.fork`.
 
 ---
 
-## The 21 tools
+## The 24 tools
 
 | Domain | Tools | What they do |
 |--------|-------|--------------|
@@ -136,6 +136,7 @@ before we try the risky refactor"* → `session.fork`.
 | **intel** (2) | `pattern_search`, `pattern_store` | SONA trajectory learning — store outcomes, retrieve similar past approaches |
 | **plugin** (2) | `list`, `invoke` | Discover and run plugins (markdown + shell commands) |
 | **gov** (3) | `health`, `witness_verify`, `events` | System health + safety score, `.rvf` signature verification, signed audit log |
+| **relay** (3) | `announce`, `list`, `send` | Cross-instance coordination — independent Claude Code instances discover and message each other via pure file mailboxes (no daemon, no port, no DB) |
 | **workflow** (1) | `run` | Orchestration templates: `feature` / `bugfix` / `refactor` / `security` |
 
 ---
@@ -217,6 +218,39 @@ pipeline, each producing a real work artifact on disk.
 # → { "archetype": "security", "model": "claude-opus-4-8", "tier": 3, "confidence": 0.8 }
 ```
 
+### Example F — two instances coordinating via `relay`
+
+Two independent Claude Code instances — say one on the backend, one on the
+frontend — discover and message each other by sharing one `RUVOS_HOME`. No
+daemon, no port: presence and messages are plain files, delivered pull-based on
+the next `relay.list`.
+
+```bash
+# Both terminals point at the same relay directory:
+export RUVOS_HOME=/tmp/team-relays
+
+# Terminal A — announces what it's working on, then sees nobody yet:
+'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}}'
+# → { "id": "A-uuid", "pid": ..., "cwd": "...", "summary": "backend: auth endpoints", ... }
+
+# Terminal B — announces, then lists and sees A:
+'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay.announce","arguments":{"summary":"frontend: login form"}}}'
+'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay.list","arguments":{"scope":"machine"}}}'
+# → { "scope":"machine", "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }], "inbox":[] }
+
+# Terminal B — sends A a message by id:
+'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"relay.send","arguments":{"to":"A-uuid","body":"login form expects POST /auth/login — confirm the shape?"}}}'
+# → { "delivered": true, "message_id": "..." }
+
+# Terminal A — lists again; its inbox now carries B's message (and is drained on read):
+'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay.list","arguments":{"scope":"machine"}}}'
+# → { ..., "inbox":[{ "from":"B-uuid", "body":"login form expects POST /auth/login — confirm the shape?", ... }] }
+```
+
+Stale instances (no `relay.announce` within 60s) are pruned automatically the
+next time anyone calls `relay.list`. Every `announce`/`send` is recorded in the
+signed `gov.events` audit log.
+
 ---
 
 ## Agent archetypes & traits
@@ -261,7 +295,7 @@ portability. No SQLite, no bundled C — the binary stays pure Rust.
 ```
 crates/                    # rUvOS orchestration shell (the 6 new crates)
 ├── ruvos-cli              # clap CLI: `ruvos init`, `ruvos mcp serve`
-├── ruvos-mcp              # JSON-RPC MCP server + the 21 tool handlers
+├── ruvos-mcp              # JSON-RPC MCP server + the 24 tool handlers
 ├── ruvos-host             # CliHost trait + Claude/Codex adapters
 ├── ruvos-plugin-host      # plugin discovery + shell execution
 ├── ruvos-hooks            # 8 hooks + SONA learning (pure Rust, no SQLite)
@@ -307,7 +341,7 @@ cargo test  --workspace --jobs 4
 - **Zero-defect policy** — the entire workspace stays clean (0 errors, 0 warnings,
   0 failing tests) at all times, including vendored substrate crates.
 - **File size limit** — every `.rs` file ≤ 500 lines.
-- **One tool domain per scope** — new MCP tools require an ADR (current: 21 tools,
+- **One tool domain per scope** — new MCP tools require an ADR (current: 24 tools,
   budget 80).
 
 ---

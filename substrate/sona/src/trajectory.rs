@@ -336,7 +336,11 @@ mod tests {
         assert_eq!(trajectory.steps.len(), 2);
         assert_eq!(trajectory.final_quality, 0.85);
         assert_eq!(trajectory.model_route, Some("llama-7b".to_string()));
-        assert!(trajectory.latency_us > 0);
+        // `build()` records wall-clock latency, which can legitimately be 0µs on a
+        // fast machine — asserting `> 0` is a timing race. Verify the latency field
+        // is plumbed through deterministically via `build_with_latency` instead.
+        let explicit = TrajectoryBuilder::new(7, vec![0.1, 0.2, 0.3]).build_with_latency(0.9, 1234);
+        assert_eq!(explicit.latency_us, 1234);
     }
 
     #[test]

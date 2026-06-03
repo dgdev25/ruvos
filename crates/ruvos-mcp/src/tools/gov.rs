@@ -287,7 +287,7 @@ mod tests {
         let _g = isolate();
         let r = GovHealthHandler.execute(json!({})).await.unwrap();
         assert_eq!(r["status"], "ok");
-        assert_eq!(r["tool_count"], 21);
+        assert_eq!(r["tool_count"], 24);
         assert!(r["pid"].as_u64().unwrap() > 0, "real process id");
         assert_eq!(r["persisted"]["sessions"], 0);
     }

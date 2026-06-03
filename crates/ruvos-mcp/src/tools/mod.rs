@@ -1,4 +1,4 @@
-//! Tool registry for all 21 MCP tools.
+//! Tool registry for all 24 MCP tools.
 
 pub mod agent;
 pub mod agent_store;
@@ -11,6 +11,7 @@ pub mod hooks_route;
 pub mod intel;
 pub mod memory;
 pub mod plugin;
+pub mod relay;
 pub mod session;
 pub mod workflow;
 
@@ -26,7 +27,7 @@ pub struct ToolMetadata {
     pub domain: String,
 }
 
-/// Create a new registry with all 21 tools + test tools registered.
+/// Create a new registry with all 24 tools + test tools registered.
 pub fn create_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
@@ -67,13 +68,18 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(gov::GovHealthHandler));
     registry.register(Box::new(gov::GovEventsHandler));
 
+    // Register relay tools
+    registry.register(Box::new(relay::RelayAnnounceHandler));
+    registry.register(Box::new(relay::RelayListHandler));
+    registry.register(Box::new(relay::RelaySendHandler));
+
     // Register workflow tools
     registry.register(Box::new(workflow::WorkflowRunHandler));
 
     registry
 }
 
-/// Return the registry of all 21 tools (metadata only).
+/// Return the registry of all 24 tools (metadata only).
 pub fn tool_registry() -> Vec<ToolMetadata> {
     vec![
         // Memory (4)
@@ -188,6 +194,25 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
                     .to_string(),
             domain: "gov".to_string(),
         },
+        // Relay (3)
+        ToolMetadata {
+            name: "relay.announce".to_string(),
+            description: "Register/refresh this instance's presence for cross-instance discovery"
+                .to_string(),
+            domain: "relay".to_string(),
+        },
+        ToolMetadata {
+            name: "relay.list".to_string(),
+            description:
+                "Discover other live instances (scope: machine|directory|repo) + drain own inbox"
+                    .to_string(),
+            domain: "relay".to_string(),
+        },
+        ToolMetadata {
+            name: "relay.send".to_string(),
+            description: "Deliver a message to another instance's file mailbox by id".to_string(),
+            domain: "relay".to_string(),
+        },
         // Workflow (1)
         ToolMetadata {
             name: "workflow.run".to_string(),
@@ -207,8 +232,8 @@ mod integration_tests {
     #[test]
     fn test_full_registry_creation() {
         let registry = create_registry();
-        // All 21 tools + 1 test echo tool = 22
-        assert_eq!(registry.tool_count(), 22);
+        // All 24 tools + 1 test echo tool = 25
+        assert_eq!(registry.tool_count(), 25);
     }
 
     #[test]
@@ -224,6 +249,7 @@ mod integration_tests {
         assert!(tools.iter().any(|t| t.starts_with("intel.")));
         assert!(tools.iter().any(|t| t.starts_with("plugin.")));
         assert!(tools.iter().any(|t| t.starts_with("gov.")));
+        assert!(tools.iter().any(|t| t.starts_with("relay.")));
         assert!(tools.iter().any(|t| t.starts_with("workflow.")));
         assert!(tools.iter().any(|t| t == "echo.test"));
     }
