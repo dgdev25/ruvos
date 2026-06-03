@@ -102,11 +102,16 @@ That's it — all 24 rUvOS tools are now available to Claude Code in every proje
 
 ```bash
 cargo build --release
-sudo cp target/release/ruvos /usr/local/bin/ruvos        # or any dir on your PATH
+# Install onto your PATH. ~/.cargo/bin is already on PATH (you have Rust) — no sudo:
+cp target/release/ruvos ~/.cargo/bin/ruvos               # or ~/.local/bin
 export RUVOS_HOME="$HOME/.ruvos"                          # shared data dir (optional)
 claude mcp add ruvos --scope user -- ruvos mcp serve      # register with Claude Code
 claude mcp list                                           # ruvos: ✓ Connected
 ```
+
+> For a **system-wide** install (all users), use `sudo cp target/release/ruvos
+> /usr/local/bin/ruvos` instead — `sudo` is only needed there because
+> `/usr/local/bin` is root-owned. A per-user dir like `~/.cargo/bin` needs none.
 
 `RUVOS_HOME` defaults to `./.ruvos` in the current directory; set it to share one
 memory/session store across every project.
