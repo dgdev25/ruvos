@@ -133,30 +133,34 @@ memory/session store across every project.
 ## How you actually use it: just talk
 
 **You do not type commands or keywords.** Once the MCP server is connected, Claude
-Code sees the 24 tools and decides which to call, based on what you ask — exactly
-like it uses any other MCP server. You speak normally:
+Code sees the 24 tools and decides which to call, based on what you ask.
 
-| You say… | …and Claude is likely to reach for |
-|----------|-------------------------------------|
-| *"Help me build a POST /users endpoint"* | `session.create`, `agent.spawn` |
-| *"Remember we're using PostgreSQL for this project"* | `memory.store` |
-| *"What did we decide about the database schema?"* | `memory.search` |
-| *"Pick up where we left off yesterday"* | `session.resume` |
-| *"Orchestrate a full feature pipeline for user auth"* | `orchestrate.run` |
-| *"Is it safe to run this command?"* | `hooks.pre` (risk assessment) |
-| *"What's the system health?"* | `gov.health` |
-| *"Show me what happened in the last hour"* | `gov.events` (audit log) |
+> 💡 **Say "rUvOS" in your request.** If you also have other agent MCP servers or
+> plugins installed (e.g. legacy `ruflo` / `claude-flow`), several of them offer
+> overlapping capabilities (memory, swarms, …). Naming rUvOS explicitly —
+> *"use rUvOS to…"*, *"have rUvOS remember…"* — steers the request to rUvOS
+> instead of leaving the choice to chance. The examples below all do this.
 
-> These are **representative** mappings, not guarantees. *Which* tool Claude
-> calls for a given sentence is its own runtime decision (model-dependent, not
-> deterministic) — the same as any MCP server. What rUvOS guarantees is that the
-> tools are **available** and **work**: every one is exercised by the test suite
-> and the [feature reference](#feature-reference--every-tool-by-example) below
-> shows each producing real output. To prove a specific mapping yourself, ask
-> Claude and watch which tool it calls, or invoke the tool directly over MCP.
+| You say… | …and rUvOS handles it with |
+|----------|----------------------------|
+| *"Use rUvOS to help me build a POST /users endpoint"* | `session.create`, `agent.spawn` |
+| *"Have rUvOS remember we're using PostgreSQL for this project"* | `memory.store` |
+| *"Ask rUvOS what we decided about the database schema"* | `memory.search` |
+| *"Resume my rUvOS session from yesterday"* | `session.resume` |
+| *"Have rUvOS orchestrate a full feature pipeline for user auth"* | `orchestrate.run` |
+| *"Ask rUvOS if it's safe to run this command"* | `hooks.pre` (risk assessment) |
+| *"Check rUvOS system health"* | `gov.health` |
+| *"Show me the rUvOS audit log for the last hour"* | `gov.events` |
 
-You can also be explicit when you want a specific tool — e.g. *"fork this session
-before the risky refactor"* → `session.fork`.
+> These are **representative** mappings, not guarantees. *Which* tool Claude calls
+> for a given sentence is its own runtime decision (model-dependent, not
+> deterministic). Naming rUvOS makes it far more reliable, but the only 100%
+> deterministic route is invoking the tool directly over MCP (see the feature
+> reference below). What rUvOS guarantees is that the tools are **available** and
+> **work** — every one is exercised by the test suite.
+
+For a specific tool, just name it — e.g. *"have rUvOS fork this session before the
+risky refactor"* → `session.fork`.
 
 ---
 
@@ -182,9 +186,10 @@ In Claude Code you never type tool calls — you talk, and Claude calls the tool
 A typical session:
 
 ```
-You:  Build a POST /users endpoint with validation. Remember the design as we go.
+You:  Use rUvOS to build a POST /users endpoint with validation, and have it
+      remember the design as we go.
 
-Claude (using rUvOS automatically):
+Claude (routing to rUvOS because you named it):
   → session.create  { name: "users-endpoint" }
   → memory.store    { key: "spec", value: "POST /users, zod validation, ...",
                       namespace: "users-api" }
@@ -192,7 +197,7 @@ Claude (using rUvOS automatically):
   ...planner → coder → tester → reviewer run, each leaving a real artifact...
 
 [next day]
-You:  Resume the users endpoint work.
+You:  Resume my rUvOS session for the users endpoint.
 Claude:
   → session.resume  { session_id: "..." }   # full context restored from signed .rvf
   → memory.search   { query: "users endpoint design", namespace: "users-api" }
@@ -225,7 +230,7 @@ Vector search (HNSW + RaBitQ) with diversity and recency, plus a temporal
 knowledge graph. Survives restarts.
 
 **`memory.store`** — save a fact you want remembered later.
-🗣️ *"Remember we're using PostgreSQL for this project."*
+🗣️ *"rUvOS, Remember we're using PostgreSQL for this project."*
 ```jsonc
 {"name":"memory.store","arguments":{"key":"db","value":"postgres connection pooling via pgbouncer","namespace":"proj","tags":["infra"]}}
 // → { "status":"stored", "key":"db", "namespace":"proj" }
@@ -233,7 +238,7 @@ knowledge graph. Survives restarts.
 
 **`memory.search`** — recall by meaning, not exact words; also returns related
 entities from the knowledge graph.
-🗣️ *"What did we decide about the database?"*
+🗣️ *"rUvOS, What did we decide about the database?"*
 ```jsonc
 {"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}
 // → { "count":1, "results":[{ "key":"db", "value":"postgres connection pooling…", "score":0.64 }],
@@ -260,7 +265,7 @@ A session is a signed `.rvf` container on disk. You can pick work back up later,
 and `fork` makes a copy-on-write branch with a cryptographic link to its parent.
 
 **`session.create`** — start a session you can return to.
-🗣️ *"Let's start working on the users endpoint."*
+🗣️ *"rUvOS, Let's start working on the users endpoint."*
 ```jsonc
 {"name":"session.create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}
 // → { "session_id":"6305…", "name":"users-endpoint", "rvf_path":".ruvos/rvf/6305….rvf", "status":"created" }
@@ -268,7 +273,7 @@ and `fork` makes a copy-on-write branch with a cryptographic link to its parent.
 
 **`session.resume`** — restore the full context of a past session (the signature
 is verified first).
-🗣️ *"Pick up where we left off yesterday."*
+🗣️ *"rUvOS, Pick up where we left off yesterday."*
 ```jsonc
 {"name":"session.resume","arguments":{"session_id":"6305…"}}
 // → { "found":true, "name":"users-endpoint", "state":{ "branch":"feat/users" }, "status":"resumed" }
@@ -276,7 +281,7 @@ is verified first).
 
 **`session.fork`** — branch a session before a risky change; the child links
 back to the parent.
-🗣️ *"Fork this before we try the big refactor."*
+🗣️ *"rUvOS, Fork this before we try the big refactor."*
 ```jsonc
 {"name":"session.fork","arguments":{"source_session_id":"6305…"}}
 // → { "forked_id":"a1b2…", "source_session_id":"6305…", "status":"forked", "success":true }
@@ -290,7 +295,7 @@ Spawn one of 12 archetypes (coder, tester, reviewer, …). Each produces a real
 work artifact on disk and is saved in the shared store.
 
 **`agent.spawn`** — put an agent to work on a prompt.
-🗣️ *"Get a coder to write the POST /users handler."*
+🗣️ *"rUvOS, Get a coder to write the POST /users handler."*
 ```jsonc
 {"name":"agent.spawn","arguments":{"archetype":"coder","prompt":"write the POST /users handler","model":"claude-haiku-4-5","traits":["backend"]}}
 // → { "agent_id":"7ed0…", "archetype":"coder", "status":"completed",
@@ -298,14 +303,14 @@ work artifact on disk and is saved in the shared store.
 ```
 
 **`agent.status`** — see what agents exist and their state (all, or one by id).
-🗣️ *"What are my agents up to?"*
+🗣️ *"rUvOS, What are my agents up to?"*
 ```jsonc
 {"name":"agent.status","arguments":{}}
 // → { "count":2, "agents":[{ "agent_id":"7ed0…", "archetype":"coder", "status":"completed" }, … ] }
 ```
 
 **`agent.message`** — send a follow-up message to an agent.
-🗣️ *"Tell the coder to also add pagination."*
+🗣️ *"rUvOS, Tell the coder to also add pagination."*
 ```jsonc
 {"name":"agent.message","arguments":{"agent_id":"7ed0…","message":"also add pagination"}}
 // → { "delivered":true, "message_id":"…", "message_count":1 }
@@ -320,7 +325,7 @@ recording that feeds learning.
 
 **`hooks.pre`** — risk-assess an action before it runs; flags destructive
 commands.
-🗣️ *"Is it safe to run this command?"*
+🗣️ *"rUvOS, Is it safe to run this command?"*
 ```jsonc
 {"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"<a destructive shell command>"}}}
 // → { "status":"ok", "blocked":true,
@@ -329,7 +334,7 @@ commands.
 ```
 
 **`hooks.route`** — pick the best archetype + model tier for a task.
-🗣️ *"Who should handle a security audit?"*
+🗣️ *"rUvOS, Who should handle a security audit?"*
 ```jsonc
 {"name":"hooks.route","arguments":{"task":"audit auth flow for injection vulnerabilities"}}
 // → { "archetype":"security", "model":"claude-opus-4-8", "tier":3, "confidence":0.8 }
@@ -349,14 +354,14 @@ Remember the steps you took and how they turned out, then find similar past
 approaches later.
 
 **`intel.pattern_store`** — record a sequence of steps and its outcome.
-🗣️ *"Remember how we did that migration."*
+🗣️ *"rUvOS, Remember how we did that migration."*
 ```jsonc
 {"name":"intel.pattern_store","arguments":{"trajectory":["read schema","write migration","run tests"],"outcome":"success: migration applied"}}
 // → { "status":"stored", "pattern_id":"…", "total_patterns":1 }
 ```
 
 **`intel.pattern_search`** — find past approaches similar to what you're doing now.
-🗣️ *"Have we done something like this before?"*
+🗣️ *"rUvOS, Have we done something like this before?"*
 ```jsonc
 {"name":"intel.pattern_search","arguments":{"query":"database migration schema","top_k":5}}
 // → { "count":1, "patterns":[{ "outcome":"success: migration applied", "score":0.71, … }] }
@@ -371,14 +376,14 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 (command-injection guard).
 
 **`plugin.list`** — see what plugins are installed.
-🗣️ *"What plugins do I have?"*
+🗣️ *"rUvOS, What plugins do I have?"*
 ```jsonc
 {"name":"plugin.list","arguments":{}}
 // → { "count":0, "plugins":[] }
 ```
 
 **`plugin.invoke`** — run a command a plugin provides.
-🗣️ *"Run my-plugin's build command."*
+🗣️ *"rUvOS, Run my-plugin's build command."*
 ```jsonc
 {"name":"plugin.invoke","arguments":{"plugin_name":"my-plugin","command":"build","args":["--release"]}}
 // → { "status":0, "stdout":"…", "stderr":"" }   // unknown plugin → status:1 + reason in stderr
@@ -389,7 +394,7 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 ### `gov` — health, provenance & audit
 
 **`gov.health`** — a real status report: tools, data dir, what's stored, safety score.
-🗣️ *"What's the system health?"*
+🗣️ *"rUvOS, What's the system health?"*
 ```jsonc
 {"name":"gov.health","arguments":{}}
 // → { "status":"ok", "version":"4.0.0-rc.1", "tool_count":24,
@@ -398,14 +403,14 @@ Plugins are markdown + shell commands found under `./.ruvos/plugins`,
 ```
 
 **`gov.witness_verify`** — confirm a session file hasn't been tampered with.
-🗣️ *"Is this .rvf file still valid?"*
+🗣️ *"rUvOS, Is this .rvf file still valid?"*
 ```jsonc
 {"name":"gov.witness_verify","arguments":{"rvf_path":".ruvos/rvf/6305….rvf"}}
 // → { "rvf_path":"…", "verified":true, "exists":true }
 ```
 
 **`gov.events`** — query the signed audit log of what happened.
-🗣️ *"Show me what happened in the last hour."*
+🗣️ *"rUvOS, Show me what happened in the last hour."*
 ```jsonc
 {"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}
 // → { "count":2, "events":[{ "event_type":"agent.spawned", "agent_id":"7ed0…", "timestamp":… }, … ] }
@@ -427,7 +432,7 @@ export RUVOS_HOME=/home/you/.ruvos
 ```
 
 **`relay.announce`** — tell other instances who you are and what you're doing.
-🗣️ *"Let the other sessions know I'm on the backend."*
+🗣️ *"rUvOS, Let the other sessions know I'm on the backend."*
 ```jsonc
 {"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}
 // → { "id":"A-uuid", "pid":…, "cwd":"…", "git_repo":"…", "summary":"backend: auth endpoints" }
@@ -435,7 +440,7 @@ export RUVOS_HOME=/home/you/.ruvos
 
 **`relay.list`** — discover other live instances and read your own inbox (drained
 on read). Scope is `machine`, `directory`, or `repo`.
-🗣️ *"Who else is working right now, and any messages for me?"*
+🗣️ *"rUvOS, Who else is working right now, and any messages for me?"*
 ```jsonc
 {"name":"relay.list","arguments":{"scope":"machine"}}
 // → { "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }],
@@ -443,7 +448,7 @@ on read). Scope is `machine`, `directory`, or `repo`.
 ```
 
 **`relay.send`** — message another instance by id.
-🗣️ *"Ask the backend session to confirm the login shape."*
+🗣️ *"rUvOS, Ask the backend session to confirm the login shape."*
 ```jsonc
 {"name":"relay.send","arguments":{"to":"A-uuid","body":"login form posts to /auth/login — confirm the shape?"}}
 // → { "delivered":true, "message_id":"…" }
@@ -461,7 +466,7 @@ Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
 `security` (security → coder → tester).
 
 **`orchestrate.run`** — run a whole pipeline for a task in one go.
-🗣️ *"Orchestrate a full feature pipeline for user auth."*
+🗣️ *"rUvOS, Orchestrate a full feature pipeline for user auth."*
 ```jsonc
 {"name":"orchestrate.run","arguments":{"template":"feature","task":"build POST /users with validation"}}
 // → { "orchestration_id":"…", "template":"feature", "status":"completed", "step_count":4,
