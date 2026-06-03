@@ -51,6 +51,8 @@ members = [
     "substrate/ruvos-goap",
     # Lean conditional-edge DAG executor — modeled on graph-flow (ADR-007)
     "substrate/ruvos-graphflow",
+    # Inflight stream analysis (DTW + drift) — vendored from midstream (ADR-008)
+    "substrate/ruvos-stream",
 ]
 default-members = [
     "crates/ruvos-cli",

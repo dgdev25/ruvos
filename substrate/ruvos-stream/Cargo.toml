@@ -1,0 +1,8 @@
+[package]
+name = "ruvos-stream"
+version = "0.1.0"
+edition = "2021"
+description = "Inflight stream analysis — DTW temporal-compare + online drift detection. Vendored from rUvnet midstream (MIT, © rUv). Pure std."
+license = "MIT"
+
+[dependencies]

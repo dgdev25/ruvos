@@ -129,10 +129,7 @@ fn build_artifact(archetype: &str, prompt: &str) -> String {
     )
 }
 
-/// Execute the agent's task for real: write its work artifact to disk and,
-/// if a runner is configured, run it as a real subprocess. Returns
-/// (artifact_path, artifact_bytes, result_text).
-/// The real result of running an agent step (ADR-009).
+/// The real result of running an agent step (ADR-009 + ADR-008).
 struct TaskOutcome {
     artifact_path: String,
     bytes: u64,
@@ -142,6 +139,9 @@ struct TaskOutcome {
     success: bool,
     /// Runner process exit code, when a runner ran; `None` otherwise.
     exit_code: Option<i32>,
+    /// Inflight-stream analysis of the runner's streamed stdout (ADR-008):
+    /// `(chunks observed, anomalies flagged)`. `None` when no runner streamed.
+    stream: Option<(u64, u64)>,
 }
 
 async fn execute_task(agent_id: &str, archetype: &str, prompt: &str) -> Result<TaskOutcome> {
@@ -171,35 +171,10 @@ async fn run_task(
     let artifact_path = artifact.to_string_lossy().into_owned();
 
     match runner {
-        // A real external runner (e.g. a wrapper around a CLI). Its process exit
-        // status is the genuine success/failure signal.
-        Some(runner) => {
-            // `--` signals end-of-options so a prompt beginning with `-` can't be
-            // smuggled in as a flag to the runner binary (argv injection guard).
-            let output = tokio::process::Command::new(runner)
-                .arg(archetype) // already validated against the archetype allowlist
-                .arg("--")
-                .arg(prompt)
-                .output()
-                .await
-                .map_err(|e| RuvosError::InternalError(format!("runner '{}': {}", runner, e)))?;
-            let success = output.status.success();
-            let mut result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !success {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let stderr = stderr.trim();
-                if !stderr.is_empty() {
-                    result = format!("{result}\n[stderr] {stderr}").trim().to_string();
-                }
-            }
-            Ok(TaskOutcome {
-                artifact_path,
-                bytes,
-                result,
-                success,
-                exit_code: output.status.code(),
-            })
-        }
+        // A real external runner (e.g. a wrapper around a CLI). Its stdout is read
+        // *as it streams* and fed to a drift monitor (ADR-008); its process exit
+        // status is the genuine success/failure signal (ADR-009).
+        Some(runner) => stream_runner(runner, archetype, prompt, artifact_path, bytes).await,
         // No executor: artifact produced, assumed success (unchanged default).
         None => Ok(TaskOutcome {
             artifact_path: artifact_path.clone(),
@@ -210,8 +185,93 @@ async fn run_task(
             ),
             success: true,
             exit_code: None,
+            stream: None,
         }),
     }
+}
+
+/// Run an external runner, streaming its stdout line-by-line through a
+/// [`DriftMonitor`] (each line's length is one observation) while stderr is
+/// drained concurrently to avoid pipe-buffer deadlock. Returns the real outcome
+/// plus the inflight-stream summary.
+async fn stream_runner(
+    runner: &str,
+    archetype: &str,
+    prompt: &str,
+    artifact_path: String,
+    bytes: u64,
+) -> Result<TaskOutcome> {
+    use ruvos_stream::DriftMonitor;
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+
+    // `--` signals end-of-options so a prompt beginning with `-` can't be smuggled
+    // in as a flag to the runner binary (argv injection guard).
+    let mut child = tokio::process::Command::new(runner)
+        .arg(archetype) // already validated against the archetype allowlist
+        .arg("--")
+        .arg(prompt)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| RuvosError::InternalError(format!("runner '{}': {}", runner, e)))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| RuvosError::InternalError("runner stdout unavailable".to_string()))?;
+    // Drain stderr concurrently so a chatty runner can't block on a full pipe.
+    let stderr = child.stderr.take();
+    let stderr_task = tokio::spawn(async move {
+        let mut buf = String::new();
+        if let Some(mut e) = stderr {
+            let _ = e.read_to_string(&mut buf).await;
+        }
+        buf
+    });
+
+    let mut monitor = DriftMonitor::new(3.0);
+    let mut lines = BufReader::new(stdout).lines();
+    let mut collected = Vec::new();
+    while let Some(line) = lines
+        .next_line()
+        .await
+        .map_err(|e| RuvosError::InternalError(format!("runner stream: {}", e)))?
+    {
+        monitor.observe(line.len() as f64); // one observation per streamed chunk
+        collected.push(line);
+    }
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| RuvosError::InternalError(format!("runner wait: {}", e)))?;
+    let stderr_str = stderr_task.await.unwrap_or_default();
+
+    let success = status.success();
+    let mut result = collected.join("\n").trim().to_string();
+    let anomalies = monitor.anomalies();
+    if anomalies > 0 {
+        result = format!("{result}\n[stream] {anomalies} output anomaly(ies) flagged")
+            .trim()
+            .to_string();
+    }
+    if !success {
+        let stderr_str = stderr_str.trim();
+        if !stderr_str.is_empty() {
+            result = format!("{result}\n[stderr] {stderr_str}")
+                .trim()
+                .to_string();
+        }
+    }
+
+    Ok(TaskOutcome {
+        artifact_path,
+        bytes,
+        result,
+        success,
+        exit_code: status.code(),
+        stream: Some((monitor.count(), anomalies)),
+    })
 }
 
 // ============================================================================
@@ -292,6 +352,11 @@ impl ToolHandler for AgentSpawnHandler {
             // blocks or fails the spawn if the transport setup fails.
             register_agent_transport(&agent_id).await;
 
+            // Inflight-stream summary (ADR-008), present only when a runner streamed.
+            let stream = outcome
+                .stream
+                .map(|(observed, anomalies)| json!({"observed": observed, "anomalies": anomalies}));
+
             Ok(json!({
                 "agent_id": agent_id,
                 "archetype": archetype,
@@ -300,7 +365,8 @@ impl ToolHandler for AgentSpawnHandler {
                 "exit_code": outcome.exit_code,
                 "artifact_path": outcome.artifact_path,
                 "artifact_bytes": outcome.bytes,
-                "result": outcome.result
+                "result": outcome.result,
+                "stream": stream
             }))
         })
     }
@@ -447,6 +513,30 @@ mod tests {
         let o = run_task("a1", "coder", "x", None).await.unwrap();
         assert!(o.success, "no executor → assumed success");
         assert_eq!(o.exit_code, None);
+        assert!(o.stream.is_none(), "no runner → no stream analysis");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runner_stdout_is_streamed_and_observed() {
+        use std::os::unix::fs::PermissionsExt;
+        let g = isolate();
+        // A runner that emits 12 lines and exits 0.
+        let script = g.path().join("multi.sh");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nfor i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo \"line$i\"; done\nexit 0\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let o = run_task("a4", "coder", "x", script.to_str()).await.unwrap();
+        assert!(o.success);
+        let (observed, _anomalies) = o.stream.expect("runner stream summary");
+        assert!(
+            observed >= 12,
+            "every streamed line is observed, got {observed}"
+        );
     }
 
     #[cfg(unix)]
@@ -527,19 +617,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runner_env_executes_real_subprocess() {
+    async fn runner_executes_real_subprocess() {
         let _g = isolate();
-        // Use a real system binary as the runner: `echo` prints its args.
-        std::env::set_var("RUVOS_AGENT_RUNNER", "echo");
-        let r = spawn("docs", "document the API").await;
-        std::env::remove_var("RUVOS_AGENT_RUNNER");
-        // echo <archetype> <prompt> -> stdout captured as result
-        let result = r["result"].as_str().unwrap();
-        assert!(
-            result.contains("docs"),
-            "runner stdout captured: {}",
-            result
-        );
-        assert!(result.contains("document the API"));
+        // Use a real system binary as the runner: `echo` prints its args. Driven
+        // via run_task with an explicit runner so the test never mutates the
+        // process-global RUVOS_AGENT_RUNNER (which would race other tests).
+        let o = run_task("r1", "docs", "document the API", Some("echo"))
+            .await
+            .unwrap();
+        // echo <archetype> -- <prompt> → stdout captured as result.
+        assert!(o.success);
+        assert!(o.result.contains("docs"), "runner stdout: {}", o.result);
+        assert!(o.result.contains("document the API"));
+        assert!(o.stream.is_some(), "runner output is stream-analyzed");
     }
 }

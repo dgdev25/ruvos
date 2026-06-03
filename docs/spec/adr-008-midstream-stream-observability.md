@@ -1,6 +1,6 @@
 # ADR-008: `midstream` live stream observability for `hooks`/`intel`
 
-**Status:** Accepted (2026-06-03)
+**Status:** Implemented (2026-06-03) — recording-only (`intel`/response); the optional `hooks.observe` tool was not added, so the 24-tool count is unchanged
 **Amends:** scope-ledger-v1.md §1 (may add `hooks.observe`); adds substrate crate `ruvos-stream`
 **Tier:** 2 · **Source:** rUvnet `midstream` (`midstreamer-temporal-compare`, `-scheduler`)
 
@@ -57,9 +57,24 @@ Its QUIC/WASM crates are optional and **not** needed here.
 - **Build a bespoke detector** — rejected: DTW temporal-compare is exactly the
   rUvnet-original IP to reuse.
 
+## Implementation note (2026-06-03)
+
+Shipped as `substrate/ruvos-stream` (pure `std`): [`dtw_distance`] (DP Dynamic
+Time Warping, for comparing a run's trajectory to a reference) + [`DriftMonitor`]
+(single-pass Welford mean/variance with z-score anomaly flagging after an 8-sample
+warm-up). The QUIC/WASM crates were not vendored.
+
+`agent.spawn`'s runner path was switched from buffered `.output()` to **streaming
+execution**: stdout is read line-by-line and each line's length fed to a
+`DriftMonitor` *as it arrives* (stderr drained concurrently to avoid pipe
+deadlock). The response gains `stream: { observed, anomalies }`, anomalies are
+noted in the persisted result/`gov.events`, and a failing exit still yields the
+ADR-009 outcome. **Recording-only**: no `hooks.observe` tool was added (tool count
+stays 24); a future ADR can promote the live signal to early-abort if warranted.
+
 ## Rollout
 
-Sequenced **last** of the five (after GOAP + hybrid retrieval prove out).
+Implemented. Sequenced **last** of the five (after GOAP + hybrid retrieval).
 Decision point before implementation: ship as **`intel`-only** (no tool count
 change) vs. add **`hooks.observe`** (ledger 24 → 25). Plan to be written when
 scheduled.

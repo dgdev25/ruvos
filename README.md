@@ -343,7 +343,10 @@ artifact on disk and is saved in the shared store.
 > When an external runner is configured (`RUVOS_AGENT_RUNNER`), `success`/`exit_code`
 > reflect the runner's real process exit status; `status` becomes `"failed"` on a
 > non-zero exit. `orchestrate.run` uses this to **stop a pipeline at the first
-> failed step** (a failed `tester` won't run `reviewer`).
+> failed step** (a failed `tester` won't run `reviewer`), or — with `max_retries` —
+> loop back to `coder` for bounded rework. The runner's stdout is analyzed **as it
+> streams** (DTW + drift detection), and the response carries
+> `stream: { observed, anomalies }` flagging unusual output mid-run.
 
 **`agent.status`** — see what agents exist and their state (all, or one by id).
 🗣️ *"rUvOS, what are my agents up to?"*
