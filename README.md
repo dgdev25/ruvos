@@ -458,7 +458,7 @@ no database** — presence and messages are plain files, delivered the next time
 someone calls `relay.list`. Instances quiet for 60s are pruned automatically.
 
 <p align="center">
-  <img src="assets/diagrams/relay.svg" alt="Relay cross-instance coordination: Instance A (backend) calls relay.announce and relay.send, writing plain files into the shared $RUVOS_HOME/relays/ directory; Instance B (frontend) calls relay.list to read and drain its inbox. Messaging is bidirectional. No daemon, no port, no database; 60-second TTL liveness prunes stale instances; every announce/send is recorded in the signed gov.events audit log." width="100%">
+  <img src="assets/diagrams/relay.svg" alt="Relay cross-instance coordination: Instance A (backend) calls relay.announce and relay.send, writing plain JSON files into the shared $RUVOS_HOME/relays/ directory — &lt;id&gt;.json presence records and &lt;id&gt;.inbox/&lt;msg&gt;.json messages (ephemeral JSON, not .rvf); Instance B (frontend) calls relay.list to read and drain its inbox. Messaging is bidirectional. No daemon, no port, no database; 60-second TTL liveness prunes stale instances. Durable provenance: every relay.announce and relay.send is written to the signed gov.events audit log in the redb store, so the fact that coordination happened is permanently recorded even though the mailbox files are ephemeral." width="100%">
 </p>
 
 ```bash
@@ -489,7 +489,14 @@ read). Scope is `machine`, `directory`, or `repo`.
 // → { "delivered":true, "message_id":"…" }
 ```
 
-Every `announce`/`send` is recorded in the signed `gov.events` audit log.
+> 🧾 **Durable provenance, even though the mailboxes are ephemeral.** The relay
+> files themselves are deliberately throwaway — plain JSON (`<id>.json` presence +
+> `<id>.inbox/<msg>.json` messages), **not `.rvf`**, pruned after 60s. But **every
+> `relay.announce` and `relay.send` is written to the signed `gov.events` audit log**
+> (in the redb store). So the *fact that* two instances coordinated — who announced,
+> who messaged whom, when — is **permanently and verifiably recorded**, while the
+> transient mailbox files are free to disappear. You get lightweight coordination
+> *and* a tamper-evident trail of it.
 
 ---
 
