@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-labelledby="t">
+  <title id="t">rUvOS — gives your AI coding assistant a memory and a team</title>
+  <defs>
+    <style>
+      :root{ --accent:#0d9488; --accent2:#2563eb; --on:#ffffff; --chip:#ffffff26; --sub:#ffffffdd; }
+      @media (prefers-color-scheme: dark){ :root{ --accent:#14b8a6; --accent2:#3b82f6; } }
+      text{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+      .mono{ font-family:ui-monospace,Menlo,Consolas,monospace; }
+    </style>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--accent)"/>
+      <stop offset="1" stop-color="var(--accent2)"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.18" r="0.7">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="360" rx="24" fill="url(#hero)"/>
+  <rect x="0" y="0" width="1200" height="360" rx="24" fill="url(#glow)"/>
+
+  <!-- wordmark -->
+  <text x="80" y="150" font-size="66" font-weight="800" fill="var(--on)">r<tspan fill="#d7fff7">Uv</tspan>OS</text>
+  <!-- taglines -->
+  <text x="82" y="202" font-size="26" font-weight="500" fill="var(--on)">Gives your AI coding assistant a memory and a team.</text>
+  <text x="82" y="234" font-size="16" fill="var(--sub)">One static Rust binary that plugs into Claude Code over MCP — no cloud, no database, no Node.</text>
+
+  <!-- capability chips -->
+  <g font-size="15" font-weight="600" fill="var(--on)">
+    <rect x="80"  y="266" width="212" height="42" rx="21" fill="var(--chip)"/><text x="100" y="293">🧠 Persistent memory</text>
+    <rect x="304" y="266" width="214" height="42" rx="21" fill="var(--chip)"/><text x="324" y="293">👥 Multi-agent swarms</text>
+    <rect x="530" y="266" width="182" height="42" rx="21" fill="var(--chip)"/><text x="550" y="293">🔒 Local &amp; signed</text>
+    <rect x="724" y="266" width="156" height="42" rx="21" fill="var(--chip)"/><text x="744" y="293">🦀 100% Rust</text>
+  </g>
+
+  <!-- version tag -->
+  <text class="mono" x="1120" y="58" font-size="14" fill="var(--sub)" text-anchor="end">v4.0.0-rc.1</text>
+</svg>

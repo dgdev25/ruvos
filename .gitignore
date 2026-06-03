@@ -31,3 +31,5 @@ Cargo.lock
 
 # Superpowers process/planning docs — internal artifacts, not part of the repo
 docs/superpowers/
+README.old.md
+assets/preview.html

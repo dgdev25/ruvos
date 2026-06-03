@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="t">
+  <title id="t">How rUvOS works — recall, plan, run, learn, repeat</title>
+  <defs>
+    <style>
+      :root{ --bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--ink:#1f2328;--muted:#656d76;--accent:#0d9488;--accent2:#2563eb;--on:#fff; }
+      @media (prefers-color-scheme: dark){ :root{ --bg:#0d1117;--surface:#161b22;--border:#30363d;--ink:#e6edf3;--muted:#8b949e;--accent:#14b8a6;--accent2:#3b82f6; } }
+      text{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+      .card{ fill:var(--surface); stroke:var(--border); stroke-width:1.5; }
+      .t{ fill:var(--ink); font-weight:600; } .d{ fill:var(--muted); } .num{ fill:var(--on); font-weight:700; }
+      .title{ fill:var(--ink); font-weight:700; } .loop{ fill:var(--accent); font-weight:600; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--accent2)"/></linearGradient>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+  </defs>
+
+  <rect width="1200" height="420" fill="var(--bg)"/>
+  <text x="60" y="56" font-size="27" class="title">How it works — you talk, it remembers, plans, runs, and learns</text>
+
+  <!-- 5 stage cards: x = 60 + i*228, width 200, gap 28 -->
+  <!-- 1 -->
+  <rect class="card" x="60"  y="96" width="200" height="150" rx="14"/>
+  <circle cx="92" cy="130" r="17" fill="url(#g)"/><text class="num" x="92" y="136" font-size="15" text-anchor="middle">1</text>
+  <text class="t" x="124" y="135" font-size="17">You ask</text>
+  <text class="d" x="80" y="178" font-size="13">In plain language —</text>
+  <text class="d" x="80" y="197" font-size="13">no commands or</text>
+  <text class="d" x="80" y="216" font-size="13">keywords to learn.</text>
+  <!-- 2 -->
+  <rect class="card" x="288" y="96" width="200" height="150" rx="14"/>
+  <circle cx="320" cy="130" r="17" fill="url(#g)"/><text class="num" x="320" y="136" font-size="15" text-anchor="middle">2</text>
+  <text class="t" x="352" y="135" font-size="17">Recall</text>
+  <text class="d" x="308" y="178" font-size="13">Relevant past</text>
+  <text class="d" x="308" y="197" font-size="13">decisions (hybrid</text>
+  <text class="d" x="308" y="216" font-size="13">search + graph).</text>
+  <!-- 3 -->
+  <rect class="card" x="516" y="96" width="200" height="150" rx="14"/>
+  <circle cx="548" cy="130" r="17" fill="url(#g)"/><text class="num" x="548" y="136" font-size="15" text-anchor="middle">3</text>
+  <text class="t" x="580" y="135" font-size="17">Plan</text>
+  <text class="d" x="536" y="178" font-size="13">A planner computes</text>
+  <text class="d" x="536" y="197" font-size="13">the agent pipeline</text>
+  <text class="d" x="536" y="216" font-size="13">for the goal.</text>
+  <!-- 4 -->
+  <rect class="card" x="744" y="96" width="200" height="150" rx="14"/>
+  <circle cx="776" cy="130" r="17" fill="url(#g)"/><text class="num" x="776" y="136" font-size="15" text-anchor="middle">4</text>
+  <text class="t" x="808" y="135" font-size="17">Agents run</text>
+  <text class="d" x="764" y="178" font-size="13">A team of agents</text>
+  <text class="d" x="764" y="197" font-size="13">works; failures</text>
+  <text class="d" x="764" y="216" font-size="13">retry or stop.</text>
+  <!-- 5 -->
+  <rect class="card" x="972" y="96" width="200" height="150" rx="14"/>
+  <circle cx="1004" cy="130" r="17" fill="url(#g)"/><text class="num" x="1004" y="136" font-size="15" text-anchor="middle">5</text>
+  <text class="t" x="1036" y="135" font-size="17">Learn</text>
+  <text class="d" x="992" y="178" font-size="13">Outcomes sharpen</text>
+  <text class="d" x="992" y="197" font-size="13">the next recall</text>
+  <text class="d" x="992" y="216" font-size="13">and plan.</text>
+
+  <!-- forward arrows between cards -->
+  <line x1="262" y1="171" x2="286" y2="171" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="490" y1="171" x2="514" y2="171" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="718" y1="171" x2="742" y2="171" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="946" y1="171" x2="970" y2="171" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- feedback loop: Learn (5) back to Recall (2) -->
+  <path d="M1072,246 C1072,300 1072,330 660,330 C520,330 460,330 388,278"
+        fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#a)"/>
+  <text class="loop" x="666" y="322" font-size="14" text-anchor="middle">the flywheel — every run makes the next one better</text>
+
+  <!-- spine note -->
+  <text class="d" x="60" y="392" font-size="13">Underneath every step: a safety gate checks risky actions, and a signed audit log records what happened.</text>
+</svg>

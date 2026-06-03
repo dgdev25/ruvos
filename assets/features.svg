@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 580" width="1200" height="580" role="img" aria-labelledby="t">
+  <title id="t">Features — nine tool domains, 24 tools</title>
+  <defs>
+    <style>
+      :root{ --bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--ink:#1f2328;--muted:#656d76;--accent:#0d9488;--accent2:#2563eb; }
+      @media (prefers-color-scheme: dark){ :root{ --bg:#0d1117;--surface:#161b22;--border:#30363d;--ink:#e6edf3;--muted:#8b949e;--accent:#14b8a6;--accent2:#3b82f6; } }
+      text{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+      .mono{ font-family:ui-monospace,Menlo,Consolas,monospace; }
+      .card{ fill:var(--surface); stroke:var(--border); stroke-width:1.5; }
+      .t{ fill:var(--ink); font-weight:700; } .d{ fill:var(--ink); } .m{ fill:var(--muted); } .title{ fill:var(--ink); font-weight:700; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--accent2)"/></linearGradient>
+  </defs>
+
+  <rect width="1200" height="580" fill="var(--bg)"/>
+  <text x="40" y="44" font-size="26" class="title">Nine domains · 24 tools</text>
+
+  <!-- 3x3 grid: x = 40 + col*390 (cards 360, gap 30); y = 70 + row*162 (cards 142) -->
+  <!-- row 0 -->
+  <g>
+    <rect class="card" x="40" y="70" width="360" height="142" rx="14"/>
+    <rect x="64" y="94" width="44" height="44" rx="11" fill="url(#g)"/><text x="86" y="124" font-size="22" text-anchor="middle">🧠</text>
+    <text class="t" x="124" y="114" font-size="19">memory</text>
+    <text class="m mono" x="124" y="138" font-size="12">search · store · retrieve · list</text>
+    <text class="d" x="64" y="180" font-size="14">Hybrid semantic memory that survives</text>
+    <text class="d" x="64" y="200" font-size="14">restarts, plus a knowledge graph.</text>
+  </g>
+  <g>
+    <rect class="card" x="430" y="70" width="360" height="142" rx="14"/>
+    <rect x="454" y="94" width="44" height="44" rx="11" fill="url(#g)"/><text x="476" y="124" font-size="22" text-anchor="middle">💾</text>
+    <text class="t" x="514" y="114" font-size="19">session</text>
+    <text class="m mono" x="514" y="138" font-size="12">create · resume · fork</text>
+    <text class="d" x="454" y="180" font-size="14">Resumable work contexts as signed</text>
+    <text class="d" x="454" y="200" font-size="14">.rvf files; fork before risky changes.</text>
+  </g>
+  <g>
+    <rect class="card" x="820" y="70" width="360" height="142" rx="14"/>
+    <rect x="844" y="94" width="44" height="44" rx="11" fill="url(#g)"/><text x="866" y="124" font-size="22" text-anchor="middle">👥</text>
+    <text class="t" x="904" y="114" font-size="19">agent</text>
+    <text class="m mono" x="904" y="138" font-size="12">spawn · status · message</text>
+    <text class="d" x="844" y="180" font-size="14">Spawn a team across 12 specialist</text>
+    <text class="d" x="844" y="200" font-size="14">archetypes; each leaves an artifact.</text>
+  </g>
+  <!-- row 1 -->
+  <g>
+    <rect class="card" x="40" y="232" width="360" height="142" rx="14"/>
+    <rect x="64" y="256" width="44" height="44" rx="11" fill="url(#g)"/><text x="86" y="286" font-size="22" text-anchor="middle">🛡️</text>
+    <text class="t" x="124" y="276" font-size="19">hooks</text>
+    <text class="m mono" x="124" y="300" font-size="12">pre · post · route</text>
+    <text class="d" x="64" y="342" font-size="14">Risk-checks risky actions and routes</text>
+    <text class="d" x="64" y="362" font-size="14">tasks to the right agent + model.</text>
+  </g>
+  <g>
+    <rect class="card" x="430" y="232" width="360" height="142" rx="14"/>
+    <rect x="454" y="256" width="44" height="44" rx="11" fill="url(#g)"/><text x="476" y="286" font-size="22" text-anchor="middle">🎓</text>
+    <text class="t" x="514" y="276" font-size="19">intel</text>
+    <text class="m mono" x="514" y="300" font-size="12">pattern_search · pattern_store</text>
+    <text class="d" x="454" y="342" font-size="14">Records how things were done and</text>
+    <text class="d" x="454" y="362" font-size="14">finds similar past approaches.</text>
+  </g>
+  <g>
+    <rect class="card" x="820" y="232" width="360" height="142" rx="14"/>
+    <rect x="844" y="256" width="44" height="44" rx="11" fill="url(#g)"/><text x="866" y="286" font-size="22" text-anchor="middle">🧩</text>
+    <text class="t" x="904" y="276" font-size="19">plugin</text>
+    <text class="m mono" x="904" y="300" font-size="12">list · invoke</text>
+    <text class="d" x="844" y="342" font-size="14">Discover and run plugins —</text>
+    <text class="d" x="844" y="362" font-size="14">markdown + shell, injection-guarded.</text>
+  </g>
+  <!-- row 2 -->
+  <g>
+    <rect class="card" x="40" y="394" width="360" height="142" rx="14"/>
+    <rect x="64" y="418" width="44" height="44" rx="11" fill="url(#g)"/><text x="86" y="448" font-size="22" text-anchor="middle">🧾</text>
+    <text class="t" x="124" y="438" font-size="19">gov</text>
+    <text class="m mono" x="124" y="462" font-size="12">health · witness_verify · events</text>
+    <text class="d" x="64" y="504" font-size="14">System health, a signed audit log,</text>
+    <text class="d" x="64" y="524" font-size="14">and tamper-evident verification.</text>
+  </g>
+  <g>
+    <rect class="card" x="430" y="394" width="360" height="142" rx="14"/>
+    <rect x="454" y="418" width="44" height="44" rx="11" fill="url(#g)"/><text x="476" y="448" font-size="22" text-anchor="middle">📡</text>
+    <text class="t" x="514" y="438" font-size="19">relay</text>
+    <text class="m mono" x="514" y="462" font-size="12">announce · list · send</text>
+    <text class="d" x="454" y="504" font-size="14">Independent instances discover and</text>
+    <text class="d" x="454" y="524" font-size="14">message each other — no daemon.</text>
+  </g>
+  <g>
+    <rect class="card" x="820" y="394" width="360" height="142" rx="14"/>
+    <rect x="844" y="418" width="44" height="44" rx="11" fill="url(#g)"/><text x="866" y="448" font-size="22" text-anchor="middle">🗺️</text>
+    <text class="t" x="904" y="438" font-size="19">orchestrate</text>
+    <text class="m mono" x="904" y="462" font-size="12">run</text>
+    <text class="d" x="844" y="504" font-size="14">GOAP-planned multi-agent pipelines</text>
+    <text class="d" x="844" y="524" font-size="14">with bounded retry/rework.</text>
+  </g>
+</svg>

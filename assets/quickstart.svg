@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 220" width="1200" height="220" role="img" aria-labelledby="t">
+  <title id="t">Quickstart — up and running in four steps</title>
+  <defs>
+    <style>
+      :root{ --bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--ink:#1f2328;--muted:#656d76;--accent:#0d9488;--accent2:#2563eb;--on:#fff;--ok:#1a7f37; }
+      @media (prefers-color-scheme: dark){ :root{ --bg:#0d1117;--surface:#161b22;--border:#30363d;--ink:#e6edf3;--muted:#8b949e;--accent:#14b8a6;--accent2:#3b82f6;--ok:#3fb950; } }
+      text{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+      .mono{ font-family:ui-monospace,Menlo,Consolas,monospace; }
+      .card{ fill:var(--surface); stroke:var(--border); stroke-width:1.5; }
+      .t{ fill:var(--ink); font-weight:600; } .d{ fill:var(--muted); } .num{ fill:var(--on); font-weight:700; } .title{ fill:var(--ink); font-weight:700; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--accent2)"/></linearGradient>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+  </defs>
+
+  <rect width="1200" height="220" fill="var(--bg)"/>
+  <text x="40" y="42" font-size="22" class="title">Up and running in four steps</text>
+
+  <!-- 4 cards: x = 40 + i*288 (cards 258, gap 30), y=70, h=120 -->
+  <g>
+    <rect class="card" x="40" y="70" width="258" height="120" rx="14"/>
+    <circle cx="72" cy="102" r="16" fill="url(#g)"/><text class="num" x="72" y="108" font-size="14" text-anchor="middle">1</text>
+    <text class="t" x="100" y="107" font-size="16">Clone &amp; run</text>
+    <text class="d mono" x="64" y="146" font-size="12.5">git clone … &amp;&amp;</text>
+    <text class="d mono" x="64" y="166" font-size="12.5">./setup.sh</text>
+  </g>
+  <g>
+    <rect class="card" x="328" y="70" width="258" height="120" rx="14"/>
+    <circle cx="360" cy="102" r="16" fill="url(#g)"/><text class="num" x="360" y="108" font-size="14" text-anchor="middle">2</text>
+    <text class="t" x="388" y="107" font-size="16">Restart Claude Code</text>
+    <text class="d" x="352" y="150" font-size="13">It loads MCP servers</text>
+    <text class="d" x="352" y="169" font-size="13">at startup.</text>
+  </g>
+  <g>
+    <rect class="card" x="616" y="70" width="258" height="120" rx="14"/>
+    <circle cx="648" cy="102" r="16" fill="url(#g)"/><text class="num" x="648" y="108" font-size="14" text-anchor="middle">3</text>
+    <text class="t" x="676" y="107" font-size="16">Verify</text>
+    <text class="d mono" x="640" y="146" font-size="12.5">claude mcp list</text>
+    <text x="640" y="168" font-size="13" fill="var(--ok)" font-weight="600">→ ruvos ✓ Connected</text>
+  </g>
+  <g>
+    <rect class="card" x="904" y="70" width="256" height="120" rx="14"/>
+    <circle cx="936" cy="102" r="16" fill="url(#g)"/><text class="num" x="936" y="108" font-size="14" text-anchor="middle">4</text>
+    <text class="t" x="964" y="107" font-size="16">Just talk</text>
+    <text class="d" x="928" y="150" font-size="13">All 24 tools, in every</text>
+    <text class="d" x="928" y="169" font-size="13">project. No keywords.</text>
+  </g>
+
+  <!-- arrows between cards -->
+  <line x1="300" y1="130" x2="326" y2="130" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="588" y1="130" x2="614" y2="130" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="876" y1="130" x2="902" y2="130" stroke="var(--accent)" stroke-width="2" marker-end="url(#a)"/>
+</svg>

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 560" width="1100" height="560" role="img" aria-labelledby="t">
+  <title id="t">Architecture — the rUvOS shell runs on the RuVector kernel</title>
+  <defs>
+    <style>
+      :root{ --bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--ink:#1f2328;--muted:#656d76;--accent:#0d9488;--accent2:#2563eb;--band:#0d948814;--band2:#2563eb12; }
+      @media (prefers-color-scheme: dark){ :root{ --bg:#0d1117;--surface:#161b22;--border:#30363d;--ink:#e6edf3;--muted:#8b949e;--accent:#14b8a6;--accent2:#3b82f6;--band:#14b8a61f;--band2:#3b82f61c; } }
+      text{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+      .mono{ font-family:ui-monospace,Menlo,Consolas,monospace; }
+      .node{ fill:var(--surface); stroke:var(--border); stroke-width:1.5; }
+      .ink{ fill:var(--ink); } .muted{ fill:var(--muted); }
+      .lblT{ fill:var(--accent); font-weight:700; letter-spacing:1px; }
+      .lblK{ fill:var(--accent2); font-weight:700; letter-spacing:1px; }
+      .title{ fill:var(--ink); font-weight:700; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+  </defs>
+
+  <rect width="1100" height="560" fill="var(--bg)"/>
+  <text x="50" y="46" font-size="26" class="title">Two layers, one binary</text>
+
+  <!-- SHELL band -->
+  <rect x="40" y="78" width="1020" height="150" rx="16" fill="var(--band)"/>
+  <text class="lblT mono" x="60" y="104" font-size="13">rUvOS — ORCHESTRATION SHELL · 6 crates</text>
+  <!-- 6 nodes: x=60 + i*166, w=146, y=120, h=78 -->
+  <g class="mono" font-size="12.5">
+    <rect class="node" x="60"  y="120" width="146" height="80" rx="12"/><text class="ink" x="133" y="156" font-size="13" text-anchor="middle" font-weight="600">ruvos-cli</text><text class="muted" x="133" y="178" text-anchor="middle">CLI</text>
+    <rect class="node" x="226" y="120" width="146" height="80" rx="12"/><text class="ink" x="299" y="156" font-size="13" text-anchor="middle" font-weight="600">ruvos-mcp</text><text class="muted" x="299" y="178" text-anchor="middle">24 tools</text>
+    <rect class="node" x="392" y="120" width="146" height="80" rx="12"/><text class="ink" x="465" y="156" font-size="13" text-anchor="middle" font-weight="600">ruvos-host</text><text class="muted" x="465" y="178" text-anchor="middle">CLI adapters</text>
+    <rect class="node" x="558" y="120" width="146" height="80" rx="12"/><text class="ink" x="631" y="150" font-size="13" text-anchor="middle" font-weight="600">plugin-host</text><text class="muted" x="631" y="178" text-anchor="middle">plugins</text>
+    <rect class="node" x="724" y="120" width="146" height="80" rx="12"/><text class="ink" x="797" y="156" font-size="13" text-anchor="middle" font-weight="600">ruvos-hooks</text><text class="muted" x="797" y="178" text-anchor="middle">safety+learn</text>
+    <rect class="node" x="890" y="120" width="146" height="80" rx="12"/><text class="ink" x="963" y="150" font-size="13" text-anchor="middle" font-weight="600">ruvos-session</text><text class="muted" x="963" y="178" text-anchor="middle">.rvf</text>
+  </g>
+
+  <!-- runs-on arrow -->
+  <line x1="550" y1="228" x2="550" y2="266" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#a)"/>
+  <text class="muted" x="566" y="252" font-size="13">runs on</text>
+
+  <!-- KERNEL band -->
+  <rect x="40" y="278" width="1020" height="244" rx="16" fill="var(--band2)"/>
+  <text class="lblK mono" x="60" y="304" font-size="13">RuVector — KERNEL + SUBSTRATE · pure Rust</text>
+  <!-- grouped nodes, 4 columns x 2 rows. col width 240, x=60+col*246, y row1=318 row2=420, h=86 -->
+  <g class="mono" font-size="12">
+    <!-- row 1 -->
+    <rect class="node" x="60"  y="318" width="226" height="88" rx="12"/><text class="ink" x="173" y="350" font-size="13" text-anchor="middle" font-weight="600">vector search</text><text class="muted" x="173" y="372" text-anchor="middle">HNSW · RaBitQ · ACORN</text><text class="muted" x="173" y="390" text-anchor="middle">ruvector-core</text>
+    <rect class="node" x="306" y="318" width="226" height="88" rx="12"/><text class="ink" x="419" y="350" font-size="13" text-anchor="middle" font-weight="600">memory + learning</text><text class="muted" x="419" y="372" text-anchor="middle">knowledge graph</text><text class="muted" x="419" y="390" text-anchor="middle">sona · memory-graph</text>
+    <rect class="node" x="552" y="318" width="226" height="88" rx="12"/><text class="ink" x="665" y="350" font-size="13" text-anchor="middle" font-weight="600">planning</text><text class="muted" x="665" y="372" text-anchor="middle">GOAP A* · DAG retry</text><text class="muted" x="665" y="390" text-anchor="middle">goap · graphflow</text>
+    <rect class="node" x="798" y="318" width="238" height="88" rx="12"/><text class="ink" x="917" y="350" font-size="13" text-anchor="middle" font-weight="600">state + provenance</text><text class="muted" x="917" y="372" text-anchor="middle">redb · .rvf witness</text><text class="muted" x="917" y="390" text-anchor="middle">ruvos-store · rvf-crypto</text>
+    <!-- row 2 -->
+    <rect class="node" x="60"  y="420" width="226" height="84" rx="12"/><text class="ink" x="173" y="450" font-size="13" text-anchor="middle" font-weight="600">safety</text><text class="muted" x="173" y="472" text-anchor="middle">behavioral guardrails</text><text class="muted" x="173" y="490" text-anchor="middle">ruvos-safety</text>
+    <rect class="node" x="306" y="420" width="226" height="84" rx="12"/><text class="ink" x="419" y="450" font-size="13" text-anchor="middle" font-weight="600">stream analysis</text><text class="muted" x="419" y="472" text-anchor="middle">DTW · drift detect</text><text class="muted" x="419" y="490" text-anchor="middle">ruvos-stream</text>
+    <rect class="node" x="552" y="420" width="226" height="84" rx="12"/><text class="ink" x="665" y="450" font-size="13" text-anchor="middle" font-weight="600">coordination</text><text class="muted" x="665" y="472" text-anchor="middle">swarm transport</text><text class="muted" x="665" y="490" text-anchor="middle">ruv-swarm-transport</text>
+    <rect class="node" x="798" y="420" width="238" height="84" rx="12"/><text class="ink" x="917" y="450" font-size="13" text-anchor="middle" font-weight="600">federated search</text><text class="muted" x="917" y="472" text-anchor="middle">many backends</text><text class="muted" x="917" y="490" text-anchor="middle">rulake</text>
+  </g>
+</svg>
