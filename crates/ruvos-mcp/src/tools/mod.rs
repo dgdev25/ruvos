@@ -1,6 +1,7 @@
-//! Tool registry for all 20 MCP tools.
+//! Tool registry for all 21 MCP tools.
 
 pub mod agent;
+pub mod agent_store;
 pub mod echo;
 pub mod embedding;
 pub mod gov;
@@ -25,7 +26,7 @@ pub struct ToolMetadata {
     pub domain: String,
 }
 
-/// Create a new registry with all 20 tools + test tools registered.
+/// Create a new registry with all 21 tools + test tools registered.
 pub fn create_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
@@ -64,6 +65,7 @@ pub fn create_registry() -> ToolRegistry {
     // Register gov tools
     registry.register(Box::new(gov::GovWitnessVerifyHandler));
     registry.register(Box::new(gov::GovHealthHandler));
+    registry.register(Box::new(gov::GovEventsHandler));
 
     // Register workflow tools
     registry.register(Box::new(workflow::WorkflowRunHandler));
@@ -71,7 +73,7 @@ pub fn create_registry() -> ToolRegistry {
     registry
 }
 
-/// Return the registry of all 20 tools (metadata only).
+/// Return the registry of all 21 tools (metadata only).
 pub fn tool_registry() -> Vec<ToolMetadata> {
     vec![
         // Memory (4)
@@ -179,6 +181,13 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Doctor / status across substrate, hosts, MCP, daemon".to_string(),
             domain: "gov".to_string(),
         },
+        ToolMetadata {
+            name: "gov.events".to_string(),
+            description:
+                "Query the signed audit/event log (since / by agent / by type) from the store"
+                    .to_string(),
+            domain: "gov".to_string(),
+        },
         // Workflow (1)
         ToolMetadata {
             name: "workflow.run".to_string(),
@@ -198,8 +207,8 @@ mod integration_tests {
     #[test]
     fn test_full_registry_creation() {
         let registry = create_registry();
-        // All 20 tools + 1 test echo tool = 21
-        assert_eq!(registry.tool_count(), 21);
+        // All 21 tools + 1 test echo tool = 22
+        assert_eq!(registry.tool_count(), 22);
     }
 
     #[test]

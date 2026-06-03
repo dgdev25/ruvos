@@ -52,6 +52,11 @@ pub fn agents_file() -> PathBuf {
     data_root().join("agents.json")
 }
 
+/// Path to the JSON-backed temporal memory knowledge graph.
+pub fn memory_graph_file() -> PathBuf {
+    data_root().join("memory-graph.json")
+}
+
 /// Ensure the data root exists, returning it.
 pub fn ensure_root() -> std::io::Result<PathBuf> {
     let root = data_root();

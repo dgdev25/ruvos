@@ -1,15 +1,18 @@
 //! Agent domain tools (3): spawn, status, message.
 //!
-//! Agents are persisted to disk (source of truth, survives restarts) and
-//! really execute their task on spawn: each agent produces a real work
-//! artifact on disk, and — when `RUVOS_AGENT_RUNNER` is set — additionally
-//! runs that command as a real subprocess and captures its output.
+//! Agents are persisted to the redb-backed `ruvos-store` (source of truth,
+//! survives restarts, signed `.rvf` snapshots) and really execute their task
+//! on spawn: each agent produces a real work artifact on disk, and — when
+//! `RUVOS_AGENT_RUNNER` is set — additionally runs that command as a real
+//! subprocess and captures its output. Every spawn and message also appends an
+//! `EventRecord` to the store's audit log (queryable via `gov.events`).
 //!
-//! In addition to disk persistence, each spawned agent is registered with a
+//! In addition to store persistence, each spawned agent is registered with a
 //! process-global `InProcessRegistry` so that `agent.message` can deliver
-//! messages over a real in-process channel (additive — disk persistence is
+//! messages over a real in-process channel (additive — store persistence is
 //! always kept regardless of transport availability).
 
+use super::agent_store;
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::{paths, Result, RuvosError};
 use ruv_swarm_transport::{
@@ -17,9 +20,8 @@ use ruv_swarm_transport::{
     protocol::{Message, MessageType},
     TransportConfig,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
@@ -100,57 +102,6 @@ const VALID_ARCHETYPES: &[&str] = &[
     "docs",
     "coordinator",
 ];
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentMessage {
-    pub id: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentRecord {
-    pub id: String,
-    pub archetype: String,
-    pub traits: Vec<String>,
-    pub model: String,
-    pub prompt: String,
-    pub status: String,
-    pub created_at: String,
-    pub artifact_path: String,
-    pub artifact_bytes: u64,
-    #[serde(default)]
-    pub result: String,
-    #[serde(default)]
-    pub messages: Vec<AgentMessage>,
-}
-
-type Registry = BTreeMap<String, AgentRecord>;
-
-lazy_static::lazy_static! {
-    static ref FILE_LOCK: Mutex<()> = Mutex::new(());
-}
-
-fn load_registry() -> Registry {
-    match std::fs::read(paths::agents_file()) {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
-        Err(_) => Registry::new(),
-    }
-}
-
-fn save_registry(reg: &Registry) -> Result<()> {
-    paths::ensure_root()
-        .map_err(|e| RuvosError::InternalError(format!("cannot create data dir: {}", e)))?;
-    let path = paths::agents_file();
-    let bytes = serde_json::to_vec_pretty(reg)
-        .map_err(|e| RuvosError::InternalError(format!("serialize agents: {}", e)))?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, &bytes)
-        .map_err(|e| RuvosError::InternalError(format!("write agents: {}", e)))?;
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| RuvosError::InternalError(format!("commit agents: {}", e)))?;
-    Ok(())
-}
 
 /// The real work an agent performs: an archetype-specific plan derived from the
 /// prompt. This is genuine, deterministic content — not a placeholder.
@@ -258,7 +209,7 @@ impl ToolHandler for AgentSpawnHandler {
             let archetype = params["archetype"].as_str().unwrap_or_default().to_string();
             let prompt = params["prompt"].as_str().unwrap_or_default().to_string();
             let model = params["model"].as_str().unwrap_or_default().to_string();
-            let traits = params
+            let traits: Vec<String> = params
                 .get("traits")
                 .and_then(|v| v.as_array())
                 .map(|a| {
@@ -274,26 +225,20 @@ impl ToolHandler for AgentSpawnHandler {
             let (artifact_path, artifact_bytes, result) =
                 execute_task(&agent_id, &archetype, &prompt).await?;
 
-            let record = AgentRecord {
-                id: agent_id.clone(),
-                archetype: archetype.clone(),
-                traits,
-                model,
-                prompt,
-                status: "completed".to_string(),
-                created_at: chrono::Utc::now().to_rfc3339(),
-                artifact_path: artifact_path.clone(),
+            // Persist the agent + an audit event to the redb-backed store.
+            let record = agent_store::build_agent_record(
+                &agent_id,
+                &archetype,
+                &traits,
+                &model,
+                &prompt,
+                "completed",
+                &artifact_path,
                 artifact_bytes,
-                result: result.clone(),
-                messages: Vec::new(),
-            };
-
-            {
-                let _guard = FILE_LOCK.lock().unwrap();
-                let mut reg = load_registry();
-                reg.insert(agent_id.clone(), record);
-                save_registry(&reg)?;
-            }
+                &result,
+                &chrono::Utc::now().to_rfc3339(),
+            );
+            agent_store::persist_spawn(&record)?;
 
             // Register the agent with the in-process transport layer so it
             // can receive messages via agent.message.  Best-effort — never
@@ -330,39 +275,16 @@ impl ToolHandler for AgentStatusHandler {
     }
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
-            let _guard = FILE_LOCK.lock().unwrap();
-            let reg = load_registry();
-
             // Single-agent query when agent_id provided; else list all.
             if let Some(id) = params.get("agent_id").and_then(|v| v.as_str()) {
                 let transport_live = TRANSPORT_REGISTRY.contains(id);
-                return match reg.get(id) {
-                    Some(a) => Ok(json!({
-                        "found": true,
-                        "agent_id": a.id,
-                        "archetype": a.archetype,
-                        "status": a.status,
-                        "artifact_path": a.artifact_path,
-                        "message_count": a.messages.len(),
-                        "result": a.result,
-                        "transport_live": transport_live
-                    })),
+                return match agent_store::status_view(id, transport_live)? {
+                    Some(view) => Ok(view),
                     None => Ok(json!({ "found": false, "agent_id": id })),
                 };
             }
 
-            let agents: Vec<Value> = reg
-                .values()
-                .map(|a| {
-                    json!({
-                        "agent_id": a.id,
-                        "archetype": a.archetype,
-                        "status": a.status,
-                        "created_at": a.created_at,
-                        "message_count": a.messages.len()
-                    })
-                })
-                .collect();
+            let agents = agent_store::list_view()?;
             Ok(json!({ "count": agents.len(), "agents": agents }))
         })
     }
@@ -399,24 +321,10 @@ impl ToolHandler for AgentMessageHandler {
             let agent_id = params["agent_id"].as_str().unwrap_or_default().to_string();
             let content = params["message"].as_str().unwrap_or_default().to_string();
 
-            let (delivered, msg_id, count) = {
-                let _guard = FILE_LOCK.lock().unwrap();
-                let mut reg = load_registry();
-                match reg.get_mut(&agent_id) {
-                    Some(a) => {
-                        let msg = AgentMessage {
-                            id: Uuid::new_v4().to_string(),
-                            content: content.clone(),
-                            timestamp: chrono::Utc::now().to_rfc3339(),
-                        };
-                        let msg_id = msg.id.clone();
-                        a.messages.push(msg);
-                        let count = a.messages.len();
-                        save_registry(&reg)?;
-                        (true, msg_id, count)
-                    }
-                    None => (false, String::new(), 0),
-                }
+            let (delivered, msg_id, count) = match agent_store::append_message(&agent_id, &content)?
+            {
+                Some((msg_id, count)) => (true, msg_id, count),
+                None => (false, String::new(), 0),
             };
 
             if delivered {

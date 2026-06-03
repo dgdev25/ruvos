@@ -29,7 +29,6 @@ members = [
     # Integrated from rUvnet ecosystem (self-contained, zero external refs)
     "substrate/rulake",
     "substrate/ruv-swarm-transport",
-    "substrate/ruv-swarm-persistence",
     # Temporal knowledge graph
     "substrate/ruvos-memory-graph",
     # Behavioral safety guardrails and adaptive boundaries

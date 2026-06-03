@@ -26,6 +26,8 @@ ruvector-rabitq = { path = "../../substrate/ruvector-rabitq" }
 ruvector-sona = { path = "../../substrate/sona" }
 rulake = { path = "../../substrate/rulake" }
 ruv-swarm-transport = { path = "../../substrate/ruv-swarm-transport" }
+ruvos-store = { path = "../../substrate/ruvos-store" }
+ruvos-memory-graph = { path = "../../substrate/ruvos-memory-graph" }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }

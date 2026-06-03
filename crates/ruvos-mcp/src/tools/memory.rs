@@ -14,9 +14,11 @@
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::{paths, Result, RuvosError};
 use rulake::{LocalBackend, RuLake, SearchResult as LakeSearchResult};
+use ruvos_memory_graph::MemoryGraph;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +70,34 @@ lazy_static::lazy_static! {
 // clobber each other. Disk remains the source of truth.
 lazy_static::lazy_static! {
     static ref FILE_LOCK: Mutex<()> = Mutex::new(());
+}
+
+// ── Temporal knowledge graph (additive second view) ─────────────────────────
+//
+// `memory.store` feeds each value into a persisted `MemoryGraph` (entities +
+// co-occurrence edges); `memory.search` augments its results with a
+// `related_entities` array drawn from the graph. The graph is best-effort: a
+// graph error never fails the underlying store/search. One graph is cached per
+// resolved data root so parallel tests stay isolated (mirrors `crate::store`).
+lazy_static::lazy_static! {
+    static ref GRAPHS: Mutex<HashMap<PathBuf, &'static Mutex<MemoryGraph>>> =
+        Mutex::new(HashMap::new());
+}
+
+/// Process-global memory graph for the current data root, opened from
+/// `memory-graph.json`. Returns `None` if the graph cannot be opened (in which
+/// case callers silently skip the graph — it is additive).
+fn graph() -> Option<&'static Mutex<MemoryGraph>> {
+    let key = paths::memory_graph_file();
+    let mut map = GRAPHS.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(g) = map.get(&key) {
+        return Some(g);
+    }
+    let _ = paths::ensure_root();
+    let opened = MemoryGraph::open(&key).ok()?;
+    let leaked: &'static Mutex<MemoryGraph> = Box::leak(Box::new(Mutex::new(opened)));
+    map.insert(key, leaked);
+    Some(leaked)
 }
 
 /// FNV-1a 64-bit hash of a string key — stable, deterministic u64 id for
@@ -255,6 +285,14 @@ impl ToolHandler for MemoryStoreHandler {
             // Additive: also seed RuLake with this entry's embedding.
             let vec = embed(&entry_text(&entry));
             lake_append(&namespace, &key, vec);
+
+            // Additive: ingest the value into the temporal knowledge graph
+            // (entities + co-occurrence edges). Best-effort — never fails store.
+            if let Some(g) = graph() {
+                if let Ok(mut guard) = g.lock() {
+                    let _ = guard.add_episode(entry.value.clone(), namespace.clone());
+                }
+            }
 
             Ok(json!({
                 "status": "stored",
@@ -495,11 +533,31 @@ impl ToolHandler for MemorySearchHandler {
                 })
                 .collect();
 
+            // Additive: surface related entities from the temporal knowledge
+            // graph. Best-effort — an empty array when the graph is unavailable.
+            let related_entities: Vec<Value> = graph()
+                .and_then(|g| {
+                    g.lock().ok().map(|guard| {
+                        guard
+                            .search(&query, top_k)
+                            .iter()
+                            .map(|n| {
+                                json!({
+                                    "name": n.name,
+                                    "summary": n.summary
+                                })
+                            })
+                            .collect()
+                    })
+                })
+                .unwrap_or_default();
+
             Ok(json!({
                 "query": query,
                 "namespace": namespace,
                 "count": results.len(),
-                "results": results
+                "results": results,
+                "related_entities": related_entities
             }))
         })
     }
@@ -598,6 +656,41 @@ mod tests {
             .unwrap();
         assert_eq!(r["count"], 1);
         assert_eq!(r["results"][0]["key"], "persisted");
+    }
+
+    #[tokio::test]
+    async fn store_builds_graph_entities() {
+        let _g = isolate();
+        store("e1", "Alice met Bob at the London conference", "default").await;
+        // The knowledge graph should have ingested named entities.
+        let g = graph().expect("graph opens");
+        let guard = g.lock().unwrap();
+        assert!(
+            guard.node_count() > 0,
+            "memory.store must build graph entities"
+        );
+        assert!(guard.get_entity("Alice").is_some());
+    }
+
+    #[tokio::test]
+    async fn search_returns_related_entities() {
+        let _g = isolate();
+        store(
+            "db",
+            "PostgreSQL is a relational database used by engineers",
+            "default",
+        )
+        .await;
+        let r = MemorySearchHandler
+            .execute(json!({"query": "database relational storage", "namespace": "default"}))
+            .await
+            .unwrap();
+        let related = r["related_entities"].as_array().unwrap();
+        assert!(
+            !related.is_empty(),
+            "search must surface related graph entities: {:?}",
+            r
+        );
     }
 
     #[tokio::test]

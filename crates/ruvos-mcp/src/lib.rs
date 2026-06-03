@@ -7,7 +7,7 @@
 //! - **hooks** (3): pre, post, route
 //! - **intel** (2): pattern_search, pattern_store
 //! - **plugin** (2): list, invoke
-//! - **gov** (2): witness_verify, health
+//! - **gov** (3): witness_verify, health, events
 //! - **workflow** (1): run
 
 pub mod error;
@@ -15,6 +15,7 @@ pub mod paths;
 pub mod protocol;
 pub mod safety;
 pub mod server;
+pub mod store;
 pub mod tools;
 
 pub use error::{Result, RuvosError};
