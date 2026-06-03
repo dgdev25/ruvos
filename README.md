@@ -189,193 +189,268 @@ pipe one `initialize` line then `tools/call` lines into `ruvos mcp serve`.
 
 ## Feature reference — every tool, by example
 
-> Each block shows the `tools/call` arguments and the shape of the result. To run
-> any of them yourself, wrap with the transport boilerplate:
-> ```bash
-> printf '%s\n' \
-> '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
-> '<the tools/call line below>' \
-> | ruvos mcp serve
-> ```
+Each tool below has a plain-English description, the phrase you'd typically say
+(🗣️), and a small example showing the call and what it returns. To run any of
+them yourself, wrap the call line with the transport boilerplate:
+
+```bash
+printf '%s\n' \
+'{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
+'<the call line below>' \
+| ruvos mcp serve
+```
+
+---
 
 ### `memory` — persistent semantic memory + knowledge graph
 
-Vector search (HNSW + RaBitQ) with MMR diversity and recency, plus a temporal
-knowledge graph that returns `related_entities`. Survives restarts.
+Vector search (HNSW + RaBitQ) with diversity and recency, plus a temporal
+knowledge graph. Survives restarts.
 
+**`memory.store`** — save a fact you want remembered later.
+🗣️ *"Remember we're using PostgreSQL for this project."*
 ```jsonc
-// memory.store — remember something (namespaced, optional tags)
 {"name":"memory.store","arguments":{"key":"db","value":"postgres connection pooling via pgbouncer","namespace":"proj","tags":["infra"]}}
 // → { "status":"stored", "key":"db", "namespace":"proj" }
+```
 
-// memory.search — semantic recall + graph-derived related entities
+**`memory.search`** — recall by meaning, not exact words; also returns related
+entities from the knowledge graph.
+🗣️ *"What did we decide about the database?"*
+```jsonc
 {"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}
 // → { "count":1, "results":[{ "key":"db", "value":"postgres connection pooling…", "score":0.64 }],
 //     "related_entities":[{ "name":"Postgres", "summary":"…" }] }
+```
 
-// memory.retrieve — exact fetch by key
+**`memory.retrieve`** — fetch one entry by its exact key.
+```jsonc
 {"name":"memory.retrieve","arguments":{"key":"db","namespace":"proj"}}
 // → { "found":true, "key":"db", "value":"postgres connection pooling…", "tags":["infra"] }
+```
 
-// memory.list — everything in a namespace
+**`memory.list`** — list everything stored in a namespace.
+```jsonc
 {"name":"memory.list","arguments":{"namespace":"proj"}}
 // → { "namespace":"proj", "count":1, "entries":[ … ] }
 ```
 
+---
+
 ### `session` — resumable, signed work contexts
 
-A session is a signed `.rvf` container on disk. `fork` is a copy-on-write branch
-with a cryptographic lineage link to its parent.
+A session is a signed `.rvf` container on disk. You can pick work back up later,
+and `fork` makes a copy-on-write branch with a cryptographic link to its parent.
 
+**`session.create`** — start a session you can return to.
+🗣️ *"Let's start working on the users endpoint."*
 ```jsonc
-// session.create — start a session (optional initial state)
 {"name":"session.create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}
 // → { "session_id":"6305…", "name":"users-endpoint", "rvf_path":".ruvos/rvf/6305….rvf", "status":"created" }
+```
 
-// session.resume — restore full context by id (verifies the signature first)
+**`session.resume`** — restore the full context of a past session (the signature
+is verified first).
+🗣️ *"Pick up where we left off yesterday."*
+```jsonc
 {"name":"session.resume","arguments":{"session_id":"6305…"}}
 // → { "found":true, "name":"users-endpoint", "state":{ "branch":"feat/users" }, "status":"resumed" }
+```
 
-// session.fork — COW-branch before a risky change; child links to the parent
+**`session.fork`** — branch a session before a risky change; the child links
+back to the parent.
+🗣️ *"Fork this before we try the big refactor."*
+```jsonc
 {"name":"session.fork","arguments":{"source_session_id":"6305…"}}
 // → { "forked_id":"a1b2…", "source_session_id":"6305…", "status":"forked", "success":true }
 ```
 
+---
+
 ### `agent` — spawn, track, and message agents
 
-Spawn one of 12 archetypes; each produces a real work artifact on disk and is
-persisted in the shared store. Multiple Claude sessions can share the store.
+Spawn one of 12 archetypes (coder, tester, reviewer, …). Each produces a real
+work artifact on disk and is saved in the shared store.
 
+**`agent.spawn`** — put an agent to work on a prompt.
+🗣️ *"Get a coder to write the POST /users handler."*
 ```jsonc
-// agent.spawn — run an archetype on a prompt
 {"name":"agent.spawn","arguments":{"archetype":"coder","prompt":"write the POST /users handler","model":"claude-haiku-4-5","traits":["backend"]}}
 // → { "agent_id":"7ed0…", "archetype":"coder", "status":"completed",
 //     "artifact_path":".ruvos/agents/7ed0…/output.md", "artifact_bytes":264 }
+```
 
-// agent.status — list all agents, or one by id
+**`agent.status`** — see what agents exist and their state (all, or one by id).
+🗣️ *"What are my agents up to?"*
+```jsonc
 {"name":"agent.status","arguments":{}}
 // → { "count":2, "agents":[{ "agent_id":"7ed0…", "archetype":"coder", "status":"completed" }, … ] }
+```
 
-// agent.message — send a message to a spawned agent
+**`agent.message`** — send a follow-up message to an agent.
+🗣️ *"Tell the coder to also add pagination."*
+```jsonc
 {"name":"agent.message","arguments":{"agent_id":"7ed0…","message":"also add pagination"}}
 // → { "delivered":true, "message_id":"…", "message_count":1 }
 ```
 
+---
+
 ### `hooks` — lifecycle hooks, safety & routing
 
-`hooks.pre` runs a **safety risk assessment** for edit/command actions;
-`hooks.route` picks the best archetype + model tier for a task; `hooks.post`
-feeds outcomes back into learning.
+Safety checks before risky actions, model/archetype routing, and outcome
+recording that feeds learning.
 
+**`hooks.pre`** — risk-assess an action before it runs; flags destructive
+commands.
+🗣️ *"Is it safe to run this command?"*
 ```jsonc
-// hooks.pre — safety gate before a destructive command
-{"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"sudo rm -rf /var/data"}}}
-// → { "status":"ok", "safety":{ "passed":false, "safety_score":0.7,
-//      "violations":[{ "constraint":"destructive_command", "level":"High", … }] }, "blocked":true }
+{"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"<a destructive shell command>"}}}
+// → { "status":"ok", "blocked":true,
+//     "safety":{ "passed":false, "safety_score":0.7,
+//                "violations":[{ "constraint":"destructive_command", "level":"High" }] } }
+```
 
-// hooks.route — task → archetype + model tier + confidence
+**`hooks.route`** — pick the best archetype + model tier for a task.
+🗣️ *"Who should handle a security audit?"*
+```jsonc
 {"name":"hooks.route","arguments":{"task":"audit auth flow for injection vulnerabilities"}}
 // → { "archetype":"security", "model":"claude-opus-4-8", "tier":3, "confidence":0.8 }
+```
 
-// hooks.post — record an outcome (feeds SONA learning + the queue)
+**`hooks.post`** — record how an action turned out (feeds SONA learning).
+```jsonc
 {"name":"hooks.post","arguments":{"kind":"task","payload":{"task":"build endpoint"},"success":true,"message":"green"}}
 // → { "status":"ok", … }
 ```
 
+---
+
 ### `intel` — SONA trajectory learning
 
-Store the steps you took and how it turned out; later retrieve structurally
-similar past approaches (TF-cosine over disk + SONA cluster similarity).
+Remember the steps you took and how they turned out, then find similar past
+approaches later.
 
+**`intel.pattern_store`** — record a sequence of steps and its outcome.
+🗣️ *"Remember how we did that migration."*
 ```jsonc
-// intel.pattern_store — remember a trajectory + its outcome
 {"name":"intel.pattern_store","arguments":{"trajectory":["read schema","write migration","run tests"],"outcome":"success: migration applied"}}
 // → { "status":"stored", "pattern_id":"…", "total_patterns":1 }
+```
 
-// intel.pattern_search — find similar past trajectories
+**`intel.pattern_search`** — find past approaches similar to what you're doing now.
+🗣️ *"Have we done something like this before?"*
+```jsonc
 {"name":"intel.pattern_search","arguments":{"query":"database migration schema","top_k":5}}
 // → { "count":1, "patterns":[{ "outcome":"success: migration applied", "score":0.71, … }] }
 ```
 
+---
+
 ### `plugin` — discover and run plugins
 
-Plugins are markdown + shell commands discovered from `./.ruvos/plugins`,
-`~/.ruvos/plugins`, etc. `invoke` only runs commands declared in a plugin
-manifest (command-injection guard).
+Plugins are markdown + shell commands found under `./.ruvos/plugins`,
+`~/.ruvos/plugins`, etc. `invoke` only runs commands a plugin actually declares
+(command-injection guard).
 
+**`plugin.list`** — see what plugins are installed.
+🗣️ *"What plugins do I have?"*
 ```jsonc
-// plugin.list — what's installed
 {"name":"plugin.list","arguments":{}}
 // → { "count":0, "plugins":[] }
+```
 
-// plugin.invoke — run a declared plugin command
+**`plugin.invoke`** — run a command a plugin provides.
+🗣️ *"Run my-plugin's build command."*
+```jsonc
 {"name":"plugin.invoke","arguments":{"plugin_name":"my-plugin","command":"build","args":["--release"]}}
 // → { "status":0, "stdout":"…", "stderr":"" }   // unknown plugin → status:1 + reason in stderr
 ```
 
+---
+
 ### `gov` — health, provenance & audit
 
+**`gov.health`** — a real status report: tools, data dir, what's stored, safety score.
+🗣️ *"What's the system health?"*
 ```jsonc
-// gov.health — real introspection: tools, data dir, persisted counts, safety score
 {"name":"gov.health","arguments":{}}
 // → { "status":"ok", "version":"4.0.0-rc.1", "tool_count":24,
-//     "persisted":{ "agents":2, "memory_entries":1, "sessions":1, … },
+//     "persisted":{ "agents":2, "memory_entries":1, "sessions":1 },
 //     "safety":{ "score":1.0, "active_constraints":5, "recent_violations":0 } }
+```
 
-// gov.witness_verify — verify an .rvf container's signature chain (tamper-evident)
+**`gov.witness_verify`** — confirm a session file hasn't been tampered with.
+🗣️ *"Is this .rvf file still valid?"*
+```jsonc
 {"name":"gov.witness_verify","arguments":{"rvf_path":".ruvos/rvf/6305….rvf"}}
 // → { "rvf_path":"…", "verified":true, "exists":true }
+```
 
-// gov.events — query the signed audit log (since / by agent / by type)
+**`gov.events`** — query the signed audit log of what happened.
+🗣️ *"Show me what happened in the last hour."*
+```jsonc
 {"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}
 // → { "count":2, "events":[{ "event_type":"agent.spawned", "agent_id":"7ed0…", "timestamp":… }, … ] }
 ```
 
+---
+
 ### `relay` — cross-instance coordination
 
-Independent Claude Code instances (separate terminals/projects) discover and
-message each other by sharing one `RUVOS_HOME`. **No daemon, no port, no DB** —
-presence and messages are plain files, delivered pull-based on the next
-`relay.list`. Stale instances (no announce within 60s) are pruned automatically.
+Two independent Claude Code instances (e.g. one on the backend, one on the
+frontend) discover and message each other by sharing one `RUVOS_HOME`. **No
+daemon, no port, no database** — presence and messages are plain files, delivered
+the next time someone calls `relay.list`. Instances that go quiet for 60s are
+pruned automatically.
 
 ```bash
 # Both terminals point at the same relay directory:
 export RUVOS_HOME=/home/you/.ruvos
 ```
+
+**`relay.announce`** — tell other instances who you are and what you're doing.
+🗣️ *"Let the other sessions know I'm on the backend."*
 ```jsonc
-// Terminal A — announce what this instance is working on
 {"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}
 // → { "id":"A-uuid", "pid":…, "cwd":"…", "git_repo":"…", "summary":"backend: auth endpoints" }
+```
 
-// Terminal B — announce, then list (discovers A) and drain own inbox
-{"name":"relay.announce","arguments":{"summary":"frontend: login form"}}
-{"name":"relay.list","arguments":{"scope":"machine"}}   // scope: machine | directory | repo
-// → { "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }], "inbox":[] }
+**`relay.list`** — discover other live instances and read your own inbox (drained
+on read). Scope is `machine`, `directory`, or `repo`.
+🗣️ *"Who else is working right now, and any messages for me?"*
+```jsonc
+{"name":"relay.list","arguments":{"scope":"machine"}}
+// → { "count":1, "relays":[{ "id":"A-uuid", "summary":"backend: auth endpoints" }],
+//     "inbox":[{ "from":"B-uuid", "body":"login form posts to /auth/login — confirm the shape?" }] }
+```
 
-// Terminal B — send A a message by id
+**`relay.send`** — message another instance by id.
+🗣️ *"Ask the backend session to confirm the login shape."*
+```jsonc
 {"name":"relay.send","arguments":{"to":"A-uuid","body":"login form posts to /auth/login — confirm the shape?"}}
 // → { "delivered":true, "message_id":"…" }
-
-// Terminal A — list again; its inbox now carries B's message (drained on read)
-{"name":"relay.list","arguments":{"scope":"machine"}}
-// → { …, "inbox":[{ "from":"B-uuid", "body":"login form posts to /auth/login — confirm the shape?" }] }
 ```
 
 Every `announce`/`send` is recorded in the signed `gov.events` audit log.
 
+---
+
 ### `workflow` — multi-agent orchestration templates
 
-One call runs an ordered agent pipeline; each step produces a real artifact.
-Templates: `feature` (planner→coder→tester→reviewer), `bugfix`
-(researcher→coder→tester), `refactor` (architect→coder→reviewer), `security`
-(security→coder→tester).
+One call runs an ordered pipeline of agents; each step leaves a real artifact.
+Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
+(researcher → coder → tester), `refactor` (architect → coder → reviewer),
+`security` (security → coder → tester).
 
+**`workflow.run`** — run a whole pipeline for a task in one go.
+🗣️ *"Run a full feature workflow for user auth."*
 ```jsonc
-// workflow.run — spawn the whole pipeline for a task
 {"name":"workflow.run","arguments":{"workflow_type":"feature","task":"build POST /users with validation"}}
 // → { "workflow_id":"…", "workflow_type":"feature", "status":"completed", "step_count":4,
-//     "steps":[ { "archetype":"planner", "agent_id":"…", "artifact_path":"…" },
-//               { "archetype":"coder", … }, { "archetype":"tester", … },
+//     "steps":[ { "archetype":"planner",  "agent_id":"…", "artifact_path":"…" },
+//               { "archetype":"coder",    … },
+//               { "archetype":"tester",   … },
 //               { "archetype":"reviewer", … } ] }
 ```
 
