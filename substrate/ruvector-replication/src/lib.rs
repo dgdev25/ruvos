@@ -79,11 +79,8 @@ pub enum ReplicationError {
     #[error("Invalid replica state: {0}")]
     InvalidState(String),
 
-    #[error("Serialization encode error: {0}")]
-    SerializationEncode(#[from] bincode::error::EncodeError),
-
-    #[error("Serialization decode error: {0}")]
-    SerializationDecode(#[from] bincode::error::DecodeError),
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] bincode::Error),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

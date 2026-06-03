@@ -93,17 +93,13 @@ impl PersistentState {
     }
 
     /// Serialize state to bytes for persistence
-    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::error::EncodeError> {
-        use bincode::config;
-        bincode::encode_to_vec(bincode::serde::Compat(self), config::standard())
+    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
     }
 
     /// Deserialize state from bytes
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::error::DecodeError> {
-        use bincode::config;
-        let (compat, _): (bincode::serde::Compat<Self>, _) =
-            bincode::decode_from_slice(bytes, config::standard())?;
-        Ok(compat.0)
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
     }
 }
 

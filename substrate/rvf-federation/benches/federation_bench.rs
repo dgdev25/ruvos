@@ -5,7 +5,6 @@ use rvf_federation::aggregate::{AggregationStrategy, Contribution, FederatedAggr
 use rvf_federation::diff_privacy::{DiffPrivacyEngine, PrivacyAccountant};
 use rvf_federation::federation::{ExportBuilder, ImportMerger};
 use rvf_federation::pii_strip::PiiStripper;
-use rvf_federation::policy::FederationPolicy;
 use rvf_federation::*;
 
 fn bench_pii_strip(c: &mut Criterion) {

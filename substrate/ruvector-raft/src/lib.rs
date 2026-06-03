@@ -38,10 +38,7 @@ pub enum RaftError {
     InvalidLogIndex(u64),
 
     #[error("Serialization error: {0}")]
-    SerializationEncodeError(#[from] bincode::error::EncodeError),
-
-    #[error("Deserialization error: {0}")]
-    SerializationDecodeError(#[from] bincode::error::DecodeError),
+    Serialization(#[from] bincode::Error),
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),

@@ -4,20 +4,15 @@ use crate::error::FederationError;
 use crate::types::AggregateWeights;
 
 /// Aggregation strategy.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum AggregationStrategy {
     /// Federated Averaging (McMahan et al., 2017).
+    #[default]
     FedAvg,
     /// Federated Proximal (Li et al., 2020).
     FedProx { mu: u32 },
     /// Simple weighted average.
     WeightedAverage,
-}
-
-impl Default for AggregationStrategy {
-    fn default() -> Self {
-        Self::FedAvg
-    }
 }
 
 /// A single contribution to a federated averaging round.

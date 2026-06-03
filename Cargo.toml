@@ -1,8 +1,10 @@
 [workspace]
 resolver = "2"
-# Phase 1: Integrated workspace with 6 rUvOS + 18 curated RuVector substrate crates
-# (9 essential for Phase 2-5 + 9 optional for Phase 5+). 11 dropped crates: clustering (raft, replication, cluster),
-# LLM (ruvllm), variants (acorn), and runtime targets (ebpf, kernel, wasm, node, server, federation, launch).
+# Integrated workspace: 6 rUvOS crates + curated RuVector substrate.
+# Held back (NOT members, intentionally): runtime-target crates that need special
+# toolchains (rvf-wasm, rvf-solver-wasm, rvf-ebpf, rvf-node, rvf-kernel), the local
+# LLM serving runtime (ruvllm — pulls candle/hf-hub; deferred to v2 per the v1
+# no-local-inference decision), and rvf-adapters (a folder of external-system adapters).
 members = [
     "crates/ruvos-cli",
     "crates/ruvos-mcp",
@@ -35,6 +37,16 @@ members = [
     "substrate/ruvos-safety",
     # Pure-Rust redb store + signed .rvf snapshots (replaces SQLite persistence)
     "substrate/ruvos-store",
+    # Predicate-agnostic filtered HNSW (ACORN) — native, no external inference
+    "substrate/ruvector-acorn",
+    # Vector DB + neural routing inference engine (native)
+    "substrate/ruvector-router-core",
+    # Distributed clustering / consensus / replication (native, tokio-based)
+    "substrate/ruvector-cluster",
+    "substrate/ruvector-raft",
+    "substrate/ruvector-replication",
+    # Federated transfer learning — PII strip + differential privacy (native)
+    "substrate/rvf-federation",
 ]
 default-members = [
     "crates/ruvos-cli",
