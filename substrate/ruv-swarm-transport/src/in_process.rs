@@ -4,11 +4,11 @@ use crate::{protocol::Message, Transport, TransportConfig, TransportError, Trans
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
-use tracing::{debug, info};
+use tracing::info;
 
 /// In-process transport using channels for zero-cost local communication
 pub struct InProcessTransport {
@@ -16,8 +16,11 @@ pub struct InProcessTransport {
     config: TransportConfig,
     registry: Arc<InProcessRegistry>,
     incoming_rx: mpsc::Receiver<(String, Message)>,
+    /// Kept alive so the endpoint's channel stays open (used by InProcessEndpoint).
+    #[allow(dead_code)]
     incoming_tx: mpsc::Sender<(String, Message)>,
-    broadcast_tx: broadcast::Sender<Message>,
+    /// Kept alive so broadcast subscribers can subscribe; used in tests.
+    pub broadcast_tx: broadcast::Sender<Message>,
     is_running: Arc<AtomicBool>,
     stats: Arc<RwLock<TransportStats>>,
 }
@@ -54,7 +57,7 @@ impl InProcessRegistry {
     }
 
     /// Send a message to a specific transport
-    async fn send(&self, from: &str, to: &str, msg: Message) -> Result<(), TransportError> {
+    pub async fn send(&self, from: &str, to: &str, msg: Message) -> Result<(), TransportError> {
         if let Some(endpoint) = self.transports.get(to) {
             endpoint
                 .tx
@@ -107,6 +110,11 @@ impl InProcessRegistry {
             .iter()
             .map(|entry| entry.key().clone())
             .collect()
+    }
+
+    /// Check whether a transport endpoint is registered for the given id
+    pub fn contains(&self, id: &str) -> bool {
+        self.transports.contains_key(id)
     }
 }
 
@@ -308,7 +316,7 @@ impl Default for InProcessTransportBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Message, MessageType};
+    use crate::protocol::Message;
 
     #[tokio::test]
     async fn test_in_process_transport_pair() {
@@ -373,8 +381,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_message_size_limit() {
-        let mut config = TransportConfig::default();
-        config.max_message_size = 100; // Very small limit
+        let config = TransportConfig {
+            max_message_size: 100, // Very small limit
+            ..TransportConfig::default()
+        };
 
         let (transport1, _) =
             InProcessTransport::create_pair("agent1".to_string(), "agent2".to_string(), config)

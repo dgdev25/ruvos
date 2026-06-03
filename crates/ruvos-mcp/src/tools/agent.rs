@@ -4,14 +4,86 @@
 //! really execute their task on spawn: each agent produces a real work
 //! artifact on disk, and — when `RUVOS_AGENT_RUNNER` is set — additionally
 //! runs that command as a real subprocess and captures its output.
+//!
+//! In addition to disk persistence, each spawned agent is registered with a
+//! process-global `InProcessRegistry` so that `agent.message` can deliver
+//! messages over a real in-process channel (additive — disk persistence is
+//! always kept regardless of transport availability).
 
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::{paths, Result, RuvosError};
+use ruv_swarm_transport::{
+    in_process::{InProcessRegistry, InProcessTransport},
+    protocol::{Message, MessageType},
+    TransportConfig,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+
+// ---------------------------------------------------------------------------
+// Process-global in-process transport registry
+// ---------------------------------------------------------------------------
+//
+// TRANSPORT_REGISTRY  — the shared registry all agent transports register into.
+// AGENT_TRANSPORTS    — holds one `InProcessTransport` per live agent so that
+//                       the agent's inbox channel stays open for the lifetime
+//                       of the process (receiving end of the channel).
+//
+// Both are lazy_static so they are initialised once and reused across every
+// tool call in the same process.
+lazy_static::lazy_static! {
+    /// Shared registry for all in-process agent endpoints.
+    static ref TRANSPORT_REGISTRY: Arc<InProcessRegistry> = InProcessRegistry::new();
+
+    /// Per-agent transports keyed by agent_id (keeps the inbox channel alive).
+    static ref AGENT_TRANSPORTS: Mutex<HashMap<String, InProcessTransport>> =
+        Mutex::new(HashMap::new());
+}
+
+/// Default transport config used for all agent channels.
+fn transport_config() -> TransportConfig {
+    TransportConfig::default()
+}
+
+/// Register a newly spawned agent with the in-process transport layer.
+/// Returns silently on any failure — transport is best-effort.
+async fn register_agent_transport(agent_id: &str) {
+    match InProcessTransport::new(
+        agent_id.to_string(),
+        transport_config(),
+        Arc::clone(&TRANSPORT_REGISTRY),
+    )
+    .await
+    {
+        Ok(transport) => {
+            if let Ok(mut map) = AGENT_TRANSPORTS.lock() {
+                map.insert(agent_id.to_string(), transport);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("transport register failed for {}: {}", agent_id, e);
+        }
+    }
+}
+
+/// Deliver a message to `agent_id` via the in-process transport (fire-and-forget).
+/// Never blocks the caller or propagates errors.
+async fn transport_send(agent_id: &str, content: &str) {
+    let msg = Message::new(
+        "system".to_string(),
+        MessageType::Event {
+            name: "agent.message".to_string(),
+            data: serde_json::json!({ "content": content }),
+        },
+    );
+    // Use the registry's direct send so we don't need to hold a system transport.
+    if let Err(e) = TRANSPORT_REGISTRY.send("system", agent_id, msg).await {
+        tracing::debug!("transport send to {}: {} (non-fatal)", agent_id, e);
+    }
+}
 
 /// Valid agent archetypes from the scope ledger.
 const VALID_ARCHETYPES: &[&str] = &[
@@ -223,6 +295,11 @@ impl ToolHandler for AgentSpawnHandler {
                 save_registry(&reg)?;
             }
 
+            // Register the agent with the in-process transport layer so it
+            // can receive messages via agent.message.  Best-effort — never
+            // blocks or fails the spawn if the transport setup fails.
+            register_agent_transport(&agent_id).await;
+
             Ok(json!({
                 "agent_id": agent_id,
                 "archetype": archetype,
@@ -258,6 +335,7 @@ impl ToolHandler for AgentStatusHandler {
 
             // Single-agent query when agent_id provided; else list all.
             if let Some(id) = params.get("agent_id").and_then(|v| v.as_str()) {
+                let transport_live = TRANSPORT_REGISTRY.contains(id);
                 return match reg.get(id) {
                     Some(a) => Ok(json!({
                         "found": true,
@@ -266,7 +344,8 @@ impl ToolHandler for AgentStatusHandler {
                         "status": a.status,
                         "artifact_path": a.artifact_path,
                         "message_count": a.messages.len(),
-                        "result": a.result
+                        "result": a.result,
+                        "transport_live": transport_live
                     })),
                     None => Ok(json!({ "found": false, "agent_id": id })),
                 };
@@ -320,31 +399,46 @@ impl ToolHandler for AgentMessageHandler {
             let agent_id = params["agent_id"].as_str().unwrap_or_default().to_string();
             let content = params["message"].as_str().unwrap_or_default().to_string();
 
-            let _guard = FILE_LOCK.lock().unwrap();
-            let mut reg = load_registry();
-            match reg.get_mut(&agent_id) {
-                Some(a) => {
-                    let msg = AgentMessage {
-                        id: Uuid::new_v4().to_string(),
-                        content,
-                        timestamp: chrono::Utc::now().to_rfc3339(),
-                    };
-                    let msg_id = msg.id.clone();
-                    a.messages.push(msg);
-                    let count = a.messages.len();
-                    save_registry(&reg)?;
-                    Ok(json!({
-                        "delivered": true,
-                        "agent_id": agent_id,
-                        "message_id": msg_id,
-                        "message_count": count
-                    }))
+            let (delivered, msg_id, count) = {
+                let _guard = FILE_LOCK.lock().unwrap();
+                let mut reg = load_registry();
+                match reg.get_mut(&agent_id) {
+                    Some(a) => {
+                        let msg = AgentMessage {
+                            id: Uuid::new_v4().to_string(),
+                            content: content.clone(),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        let msg_id = msg.id.clone();
+                        a.messages.push(msg);
+                        let count = a.messages.len();
+                        save_registry(&reg)?;
+                        (true, msg_id, count)
+                    }
+                    None => (false, String::new(), 0),
                 }
-                None => Ok(json!({
+            };
+
+            if delivered {
+                // Fire-and-forget: also deliver via in-process transport so any
+                // live receiver on the agent's channel sees the message.
+                // Errors are intentionally ignored — disk persistence is the
+                // source of truth.
+                transport_send(&agent_id, &content).await;
+
+                Ok(json!({
+                    "delivered": true,
+                    "agent_id": agent_id,
+                    "message_id": msg_id,
+                    "message_count": count,
+                    "transport_live": TRANSPORT_REGISTRY.contains(&agent_id)
+                }))
+            } else {
+                Ok(json!({
                     "delivered": false,
                     "agent_id": agent_id,
                     "error": "Agent not found"
-                })),
+                }))
             }
         })
     }

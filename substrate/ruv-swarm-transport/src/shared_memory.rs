@@ -5,17 +5,16 @@ use crate::{
     Transport, TransportConfig, TransportError, TransportStats,
 };
 use async_trait::async_trait;
-use crossbeam::channel::{bounded, unbounded, Receiver, Sender};
 use dashmap::DashMap;
 use std::{
     mem::size_of,
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 /// Shared memory segment info
 #[derive(Debug, Clone)]
@@ -101,8 +100,8 @@ impl RingBuffer {
             let mut len_bytes = [0u8; 4];
 
             // Read length
-            for i in 0..4 {
-                len_bytes[i] = buffer[read_pos];
+            for byte in &mut len_bytes {
+                *byte = buffer[read_pos];
                 read_pos = (read_pos + 1) % self.capacity;
             }
 
@@ -115,8 +114,8 @@ impl RingBuffer {
 
             // Read data
             let mut data = vec![0u8; data_len];
-            for i in 0..data_len {
-                data[i] = buffer[read_pos];
+            for byte in data.iter_mut().take(data_len) {
+                *byte = buffer[read_pos];
                 read_pos = (read_pos + 1) % self.capacity;
             }
 
@@ -145,6 +144,7 @@ impl RingBuffer {
 /// Shared memory transport implementation
 pub struct SharedMemoryTransport {
     info: SharedMemoryInfo,
+    #[allow(dead_code)]
     config: TransportConfig,
     codec: Arc<dyn MessageCodec>,
     local_id: String,

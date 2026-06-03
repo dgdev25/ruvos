@@ -11,7 +11,7 @@ use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use std::{
     io::{Read, Write},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc,
     },
     time::Duration,
@@ -22,9 +22,7 @@ use tokio::{
     time::timeout,
 };
 use tokio_tungstenite::{
-    accept_async, connect_async,
-    tungstenite::{Error as WsError, Message as WsMessage},
-    MaybeTlsStream, WebSocketStream,
+    accept_async, connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
 };
 use tracing::{debug, error, info, warn};
 use url::Url;
@@ -241,6 +239,7 @@ impl WebSocketTransport {
     }
 
     /// Handle client connection
+    #[allow(clippy::too_many_arguments)]
     async fn handle_client_connection(
         ws_stream: WsStream,
         peer_addr: String,
@@ -267,6 +266,7 @@ impl WebSocketTransport {
     }
 
     /// Handle server connection
+    #[allow(clippy::too_many_arguments)]
     async fn handle_server_connection(
         ws_stream: WebSocketStream<TcpStream>,
         peer_addr: String,
@@ -294,6 +294,7 @@ impl WebSocketTransport {
     }
 
     /// Handle raw WebSocket connection (TcpStream)
+    #[allow(clippy::too_many_arguments)]
     async fn handle_raw_connection(
         mut ws_stream: WebSocketStream<TcpStream>,
         peer_addr: String,
@@ -433,6 +434,7 @@ impl WebSocketTransport {
     }
 
     /// Common connection handler
+    #[allow(clippy::too_many_arguments)]
     async fn handle_connection(
         mut ws_stream: WsStream,
         peer_addr: String,

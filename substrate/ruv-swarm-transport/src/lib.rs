@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use thiserror::Error;
-use uuid::Uuid;
 
 pub mod in_process;
 pub mod protocol;
