@@ -1,10 +1,10 @@
 #!/bin/bash
-# Ruflo v3 → v4 Complete Cutover Script
+# rUvOS Cutover: v3 (Ruflo) → v4 Script
 # Removes all v3 artifacts and enforces v4-only environment
 
 set -e
 
-echo "🚀 Ruflo v3 → v4 Complete Cutover"
+echo "🚀 rUvOS Cutover: v3 (Ruflo) → v4"
 echo "=================================="
 echo ""
 
@@ -39,10 +39,10 @@ if [ -d "dist" ]; then
 fi
 
 # Step 5: Verify v4 binary exists
-echo "5️⃣  Verifying Ruflo v4 binary..."
-if [ -f "target/release/ruflo-cli" ]; then
-  VERSION=$(./target/release/ruflo-cli --version 2>&1 | head -1 || echo "v4.0.0-rc.1")
-  echo "   ✅ Ruflo v4 binary found: $VERSION"
+echo "5️⃣  Verifying rUvOS v4 binary..."
+if [ -f "target/release/ruvos" ]; then
+  VERSION=$(./target/release/ruvos --version 2>&1 | head -1 || echo "v4.0.0-rc.1")
+  echo "   ✅ rUvOS v4 binary found: $VERSION"
 else
   echo "   ❌ ERROR: v4 binary not found. Run: cargo build --release"
   exit 1
@@ -52,7 +52,7 @@ fi
 echo "6️⃣  Testing MCP server..."
 RESPONSE=$(timeout 2 bash << 'EOFTEST'
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | \
-  /mnt/datadisk/dev/ruvos/target/release/ruflo-cli mcp serve 2>&1 | \
+  /mnt/datadisk/dev/ruvos/target/release/ruvos mcp serve 2>&1 | \
   grep -o '"tools":\[' || echo "FAILED"
 EOFTEST
 )
@@ -97,8 +97,8 @@ echo "   ✅ CLAUDE.md updated"
 # Step 9: Final verification
 echo "9️⃣  Final verification..."
 echo ""
-echo "   Ruflo v4 Status:"
-echo "   ├─ Binary: $(which ruflo-cli 2>/dev/null || echo 'Not in PATH (use full path)')"
+echo "   rUvOS v4 Status:"
+echo "   ├─ Binary: $(which ruvos 2>/dev/null || echo 'Not in PATH (use full path)')"
 echo "   ├─ Version: v4.0.0-rc.1"
 echo "   ├─ MCP Server: Ready"
 echo "   ├─ Tools: 20 (memory, session, agent, hooks, intel, plugin, gov, workflow)"
@@ -113,11 +113,11 @@ echo "1. Verify no 'npx ruflo' in your PATH:"
 echo "   $ which ruflo"
 echo ""
 echo "2. Test the v4 binary directly:"
-echo "   $ /mnt/datadisk/dev/ruvos/target/release/ruflo-cli --version"
+echo "   $ /mnt/datadisk/dev/ruvos/target/release/ruvos --version"
 echo ""
 echo "3. Start the MCP server:"
-echo "   $ /mnt/datadisk/dev/ruvos/target/release/ruflo-cli mcp serve"
+echo "   $ /mnt/datadisk/dev/ruvos/target/release/ruvos mcp serve"
 echo ""
-echo "4. In Claude Code, Ruflo v4 is available via the registered MCP server."
+echo "4. In Claude Code, rUvOS v4 is available via the registered MCP server."
 echo ""
 echo "Happy coding! 🚀"

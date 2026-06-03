@@ -3,21 +3,21 @@
 rUvOS is a Rust-native agent orchestration system built on the RuVector substrate.
 
 - **RuVector** is the kernel: self-learning vector search, graph RAG, local LLM inference, cryptographic state containers
-- **Ruflo** is the shell: agent orchestration, multi-CLI support (Claude Code, Codex, Gemini), plugin system, hooks
+- **rUvOS** is the shell: agent orchestration, multi-CLI support (Claude Code, Codex, Gemini), plugin system, hooks
 
-**Status:** Phase 0 (Scope & Scaffolding). See docs/spec/scope-ledger-v1.md for architecture and roadmap.
+**Status:** v4.0.0-rc.1 — all phases complete; 20 MCP tools implemented with real persistence. See docs/spec/scope-ledger-v1.md for architecture.
 
-## Quick Start (Phase 1+)
+## Quick Start
 
 ```bash
 cargo build --release
-./target/release/ruflo mcp serve
+./target/release/ruvos mcp serve
 ```
 
 ## Development
 
-- **Workspace structure:** `crates/` (Ruflo orchestration), `substrate/` (RuVector kernel)
-- **Scope contract:** 20 MCP tools, 12 agent archetypes, 8 hooks, ≤30k Ruflo LOC
+- **Workspace structure:** `crates/` (rUvOS orchestration), `substrate/` (RuVector kernel)
+- **Scope contract:** 20 MCP tools, 12 agent archetypes, 8 hooks, ≤30k rUvOS LOC
 - **File size limit:** all .rs files ≤500 lines (enforced in CI)
 - **Contributing:** See CLAUDE.md for development guidelines
 

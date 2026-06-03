@@ -6,20 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **rUvOS** (formerly Ruflo v4) is a Rust-native agent orchestration system being merged into the RuVector workspace. It's a ruthless rewrite of Ruflo from 631k TypeScript LOC + 323 MCP tools + 60+ agent types down to ~30k Rust LOC with 20 core tools and 12 agent archetypes.
 
-**Core positioning:** RuVector is the self-learning vector + graph + local-AI substrate. Ruflo is the agent orchestration layer that runs on top of it. Single static binary (`ruflo`), zero Node.js runtime required.
+**Core positioning:** RuVector is the self-learning vector + graph + local-AI substrate. rUvOS is the agent orchestration layer that runs on top of it. Single static binary (`ruvos`), zero Node.js runtime required.
 
 ## Architecture
 
-### The Six New Crates (Ruflo's layer on top of RuVector)
+### The Six New Crates (rUvOS's layer on top of RuVector)
 
 | Crate | Budget | Purpose | Key files |
 |-------|--------|---------|-----------|
-| `ruflo-cli` | ≤8k LOC | clap-based CLI shell (`ruflo init`, `ruflo mcp`, `ruflo agent`) | — |
-| `ruflo-mcp` | ≤6k LOC | JSON-RPC MCP server over stdio + the 20 tool handlers (memory, session, agent, hooks, intel, plugin, gov, workflow) | — |
-| `ruflo-host` | ≤6k LOC | `CliHost` trait + Claude + Codex adapters, output normalizer for multi-CLI orchestration | — |
-| `ruflo-plugin-host` | ≤4k LOC | Plugin discovery (markdown + YAML frontmatter), manifest parsing, shell command execution | — |
-| `ruflo-hooks` | ≤3k LOC | 8 hooks (pre/post task, edit, command, session) + SONA learning integration | — |
-| `ruflo-session` | ≤3k LOC | `.rvf` container write/read, fork (COW-branch), signature verification via `rvf-crypto` | — |
+| `ruvos-cli` | ≤8k LOC | clap-based CLI shell (`ruvos init`, `ruvos mcp`, `ruvos agent`) | — |
+| `ruvos-mcp` | ≤6k LOC | JSON-RPC MCP server over stdio + the 20 tool handlers (memory, session, agent, hooks, intel, plugin, gov, workflow) | — |
+| `ruvos-host` | ≤6k LOC | `CliHost` trait + Claude + Codex adapters, output normalizer for multi-CLI orchestration | — |
+| `ruvos-plugin-host` | ≤4k LOC | Plugin discovery (markdown + YAML frontmatter), manifest parsing, shell command execution | — |
+| `ruvos-hooks` | ≤3k LOC | 8 hooks (pre/post task, edit, command, session) + SONA learning integration | — |
+| `ruvos-session` | ≤3k LOC | `.rvf` container write/read, fork (COW-branch), signature verification via `rvf-crypto` | — |
 
 **Total: ≤30k LOC of new Rust.** Everything else is `use ruvector_*;` or `use sona::*;` or `use rvf::*;`.
 
@@ -40,7 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Plugin Layout (Single Canonical Form)
 
 ```
-./.ruflo/plugins/<name>/
+./.ruvos/plugins/<name>/
 ├── plugin.toml              # Rust manifest
 ├── README.md
 ├── agents/*.md              # Claude Code agents (markdown + frontmatter)
@@ -49,7 +49,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 └── hooks/*.toml             # hook bindings (optional)
 ```
 
-Discovery order: project-local → user-global (`~/.ruflo/plugins/`) → env override → built-in registry.
+Discovery order: project-local → user-global (`~/.ruvos/plugins/`) → env override → built-in registry.
 
 ## Development Workflow
 
@@ -59,7 +59,7 @@ Discovery order: project-local → user-global (`~/.ruflo/plugins/`) → env ove
 |-------|------|-------|
 | **0** | Scope ledger (this is it — you're in Phase 0 now) | 3–5 days |
 | **1** | Merge into RuVector workspace, create 6 crate skeletons, CI green | 1 week |
-| **2** | `ruflo mcp serve` ships hello-world tool to Claude Code, Codex CLI, Gemini CLI | 1 week |
+| **2** | `ruvos mcp serve` ships hello-world tool to Claude Code, Codex CLI, Gemini CLI | 1 week |
 | **3** | Plugin host (markdown discovery, shell exec, skill compatibility) | 1 week |
 | **4** | 8 hooks + SQLite-backed queue (replaces in-process daemon, fixes Windows bug #1766) | 2 weeks |
 | **5** | Memory + session (HNSW + RaBitQ + `.rvf` containers + witness chain) | 2 weeks |
@@ -106,7 +106,7 @@ cargo test --doc
 
 5. **No legacy v2 compat.** `v2:migrate` command, pre-bash / post-bash aliases, all deleted. Clean break.
 
-6. **Atomic refactors across repos.** Ruflo + RuVector changes land in one PR. One CI, one release cadence.
+6. **Atomic refactors across repos.** rUvOS + RuVector changes land in one PR. One CI, one release cadence.
 
 ### Architecture Decisions Already Made
 
@@ -123,7 +123,7 @@ cargo test --doc
 - All 323 → 20 MCP tools (aggressive cut; anything not on the list is removed)
 - 60+ agent types → 12 archetypes + traits
 - 4 plugin directories → 1 canonical layout
-- 3 published npm packages → 1 artifact (`ruflo` binary + optional npm shim)
+- 3 published npm packages → 1 artifact (`ruvos` binary + optional npm shim)
 - 12 in-process daemon workers → SQLite durable queue (v2)
 - 25 KB root `CLAUDE.md` + 21 KB `AGENTS.md` → 1 file ≤8 KB (autogenerated)
 - `v2` compat hooks, marketplace UI, Flash Attention claims (until benchmarked), federation, DAA tools, coverage-aware routing
@@ -141,15 +141,15 @@ cargo test --doc
 ### Adding a new tool
 
 1. Add it to the ledger (`docs/spec/scope-ledger-v1.md` §1) via ADR, explaining which tool it replaces.
-2. Implement the handler in `crates/ruflo-mcp/src/tools/<domain>.rs`.
+2. Implement the handler in `crates/ruvos-mcp/src/tools/<domain>.rs`.
 3. Register it in the tool registry (built into MCP server startup).
-4. Test with `ruflo mcp serve` hooked to Claude Code CLI.
+4. Test with `ruvos mcp serve` hooked to Claude Code CLI.
 
 ### Adding a new agent archetype
 
 1. Add it to the ledger via ADR (unlikely; the 12 are fixed).
-2. Define the base prompt in `crates/ruflo-host/src/agents/archetypes/<name>.rs`.
-3. Define traits that modify behavior in `crates/ruflo-host/src/agents/traits.rs`.
+2. Define the base prompt in `crates/ruvos-host/src/agents/archetypes/<name>.rs`.
+3. Define traits that modify behavior in `crates/ruvos-host/src/agents/traits.rs`.
 4. Test via `agent.spawn` MCP tool.
 
 ### Adding a plugin
@@ -161,19 +161,19 @@ cargo test --doc
 
 ### Debugging the MCP handshake
 
-Once `ruflo mcp serve` ships (Phase 2):
+Once `ruvos mcp serve` ships (Phase 2):
 
 ```bash
 # In a separate terminal, start the MCP server
-./target/release/ruflo mcp serve
+./target/release/ruvos mcp serve
 
-# In Claude Code, hook it: claude mcp add ruflo -- ./target/release/ruflo mcp serve
+# In Claude Code, hook it: claude mcp add ruvos -- ./target/release/ruvos mcp serve
 # Then in the Claude Code REPL, call any tool and inspect its output
 ```
 
 ## Integration Checkpoints (Hard Stops)
 
-**Phase 2 tripwire:** `ruflo mcp serve` must work end-to-end with the real Claude Code CLI on day 1. Integration drift with Claude Code is a failure mode both consensus models flagged. **Do not defer Claude Code testing to Phase 6.**
+**Phase 2 tripwire:** `ruvos mcp serve` must work end-to-end with the real Claude Code CLI on day 1. Integration drift with Claude Code is a failure mode both consensus models flagged. **Do not defer Claude Code testing to Phase 6.**
 
 ## Current Issues Driving the Rewrite
 
@@ -181,20 +181,20 @@ Once `ruflo mcp serve` ships (Phase 2):
 - **Headless race condition #2251** — fixed by moving state out of in-process memory.
 - **Skipped integration tests #1872** — re-enabled in Phase 3+ once plugin host and hooks are live.
 - **323 tools with aliases breaking discoverability** — ruthlessly cut to 20 + plugin space.
-- **Three drifting npm packages from one repo** — one `ruflo` binary published, optional npm shim.
+- **Three drifting npm packages from one repo** — one `ruvos` binary published, optional npm shim.
 
 ## Useful References
 
 - **Scope ledger** (`docs/spec/scope-ledger-v1.md`) — the binding contract. Everything Phase 1+ must align with.
 - **Rewrite summary** (`docs/rewrite-summary.md`) — decision rationale and consensus model input.
 - **RuVector workspace** (`/mnt/datadisk/repos/rUvnet/RuVector`) — the substrate we're building on. 143 members, 136 crates. Use `default-members` to scope builds.
-- **Cargo workspace policy:** Atomic refactors across Ruflo + RuVector land in one PR. One CI, one release cadence.
+- **Cargo workspace policy:** Atomic refactors across rUvOS + RuVector land in one PR. One CI, one release cadence.
 
 ## Notes for Future Phases
 
-- **Phase 1 focus:** Make sure `default-members` in the merged workspace only includes crates Ruflo consumes. Experimental RuVector crates (consciousness examples, quantum coherence) stay behind features. This keeps CI fast.
-- **Phase 2 focus:** The MCP round-trip from real Claude Code CLI is the hard stop. Test with `claude mcp add ruflo -- ruflo mcp serve` and call tools from the Claude Code REPL.
-- **Phase 3+ focus:** As plugins land, the canonical layout at `crates/ruflo-plugin-host/registry/<name>/` is the source of truth. IPFS is only a release-time CDN, not the source of truth.
+- **Phase 1 focus:** Make sure `default-members` in the merged workspace only includes crates rUvOS consumes. Experimental RuVector crates (consciousness examples, quantum coherence) stay behind features. This keeps CI fast.
+- **Phase 2 focus:** The MCP round-trip from real Claude Code CLI is the hard stop. Test with `claude mcp add ruvos -- ruvos mcp serve` and call tools from the Claude Code REPL.
+- **Phase 3+ focus:** As plugins land, the canonical layout at `crates/ruvos-plugin-host/registry/<name>/` is the source of truth. IPFS is only a release-time CDN, not the source of truth.
 
 ---
 
@@ -233,16 +233,16 @@ Phase 0 established the rUvOS workspace structure with:
 ### Crate Compilation Summary
 
 All six Ruflo crates build cleanly together:
-- `ruflo-cli` (8k LOC budget) — clap-based shell
-- `ruflo-mcp` (6k LOC budget) — JSON-RPC server + 20 tools
-- `ruflo-host` (6k LOC budget) — CliHost trait + adapters
-- `ruflo-plugin-host` (4k LOC budget) — plugin discovery + manifest
-- `ruflo-hooks` (3k LOC budget) — 8 hooks + SONA integration
-- `ruflo-session` (3k LOC budget) — .rvf container + fork + crypto
+- `ruvos-cli` (8k LOC budget) — clap-based shell
+- `ruvos-mcp` (6k LOC budget) — JSON-RPC server + 20 tools
+- `ruvos-host` (6k LOC budget) — CliHost trait + adapters
+- `ruvos-plugin-host` (4k LOC budget) — plugin discovery + manifest
+- `ruvos-hooks` (3k LOC budget) — 8 hooks + SONA integration
+- `ruvos-session` (3k LOC budget) — .rvf container + fork + crypto
 
 ### Next Steps
 
-**Phase 1** will integrate the full RuVector workspace and prepare Phase 2's day-1 integration test (`ruflo mcp serve` → Claude Code CLI).
+**Phase 1** will integrate the full RuVector workspace and prepare Phase 2's day-1 integration test (`ruvos mcp serve` → Claude Code CLI).
 
 ---
 
@@ -269,7 +269,7 @@ Phase 1 successfully integrated and validated the rUvOS workspace with:
 
 **Workspace Status:** Clean, integrated, ready for Phase 2 implementation
 
-**Next:** Phase 2 will implement `ruflo mcp serve` command with hello-world tool and end-to-end integration test with Claude Code CLI. Duration: 1 week.
+**Next:** Phase 2 will implement `ruvos mcp serve` command with hello-world tool and end-to-end integration test with Claude Code CLI. Duration: 1 week.
 
 ---
 
@@ -282,7 +282,7 @@ Phase 2 successfully implemented the MCP server foundation with:
 - ✅ Trait-based tool handler framework (~200 LOC)
 - ✅ Echo tool as proof-of-concept (real implementation, ~50 LOC)
 - ✅ 19 tool stubs (placeholders for Phase 3+, ~200 LOC)
-- ✅ `ruflo mcp serve` CLI command (~100 LOC)
+- ✅ `ruvos mcp serve` CLI command (~100 LOC)
 - ✅ Automated end-to-end integration test with MCP round-trip (~150 LOC)
 - ✅ Full compilation: zero errors, zero warnings
 - ✅ All tests pass (1 integration + 7 unit tests)
@@ -294,7 +294,7 @@ Phase 2 successfully implemented the MCP server foundation with:
 3. Echo tool validates the complete data flow works end-to-end
 4. 19 stub tools return "not_implemented" status (ready for Phase 3+)
 5. Integration test spawns real binary and validates MCP round-trip
-6. CLI command `ruflo mcp serve` starts the server on stdio
+6. CLI command `ruvos mcp serve` starts the server on stdio
 
 **Total new LOC:** ~1,150 (well within 30k budget)
 
@@ -326,12 +326,12 @@ Phase 3 successfully implemented the plugin host system with:
 
 **Key Implementation Details:**
 1. Canonical plugin layout: plugin.toml + agents/*.md + skills/*/SKILL.md + commands/*.md
-2. Discovery searches: ./.ruflo/plugins → ~/.ruflo/plugins → $RUFLO_HOME/plugins → built-in
+2. Discovery searches: ./.ruvos/plugins → ~/.ruvos/plugins → $RUVOS_HOME/plugins → built-in
 3. Metadata extraction via serde_yaml from YAML frontmatter blocks
 4. Async command execution with captured stdout/stderr
 5. Integration with MCP tool handlers for discovery and invocation
 
-**Total new LOC:** ~1,200 (within 4k ruflo-plugin-host budget)
+**Total new LOC:** ~1,200 (within 4k ruvos-plugin-host budget)
 
 **Architecture Validated:**
 - Plugin discovery scales to hundreds of plugins
@@ -366,7 +366,7 @@ Phase 4 successfully implemented the hook system with SQLite-backed queue:
 5. Handler dispatcher: async routing to 8 hook handlers
 6. SONA bridge: ready for Phase 5 learning integration
 
-**Total new LOC:** ~500 (well within 3k ruflo-hooks budget)
+**Total new LOC:** ~500 (well within 3k ruvos-hooks budget)
 
 **Architecture Validated:**
 - SQLite queue survives process restarts (fixes Windows bug #1766)
@@ -446,7 +446,7 @@ Phase 6 successfully implemented CliHost adapters for multi-CLI orchestration:
 - 2 adapter error tests (error reporting coverage)
 - 1 adapter trait implementation test (dyn CliHost verification)
 
-**Total new LOC:** ~350 (within 6k ruflo-host budget; all 6 crates well under limits)
+**Total new LOC:** ~350 (within 6k ruvos-host budget; all 6 crates well under limits)
 
 **Architecture Validated:**
 - Both adapters properly implement the CliHost trait contract

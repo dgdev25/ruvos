@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-# Phase 1: Integrated workspace with 6 Ruflo + 18 curated RuVector substrate crates
+# Phase 1: Integrated workspace with 6 rUvOS + 18 curated RuVector substrate crates
 # (9 essential for Phase 2-5 + 9 optional for Phase 5+). 11 dropped crates: clustering (raft, replication, cluster),
 # LLM (ruvllm), variants (acorn), and runtime targets (ebpf, kernel, wasm, node, server, federation, launch).
 members = [
