@@ -30,6 +30,10 @@ members = [
     "substrate/rulake",
     "substrate/ruv-swarm-transport",
     "substrate/ruv-swarm-persistence",
+    # Temporal knowledge graph
+    "substrate/ruvos-memory-graph",
+    # Behavioral safety guardrails and adaptive boundaries
+    "substrate/ruvos-safety",
 ]
 default-members = [
     "crates/ruvos-cli",

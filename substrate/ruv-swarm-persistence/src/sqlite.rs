@@ -17,8 +17,7 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     /// Create new SQLite storage instance
     pub async fn new(path: &str) -> Result<Self, StorageError> {
-        let raw = Connection::open(path)
-            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let raw = Connection::open(path).map_err(|e| StorageError::Database(e.to_string()))?;
 
         let storage = Self {
             conn: Arc::new(Mutex::new(raw)),
@@ -181,10 +180,7 @@ impl SqliteStorage {
         }
 
         if !errors.is_empty() {
-            debug!(
-                "Encountered {} errors during deserialization",
-                errors.len()
-            );
+            debug!("Encountered {} errors during deserialization", errors.len());
         }
 
         Ok(results)
@@ -265,9 +261,15 @@ impl Storage for SqliteStorage {
                          metadata = ?6, heartbeat = ?7, updated_at = ?8, data = ?9 \
                      WHERE id = ?1",
                     params![
-                        &agent_id, &agent_name, &agent_type, &status,
-                        &capabilities_json, &metadata_json,
-                        heartbeat, updated_at, &json
+                        &agent_id,
+                        &agent_name,
+                        &agent_type,
+                        &status,
+                        &capabilities_json,
+                        &metadata_json,
+                        heartbeat,
+                        updated_at,
+                        &json
                     ],
                 )
             })
@@ -304,11 +306,9 @@ impl Storage for SqliteStorage {
     async fn list_agents(&self) -> Result<Vec<AgentModel>, Self::Error> {
         let json_results = self
             .exec_blocking(move |conn| {
-                let mut stmt =
-                    conn.prepare("SELECT data FROM agents ORDER BY created_at DESC")?;
-                let agents: Result<Vec<String>, _> = stmt
-                    .query_map([], |row| row.get::<_, String>(0))?
-                    .collect();
+                let mut stmt = conn.prepare("SELECT data FROM agents ORDER BY created_at DESC")?;
+                let agents: Result<Vec<String>, _> =
+                    stmt.query_map([], |row| row.get::<_, String>(0))?.collect();
                 agents
             })
             .await?;

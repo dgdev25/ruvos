@@ -137,10 +137,12 @@ async fn test_event_logging() {
     let start_time = Utc::now();
 
     // Store various events
-    let event_types = ["agent_started",
+    let event_types = [
+        "agent_started",
         "task_assigned",
         "task_completed",
-        "agent_stopped"];
+        "agent_stopped",
+    ];
 
     for (i, event_type) in event_types.iter().enumerate() {
         let event = EventModel {
@@ -282,10 +284,12 @@ async fn test_list_agents_by_status() {
     let storage = create_test_storage().await;
 
     // Create agents with different statuses
-    let statuses = [AgentStatus::Idle,
+    let statuses = [
+        AgentStatus::Idle,
         AgentStatus::Busy,
         AgentStatus::Busy,
-        AgentStatus::Shutdown];
+        AgentStatus::Shutdown,
+    ];
 
     for (i, status) in statuses.iter().enumerate() {
         let now = Utc::now();

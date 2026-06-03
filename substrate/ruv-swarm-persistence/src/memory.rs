@@ -215,13 +215,10 @@ impl Storage for MemoryStorage {
             .filter(|e| e.timestamp.timestamp() >= timestamp)
             .cloned()
             .collect();
-        
+
         // Sort by timestamp (with full precision) then by id for deterministic ordering
-        since_events.sort_by(|a, b| {
-            a.timestamp.cmp(&b.timestamp)
-                .then_with(|| a.id.cmp(&b.id))
-        });
-        
+        since_events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp).then_with(|| a.id.cmp(&b.id)));
+
         Ok(since_events)
     }
 
@@ -314,10 +311,7 @@ impl Storage for MemoryStorage {
             if metric.metric_type == metric_type && timestamp >= start_time && timestamp <= end_time
             {
                 let key = (metric.agent_id.clone(), metric.unit.clone());
-                grouped
-                    .entry(key)
-                    .or_default()
-                    .push(metric.value);
+                grouped.entry(key).or_default().push(metric.value);
             }
         }
 

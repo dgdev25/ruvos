@@ -277,7 +277,7 @@ mod property_tests {
             assert!(query_sql.contains(if desc { "DESC" } else { "ASC" }));
             assert!(query_sql.contains(&format!("LIMIT {}", limit)));
             assert!(query_sql.contains(&format!("OFFSET {}", offset)));
-            
+
             // Verify parameters are properly set (should have ? placeholders instead of direct values)
             assert!(!query_sql.contains(&value1), "SQL should use ? placeholders, not direct values");
             assert!(!query_sql.contains(&value2), "SQL should use ? placeholders, not direct values");

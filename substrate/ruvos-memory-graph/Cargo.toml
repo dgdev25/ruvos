@@ -1,0 +1,19 @@
+[package]
+name = "ruvos-memory-graph"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Temporal knowledge graph for rUvOS agent memory"
+license = "MIT"
+
+[dependencies]
+petgraph = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3"

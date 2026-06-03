@@ -1,11 +1,11 @@
 //! Test utilities for database isolation and fixture management
 
-use crate::{Storage, StorageError};
+use crate::memory::MemoryStorage;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::sqlite::SqliteStorage;
-use crate::memory::MemoryStorage;
-use tempfile::NamedTempFile;
+use crate::{Storage, StorageError};
 use std::sync::atomic::{AtomicU64, Ordering};
+use tempfile::NamedTempFile;
 use tracing::debug;
 
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -24,7 +24,9 @@ impl TestFixture {
         {
             let temp_file = NamedTempFile::new()
                 .map_err(|e| StorageError::Other(format!("Failed to create temp file: {}", e)))?;
-            let path = temp_file.path().to_str()
+            let path = temp_file
+                .path()
+                .to_str()
                 .ok_or_else(|| StorageError::Other("Invalid temp file path".to_string()))?;
 
             let storage = SqliteStorage::new(path).await?;
@@ -69,7 +71,9 @@ pub async fn create_test_storage() -> Result<SqliteStorage, StorageError> {
     let temp_file = NamedTempFile::new()
         .map_err(|e| StorageError::Other(format!("Failed to create temp file: {}", e)))?;
 
-    let path = temp_file.path().to_str()
+    let path = temp_file
+        .path()
+        .to_str()
         .ok_or_else(|| StorageError::Other("Invalid temp file path".to_string()))?
         .to_owned();
 
@@ -84,8 +88,9 @@ pub async fn create_test_storage() -> Result<SqliteStorage, StorageError> {
         conn.execute_batch(
             "PRAGMA journal_mode = MEMORY;
              PRAGMA synchronous = OFF;
-             PRAGMA temp_store = MEMORY;"
-        ).map_err(|e| StorageError::Database(format!("Failed to configure SQLite: {}", e)))?;
+             PRAGMA temp_store = MEMORY;",
+        )
+        .map_err(|e| StorageError::Database(format!("Failed to configure SQLite: {}", e)))?;
     }
 
     debug!("Created test storage {}", test_id);
@@ -132,16 +137,18 @@ pub mod assertions {
 
     /// Verify referential integrity across storage
     pub async fn assert_referential_integrity(
-        storage: &dyn Storage<Error = StorageError>
+        storage: &dyn Storage<Error = StorageError>,
     ) -> Result<(), String> {
-        let agents = storage.list_agents().await
+        let agents = storage
+            .list_agents()
+            .await
             .map_err(|e| format!("Failed to list agents: {}", e))?;
-        let tasks = storage.get_pending_tasks().await
+        let tasks = storage
+            .get_pending_tasks()
+            .await
             .map_err(|e| format!("Failed to get tasks: {}", e))?;
 
-        let agent_ids: HashSet<_> = agents.iter()
-            .map(|a| &a.id)
-            .collect();
+        let agent_ids: HashSet<_> = agents.iter().map(|a| &a.id).collect();
 
         for task in tasks {
             if let Some(agent_id) = &task.assigned_to {
