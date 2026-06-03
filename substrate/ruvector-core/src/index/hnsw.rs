@@ -138,7 +138,7 @@ impl HnswIndex {
         self.config.ef_search = ef_search;
     }
 
-    /// Serialize the index to bytes using bincode
+    /// Serialize the index to bytes using JSON.
     pub fn serialize(&self) -> Result<Vec<u8>> {
         let inner = self.inner.read();
 
@@ -174,9 +174,9 @@ impl HnswIndex {
         })
     }
 
-    /// Deserialize the index from bytes using bincode
+    /// Deserialize the index from bytes (JSON, matching `serialize`).
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
-        let (state, _): (HnswState, usize) = serde_json::from_slice(bytes).map_err(|e| {
+        let state: HnswState = serde_json::from_slice(bytes).map_err(|e| {
             RuvectorError::SerializationError(format!("Failed to deserialize HNSW index: {}", e))
         })?;
 

@@ -143,13 +143,19 @@ mod tests {
 
     #[test]
     fn test_version() {
-        // Verify version matches workspace - use dynamic check instead of hardcoded value
+        // ruvector-core is workspace-versioned within rUvOS; just verify the
+        // version is present and well-formed (numeric major + a minor part).
         let version = env!("CARGO_PKG_VERSION");
         assert!(!version.is_empty(), "Version should not be empty");
-        // Version 2.x is the current major version
+        let mut parts = version.split('.');
         assert!(
-            version.starts_with("2.") || version.starts_with("0.1."),
-            "Version should be 2.x or 0.1.x, got: {}",
+            parts.next().is_some_and(|p| p.parse::<u32>().is_ok()),
+            "Version should start with a numeric major component, got: {}",
+            version
+        );
+        assert!(
+            parts.next().is_some(),
+            "Version should have a minor component, got: {}",
             version
         );
     }

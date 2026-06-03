@@ -94,6 +94,33 @@ cargo test --doc
 
 ### Key Development Rules
 
+**ZERO-DEFECT POLICY (highest priority, non-negotiable):**
+
+The entire workspace must be **100% clean at all times** — zero errors, zero
+warnings, zero failing tests, anywhere they occur, regardless of whether the
+code is ours (`crates/`) or vendored substrate (`substrate/`). "It's not our
+code / it's pre-existing / it's not in default-members" is **never** an
+acceptable reason to leave a defect. If you touch the workspace and `cargo
+build --workspace`, `cargo clippy --workspace --all-targets`, `cargo test
+--workspace`, or `cargo fmt --check` surfaces anything, you fix it before
+considering the task done. Validate with the full workspace, not just
+default-members:
+
+```bash
+cargo build --workspace --jobs 4          # --jobs 4 avoids OOM/ICE on this 30+ crate tree
+cargo clippy --workspace --all-targets --jobs 4 -- -D warnings
+cargo test --workspace --jobs 4
+cargo fmt --check
+```
+
+Notes learned the hard way:
+- The full `--workspace` build can ICE ("compiler unexpectedly panicked") from
+  resource exhaustion when compiling all crates at once — use `--jobs 4`, it is
+  not a real error.
+- Performance/benchmark tests with hardcoded ns/op thresholds must be gated
+  with `#[cfg_attr(debug_assertions, ignore = "...")]` — they are only valid in
+  release builds; running them in debug is a guaranteed false failure.
+
 **Enforced at CI time:**
 
 1. **File size limit: all `.rs` files ≤ 500 lines.** Custom `--max-lines 500` check in CI. No exceptions. (Reason: the current codebase has files like `commands/hooks.ts` with 5,331 LOC — this is the contract to prevent that.)

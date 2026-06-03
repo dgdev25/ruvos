@@ -628,7 +628,7 @@ impl AgenticDB {
             .get(session_id)?
             .ok_or_else(|| RuvectorError::VectorNotFound(session_id.to_string()))?;
 
-        let (mut session, _): (LearningSession, usize) = serde_json::from_slice(data.value())
+        let mut session: LearningSession = serde_json::from_slice(data.value())
             .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         drop(table);
@@ -667,7 +667,7 @@ impl AgenticDB {
             .get(session_id)?
             .ok_or_else(|| RuvectorError::VectorNotFound(session_id.to_string()))?;
 
-        let (session, _): (LearningSession, usize) = serde_json::from_slice(data.value())
+        let session: LearningSession = serde_json::from_slice(data.value())
             .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
 
         // Simple prediction based on similar states (would use actual RL model in production)
@@ -722,7 +722,7 @@ impl AgenticDB {
         let table = read_txn.open_table(LEARNING_TABLE)?;
 
         if let Some(data) = table.get(session_id)? {
-            let (session, _): (LearningSession, usize) = serde_json::from_slice(data.value())
+            let session: LearningSession = serde_json::from_slice(data.value())
                 .map_err(|e| RuvectorError::SerializationError(e.to_string()))?;
             Ok(Some(session))
         } else {

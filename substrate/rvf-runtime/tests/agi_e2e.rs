@@ -312,6 +312,7 @@ fn container_size_limit_enforced() {
 // -- 8. Performance Benchmarks (using std::time) --
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "perf benchmark: timing assertions only valid in release builds")]
 fn bench_header_serialize_deserialize() {
     use std::time::Instant;
     let header = AgiContainerHeader {
@@ -348,6 +349,7 @@ fn bench_header_serialize_deserialize() {
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "perf benchmark: timing assertions only valid in release builds")]
 fn bench_container_build_parse() {
     use std::time::Instant;
     let n: u128 = 10_000;
@@ -395,6 +397,7 @@ fn bench_container_build_parse() {
 }
 
 #[test]
+#[cfg_attr(debug_assertions, ignore = "perf benchmark: timing assertions only valid in release builds")]
 fn bench_flags_computation() {
     use std::time::Instant;
     let n: u128 = 1_000_000;

@@ -133,7 +133,11 @@ impl InProcessTransport {
         config: TransportConfig,
         registry: Arc<InProcessRegistry>,
     ) -> Result<Self, TransportError> {
-        let (incoming_tx, incoming_rx) = mpsc::channel(config.max_message_size / 1024);
+        // Channel capacity scales with max_message_size but is floored at 1 so
+        // tiny size limits (used in tests) don't produce a zero-capacity channel
+        // (which tokio's mpsc::channel rejects with a panic).
+        let channel_capacity = (config.max_message_size / 1024).max(1);
+        let (incoming_tx, incoming_rx) = mpsc::channel(channel_capacity);
         let (broadcast_tx, _) = broadcast::channel(1024);
 
         // Register with the registry

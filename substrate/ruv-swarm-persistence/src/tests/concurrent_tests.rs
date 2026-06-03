@@ -490,9 +490,12 @@ async fn test_event_sourcing_at_scale() {
     }
 }
 
+// Storage uses a single `Mutex<Connection>` (not a pool), so concurrent
+// operations serialize through it. This test validates that property: many
+// concurrent direct writes all succeed with no data loss or corruption.
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::test]
-async fn test_connection_pool_exhaustion() {
+async fn test_concurrent_writes_serialize_without_loss() {
     use tempfile::NamedTempFile;
 
     let temp_file = NamedTempFile::new().unwrap();
@@ -502,7 +505,6 @@ async fn test_connection_pool_exhaustion() {
             .unwrap(),
     );
 
-    // Pool size is 16, so let's try to exhaust it
     let concurrent_ops = 20;
     let barrier = Arc::new(Barrier::new(concurrent_ops));
 
@@ -512,55 +514,39 @@ async fn test_connection_pool_exhaustion() {
         let barrier_clone = barrier.clone();
 
         let handle = tokio::spawn(async move {
+            // Fire all writes at once to maximize contention on the mutex.
             barrier_clone.wait().await;
-
-            // Try to hold a transaction for a while
-            let tx = storage_clone.begin_transaction().await;
-
-            match tx {
-                Ok(transaction) => {
-                    // Hold the connection
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-                    // Do some work
-                    let agent = AgentModel::new(
-                        format!("agent-{}", i),
-                        "worker".to_string(),
-                        vec!["compute".to_string()],
-                    );
-                    let store_result = storage_clone.store_agent(&agent).await;
-
-                    // Commit
-                    let commit_result = transaction.commit().await;
-
-                    (true, store_result.is_ok() && commit_result.is_ok())
-                }
-                Err(_) => (false, false),
-            }
+            let agent = AgentModel::new(
+                format!("agent-{}", i),
+                "worker".to_string(),
+                vec!["compute".to_string()],
+            );
+            storage_clone.store_agent(&agent).await.is_ok()
         });
         handles.push(handle);
     }
 
-    // Collect results
-    let results: Vec<(bool, bool)> = join_all(handles)
+    let results: Vec<bool> = join_all(handles)
         .await
         .into_iter()
         .map(|r| r.unwrap())
         .collect();
 
-    // At least pool_size operations should succeed
-    let successful_tx = results.iter().filter(|(got_tx, _)| *got_tx).count();
-    assert!(
-        successful_tx >= 16,
-        "At least 16 operations should get connections, got {}",
-        successful_tx
+    // Every concurrent write must succeed (serialized, no loss).
+    let succeeded = results.iter().filter(|ok| **ok).count();
+    assert_eq!(
+        succeeded, concurrent_ops,
+        "all {} concurrent writes should succeed, got {}",
+        concurrent_ops, succeeded
     );
 
-    // Some might timeout waiting for connections
-    let failed_tx = results.iter().filter(|(got_tx, _)| !*got_tx).count();
-    println!(
-        "Connection pool exhaustion test: {} succeeded, {} failed",
-        successful_tx, failed_tx
+    // And all rows must actually be persisted.
+    let stored = storage.list_agents().await.unwrap();
+    assert_eq!(
+        stored.len(),
+        concurrent_ops,
+        "all {} agents must be persisted",
+        concurrent_ops
     );
 }
 

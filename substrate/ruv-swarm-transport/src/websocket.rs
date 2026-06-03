@@ -668,12 +668,24 @@ mod tests {
 
     #[test]
     fn test_compression() {
+        // Roundtrip correctness on a short message (gzip may expand tiny inputs
+        // due to header overhead — size is only expected to shrink on larger,
+        // repetitive data, asserted separately below).
         let data = b"Hello, World! This is a test message for compression.";
         let compressed = WebSocketTransport::compress(data).unwrap();
         let decompressed = WebSocketTransport::decompress(&compressed).unwrap();
-
         assert_eq!(data.as_slice(), decompressed.as_slice());
-        // Compressed should be smaller for repetitive data
-        assert!(compressed.len() <= data.len());
+
+        // On larger repetitive data, compression must actually reduce size.
+        let repetitive = vec![b'a'; 4096];
+        let compressed_big = WebSocketTransport::compress(&repetitive).unwrap();
+        let decompressed_big = WebSocketTransport::decompress(&compressed_big).unwrap();
+        assert_eq!(repetitive.as_slice(), decompressed_big.as_slice());
+        assert!(
+            compressed_big.len() < repetitive.len(),
+            "repetitive data should compress smaller: {} >= {}",
+            compressed_big.len(),
+            repetitive.len()
+        );
     }
 }
