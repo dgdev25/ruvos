@@ -1,0 +1,9 @@
+[package]
+name = "ruvos-goap"
+version = "0.1.0"
+edition = "2021"
+description = "Goal-Oriented Action Planning (A*) — clean-room extraction from rUvnet ARCADIA (MIT, © rUv)."
+license = "MIT"
+
+[dependencies]
+serde = { workspace = true }

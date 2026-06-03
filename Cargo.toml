@@ -47,6 +47,8 @@ members = [
     "substrate/ruvector-replication",
     # Federated transfer learning — PII strip + differential privacy (native)
     "substrate/rvf-federation",
+    # Goal-Oriented Action Planning (A*) — extracted from ARCADIA (ADR-004)
+    "substrate/ruvos-goap",
 ]
 default-members = [
     "crates/ruvos-cli",
