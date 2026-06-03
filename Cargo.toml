@@ -49,6 +49,8 @@ members = [
     "substrate/rvf-federation",
     # Goal-Oriented Action Planning (A*) — extracted from ARCADIA (ADR-004)
     "substrate/ruvos-goap",
+    # Lean conditional-edge DAG executor — modeled on graph-flow (ADR-007)
+    "substrate/ruvos-graphflow",
 ]
 default-members = [
     "crates/ruvos-cli",

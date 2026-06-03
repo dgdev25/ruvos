@@ -25,6 +25,7 @@ ruvector-core = { path = "../../substrate/ruvector-core", default-features = fal
 ruvector-rabitq = { path = "../../substrate/ruvector-rabitq" }
 ruvector-acorn = { path = "../../substrate/ruvector-acorn" }
 ruvos-goap = { path = "../../substrate/ruvos-goap" }
+ruvos-graphflow = { path = "../../substrate/ruvos-graphflow" }
 ruvector-sona = { path = "../../substrate/sona" }
 rulake = { path = "../../substrate/rulake" }
 ruv-swarm-transport = { path = "../../substrate/ruv-swarm-transport" }

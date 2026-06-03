@@ -1,6 +1,6 @@
 # ADR-007: `graph-flow` typed DAG executor for `orchestrate` (branching pipelines)
 
-**Status:** Deferred (2026-06-03) — gate not met; see "Deferral decision" below
+**Status:** Implemented (2026-06-03) — as a lean clean-room executor (see "Implementation note"), opt-in via `max_retries`
 **Amends:** scope-ledger-v1.md §1 (`orchestrate.run` execution model); adds substrate crate `ruvos-graphflow`
 **Tier:** 2 · **Source:** rUvnet `rs-graph-llm` (`graph-flow` crate)
 
@@ -87,8 +87,28 @@ context.rs[split] + error.rs + storage.rs; drop `storage_postgres.rs` + `rig`).
 "on test failure → back to coder, max 2×"). At that point the ~3,200-LOC vendor is
 justified; until then inline handling is sufficient and leaner.
 
+## Implementation note (2026-06-03)
+
+After ADR-009 supplied the outcome signal, this shipped — but as a **lean
+clean-room executor**, not a wholesale vendor of graph-flow. Vendoring its ~3,200
+LOC would have imported PostgreSQL, the Rig LLM client, a 1,061-line `Context`
+blob, and a `Session`/storage layer rUvOS does not use. Instead `substrate/
+ruvos-graphflow` (~140 LOC, pure `std`) implements the *capability* — a typed
+`FlowGraph` with `Always`/`OnSuccess`/`OnFailure` conditional edges + a bounded
+reference driver — modeled on graph-flow's design and attributed to it.
+
+`orchestrate.run` gains an opt-in `max_retries` (default `0`):
+- `0` → the linear stop-on-failure pipeline (ADR-009), unchanged.
+- `>0` → the plan is compiled to a graph (forward `OnSuccess` edges + an
+  `OnFailure` edge from each step back to the nearest preceding `coder`, i.e.
+  rework), executed with a per-node visit cap of `max_retries+1` and an overall
+  step budget. A failed `tester` loops back to `coder` and retries, bounded.
+
+This delivers conditional retry/rework — the real branching capability — in a
+fraction of the code, honoring the zero-bloat discipline.
+
 ## Rollout
 
-Sequenced after the outcome-signal prerequisite. Plan to be written when scheduled
+Implemented. Sequenced after the outcome-signal prerequisite (ADR-009).
 (`docs/superpowers/plans/<date>-graphflow-orchestrate.md`). Gate on whether real
 GOAP plans exhibit branching; if they stay linear, this stays deferred.

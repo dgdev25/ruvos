@@ -519,7 +519,9 @@ script (the static templates remain as a fallback). Templates: `feature`
 (planner → coder → tester → reviewer), `bugfix` (researcher → coder → tester),
 `refactor` (architect → coder → tester → reviewer), `security`
 (security → coder → tester), `sparc` (the 5-phase methodology). The response
-includes `planned` and `plan_cost`.
+includes `planned` and `plan_cost`. Optional `max_retries` (default `0` = stop on
+first failure) routes execution through a conditional-edge graph so a failed step
+**loops back to the nearest `coder` for rework**, bounded by the retry budget.
 
 **`orchestrate.run`** — run a whole pipeline for a task in one go.
 🗣️ *"rUvOS, orchestrate a full feature pipeline for user auth."*

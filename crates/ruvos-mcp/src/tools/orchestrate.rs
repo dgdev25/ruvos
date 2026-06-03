@@ -9,7 +9,9 @@ use super::handler::{ExecuteFuture, ToolHandler};
 use super::orchestrate_plan;
 use crate::{Result, RuvosError};
 use ruvos_goap::{GoapAction, GoapGoal, StateValue};
+use ruvos_graphflow::{EdgeCond, FlowGraph};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Known templates: template -> ordered archetype pipeline. Used only as a
@@ -70,6 +72,50 @@ fn actions_from_json(arr: &[Value]) -> Vec<GoapAction> {
             Some(a)
         })
         .collect()
+}
+
+/// Compile a linear archetype plan into a conditional-edge graph (ADR-007):
+/// forward `OnSuccess` edges, plus an `OnFailure` edge from each step back to the
+/// nearest preceding `coder` (rework), or to itself (retry) when none precedes.
+/// With `max_retries == 0` this graph is unused — the plain stop-on-failure loop runs.
+fn build_graph(pipeline: &[String]) -> FlowGraph {
+    let mut g = FlowGraph::new(pipeline[0].clone());
+    for i in 0..pipeline.len() {
+        if i + 1 < pipeline.len() {
+            g = g.edge(
+                pipeline[i].clone(),
+                pipeline[i + 1].clone(),
+                EdgeCond::OnSuccess,
+            );
+        }
+        let rework = pipeline[..i]
+            .iter()
+            .rposition(|a| a == "coder")
+            .map(|p| pipeline[p].clone())
+            .unwrap_or_else(|| pipeline[i].clone());
+        g = g.edge(pipeline[i].clone(), rework, EdgeCond::OnFailure);
+    }
+    g
+}
+
+/// Spawn one archetype step; return `(success, step-json)`.
+async fn run_step(label: &str, task: &str, model: &str, archetype: &str) -> Result<(bool, Value)> {
+    let spawned = AgentSpawnHandler
+        .execute(json!({
+            "archetype": archetype,
+            "prompt": format!("[{} orchestration] {}", label, task),
+            "model": model
+        }))
+        .await?;
+    let success = spawned["success"].as_bool().unwrap_or(true);
+    let step = json!({
+        "archetype": archetype,
+        "agent_id": spawned["agent_id"],
+        "status": spawned["status"],
+        "success": success,
+        "artifact_path": spawned["artifact_path"]
+    });
+    Ok((success, step))
 }
 
 pub struct OrchestrateRunHandler;
@@ -166,34 +212,56 @@ impl ToolHandler for OrchestrateRunHandler {
                 }
             };
 
+            // Optional bounded retry/rework (ADR-007). 0 (default) = the plain
+            // stop-on-failure pipeline; >0 routes through the conditional-edge
+            // graph so a failed step loops back to the nearest coder, bounded.
+            let max_retries = params
+                .get("max_retries")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize;
+
             let orchestration_id = Uuid::new_v4().to_string();
-            let spawner = AgentSpawnHandler;
             let mut steps = Vec::new();
             let mut all_ok = true;
 
-            // Really run each archetype in order; each produces a real artifact.
-            // On the first failed step the pipeline stops (ADR-009): e.g. a failed
-            // `tester` does not proceed to `reviewer`.
-            for archetype in &pipeline {
-                let step_prompt = format!("[{} orchestration] {}", label, task);
-                let spawned = spawner
-                    .execute(json!({
-                        "archetype": archetype,
-                        "prompt": step_prompt,
-                        "model": model
-                    }))
-                    .await?;
-                let success = spawned["success"].as_bool().unwrap_or(true);
-                steps.push(json!({
-                    "archetype": archetype,
-                    "agent_id": spawned["agent_id"],
-                    "status": spawned["status"],
-                    "success": success,
-                    "artifact_path": spawned["artifact_path"]
-                }));
-                if !success {
-                    all_ok = false;
-                    break;
+            if max_retries == 0 {
+                // Linear: run each archetype in order; stop at the first failure
+                // (ADR-009) — a failed `tester` does not proceed to `reviewer`.
+                for archetype in &pipeline {
+                    let (success, step) = run_step(&label, &task, &model, archetype).await?;
+                    steps.push(step);
+                    if !success {
+                        all_ok = false;
+                        break;
+                    }
+                }
+            } else {
+                // Graph-driven: follow conditional edges, with per-node visit caps
+                // bounding rework loops and an overall step budget as a backstop.
+                let graph = build_graph(&pipeline);
+                let max_visits = max_retries + 1;
+                let max_steps = pipeline.len() * (max_retries + 1) + 2;
+                let mut visits: HashMap<String, usize> = HashMap::new();
+                let mut current = graph.start().to_string();
+                all_ok = false;
+                for _ in 0..max_steps {
+                    *visits.entry(current.clone()).or_insert(0) += 1;
+                    let (success, step) = run_step(&label, &task, &model, &current).await?;
+                    steps.push(step);
+                    match graph.next(&current, success) {
+                        None => {
+                            all_ok = success; // reached a terminal node
+                            break;
+                        }
+                        Some(next) => {
+                            let next = next.to_string();
+                            if visits.get(&next).copied().unwrap_or(0) >= max_visits {
+                                all_ok = false; // rework budget exhausted
+                                break;
+                            }
+                            current = next;
+                        }
+                    }
                 }
             }
 
@@ -255,6 +323,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r["step_count"], 3);
+    }
+
+    #[tokio::test]
+    async fn graph_path_happy_runs_full_pipeline() {
+        // max_retries>0 routes through the conditional-edge graph; with no runner
+        // every step succeeds, so it follows OnSuccess edges to the terminal node.
+        let _g = isolate();
+        let r = OrchestrateRunHandler
+            .execute(json!({"template": "feature", "task": "x", "max_retries": 2}))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "completed");
+        assert_eq!(r["success"], true);
+        assert_eq!(r["step_count"], 4);
+        assert_eq!(r["steps"][3]["archetype"], "reviewer");
     }
 
     #[tokio::test]

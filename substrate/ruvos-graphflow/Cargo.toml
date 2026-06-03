@@ -1,0 +1,8 @@
+[package]
+name = "ruvos-graphflow"
+version = "0.1.0"
+edition = "2021"
+description = "Lean typed DAG executor with conditional edges — modeled on rUvnet rs-graph-llm/graph-flow (MIT, © rUv). Pure std, no async/DB deps."
+license = "MIT"
+
+[dependencies]
