@@ -3,14 +3,16 @@
 > ⚠️ **NOT BACKWARD COMPATIBLE WITH RUFLO v2/v3**
 >
 > **rUvOS v4 is a complete, clean-room Rust rewrite. It is _NOT_ compatible with
-> Ruflo v2/v3** (the TypeScript/npm `ruflo` and `@claude-flow/cli` packages). There
-> is **no migration path** and **no `v2:migrate`** — the clean break is intentional.
+> the Ruflo v2/v3 npm CLI** (the TypeScript monolith — `ruflo` / `@claude-flow/cli`).
+> There is **no migration path** and **no `v2:migrate`** — the clean break is
+> intentional.
 >
-> **Running [`./setup.sh`](#install) will REMOVE Ruflo v2/v3 entirely** — it
-> uninstalls the old npm packages, clears their cache, and drops their stale MCP
-> registrations — and replaces them with the single `ruvos` v4 binary. This
-> removal is **mandatory and not optional**: v4 cannot coexist with v2/v3 (Claude
-> Code would otherwise fall back to the legacy install).
+> **Running [`./setup.sh`](#install) uninstalls that v2/v3 npm CLI** (and clears
+> its npm cache), replacing it with the single `ruvos` v4 binary. It does **not**
+> touch the current `claude-flow` / `ruv-swarm` MCP servers or any Ruflo Claude
+> Code plugins — those **coexist fine** with rUvOS (verified: separate namespaces,
+> processes, and data dirs). When capabilities overlap, just name **rUvOS** in
+> your request to route to it.
 
 rUvOS is a Rust-native agent orchestration system. It runs as an **MCP server** that
 plugs into Claude Code, Codex CLI, or Gemini CLI and gives them persistent memory,
@@ -91,16 +93,14 @@ claude mcp list          # ruvos: ✓ Connected
 
 That's it — all 24 rUvOS tools are now available to Claude Code in every project.
 
-> **Note:** removing Ruflo v2/v3 is **mandatory** — there is no opt-out flag,
-> because v4 cannot coexist with the legacy install.
->
-> **What `setup.sh` removes:** the npm packages (`ruflo`, `@claude-flow/cli`) and
-> their stale MCP server registrations (`ruflo`, `claude-flow@alpha`,
-> `ruv-swarm`, … matched by prefix, so versioned/`@alpha` names are caught).
-> **What it does *not* remove:** legacy Ruflo **Claude Code plugins** (the `ruflo`
-> marketplace bundle that adds `ruflo-*` agents/skills). Plugins are user-managed
-> Claude Code state — if you want a fully ruflo-free environment, uninstall them
-> yourself with the `/plugin` command. (You may legitimately want to keep them.)
+> **What `setup.sh` removes:** only the incompatible **v2/v3 npm CLI**
+> (`ruflo`, `@claude-flow/cli`) + its npm cache.
+> **What it leaves alone (both coexist with rUvOS):**
+> - `claude-flow` / `ruv-swarm` **MCP servers** — different tool namespace,
+>   process, and data dir; no conflict. Name "rUvOS" in requests to disambiguate
+>   overlapping capabilities.
+> - Ruflo **Claude Code plugins** (the `ruflo` bundle → `ruflo-*` agents/skills) —
+>   user-managed; remove via `/plugin` only if you want a fully ruflo-free setup.
 
 **`setup.sh` flags:**
 

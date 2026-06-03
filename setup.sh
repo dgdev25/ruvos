@@ -74,11 +74,15 @@ BIN="$REPO_DIR/target/release/ruvos"
 [ -x "$BIN" ] || die "build did not produce $BIN"
 ok "built: $($BIN --version)"
 
-# ----- 3. remove legacy Ruflo v2/v3 (MANDATORY — clean break) --------------
-# rUvOS v4 is not backward compatible and cannot coexist with v2/v3: leaving the
-# old `ruflo`/claude-flow install in place causes Claude Code to fall back to it.
-# This removal is therefore unconditional.
-say "Removing legacy Ruflo v2/v3 (clean break — rUvOS v4 is NOT backward compatible)"
+# ----- 3. remove the incompatible Ruflo v2/v3 npm CLI ----------------------
+# Only the old v2/v3 npm CLI (the TypeScript monolith) is genuinely incompatible
+# with rUvOS v4 and gets removed. Everything else is left in place:
+#   • claude-flow / ruv-swarm MCP servers — these coexist fine with rUvOS
+#     (verified: different namespaces, processes, and data dirs). Disambiguate by
+#     naming "rUvOS" in requests; see the README.
+#   • Ruflo Claude Code *plugins* (the `ruflo` bundle → `ruflo-*` agents/skills) —
+#     user-managed; remove via the `/plugin` command only if you want to.
+say "Removing the legacy Ruflo v2/v3 npm CLI (the only piece incompatible with v4)"
 if command -v npm >/dev/null 2>&1; then
   npm uninstall -g ruflo            >/dev/null 2>&1 && ok "removed npm package: ruflo" || warn "npm 'ruflo' not installed"
   npm uninstall -g @claude-flow/cli >/dev/null 2>&1 && ok "removed npm package: @claude-flow/cli" || warn "npm '@claude-flow/cli' not installed"
@@ -87,22 +91,6 @@ if command -v npm >/dev/null 2>&1; then
 else
   warn "npm not found — skipping npm package removal"
 fi
-# Drop stale MCP registrations pointing at the old CLI. Match by PREFIX so
-# suffixed/versioned names (e.g. `claude-flow@alpha`, `ruv-swarm@latest`) are
-# caught too — exact-name removal previously missed `claude-flow@alpha`.
-if command -v claude >/dev/null 2>&1; then
-  # Names as reported by `claude mcp list` (text before the first ": ").
-  legacy="$(claude mcp list 2>/dev/null \
-    | sed -n 's/^\(ruflo[^:]*\|claude-flow[^:]*\|ruv-swarm[^:]*\|flow-nexus[^:]*\):.*/\1/p')"
-  # Belt-and-braces: also try the well-known exact names directly.
-  for name in $legacy ruflo claude-flow 'claude-flow@alpha' ruv-swarm 'ruv-swarm@latest' flow-nexus; do
-    claude mcp remove "$name" >/dev/null 2>&1 && ok "removed stale MCP server: $name" || true
-  done
-fi
-# NOTE: legacy Ruflo Claude Code *plugins* (the `ruflo` marketplace bundle that
-# provides `ruflo-*` agents/skills) are intentionally NOT uninstalled here —
-# plugins are user-managed Claude Code state. Remove them yourself with the
-# `/plugin` command if you want a fully ruflo-free environment.
 
 # ----- 4. install the binary onto PATH -------------------------------------
 say "Installing the ruvos binary"
