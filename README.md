@@ -503,19 +503,27 @@ read). Scope is `machine`, `directory`, or `repo`.
 ### `orchestrate` — multi-agent orchestration templates
 
 One call runs an ordered pipeline of agents; each step leaves a real artifact.
-Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
-(researcher → coder → tester), `refactor` (architect → coder → reviewer),
-`security` (security → coder → tester).
+A **GOAP (A\*) planner computes** the archetype sequence — from a named template
+or a caller-supplied `goal` + `capabilities` — rather than running a hardcoded
+script (the static templates remain as a fallback). Templates: `feature`
+(planner → coder → tester → reviewer), `bugfix` (researcher → coder → tester),
+`refactor` (architect → coder → tester → reviewer), `security`
+(security → coder → tester), `sparc` (the 5-phase methodology). The response
+includes `planned` and `plan_cost`.
 
 **`orchestrate.run`** — run a whole pipeline for a task in one go.
 🗣️ *"rUvOS, orchestrate a full feature pipeline for user auth."*
 ```jsonc
 {"name":"orchestrate.run","arguments":{"template":"feature","task":"build POST /users with validation"}}
-// → { "orchestration_id":"…", "template":"feature", "status":"completed", "step_count":4,
+// → { "orchestration_id":"…", "template":"feature", "status":"completed",
+//     "planned":true, "plan_cost":4.0, "step_count":4,
 //     "steps":[ { "archetype":"planner",  "agent_id":"…", "artifact_path":"…" },
-//               { "archetype":"coder",    … },
-//               { "archetype":"tester",   … },
+//               { "archetype":"coder",    … }, { "archetype":"tester", … },
 //               { "archetype":"reviewer", … } ] }
+
+// computed pipeline from a goal (no template) — the planner derives the steps:
+{"name":"orchestrate.run","arguments":{"task":"harden auth","goal":{"secured":true,"tested":true}}}
+// → { "template":"custom", "planned":true, "steps":[ {"archetype":"security"}, {"archetype":"coder"}, {"archetype":"tester"} ] }
 ```
 
 ---

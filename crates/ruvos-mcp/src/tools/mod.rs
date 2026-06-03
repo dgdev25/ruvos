@@ -220,7 +220,9 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         ToolMetadata {
             name: "orchestrate.run".to_string(),
             description:
-                "Run a multi-agent orchestration template (feature / bugfix / refactor / security)"
+                "Run a multi-agent pipeline. A GOAP (A*) planner computes the archetype sequence \
+                 from a template (feature/bugfix/refactor/security/sparc) or a caller-supplied \
+                 goal + capabilities; static templates are the fallback"
                     .to_string(),
             domain: "orchestrate".to_string(),
         },

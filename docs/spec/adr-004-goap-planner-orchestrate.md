@@ -1,6 +1,6 @@
 # ADR-004: GOAP planner for `orchestrate` (computed pipelines, not scripts)
 
-**Status:** Accepted (2026-06-03)
+**Status:** Implemented (2026-06-03)
 **Amends:** scope-ledger-v1.md §1 (`orchestrate.run`); adds substrate crate `ruvos-goap`
 **Tier:** 1 (flagship) · **Source:** rUvnet `ARCADIA` (`src/ai/goap.rs`)
 
