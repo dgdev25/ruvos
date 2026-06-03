@@ -9,7 +9,7 @@
 //! - **plugin** (2): list, invoke
 //! - **gov** (3): witness_verify, health, events
 //! - **relay** (3): announce, list, send
-//! - **workflow** (1): run
+//! - **orchestrate** (1): run
 
 pub mod error;
 pub mod paths;

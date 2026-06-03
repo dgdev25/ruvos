@@ -55,7 +55,7 @@ whole workspace.
     [plugin](#plugin--discover-and-run-plugins) ·
     [gov](#gov--health-provenance--audit) ·
     [relay](#relay--cross-instance-coordination) ·
-    [workflow](#workflow--multi-agent-orchestration-templates)
+    [orchestrate](#orchestrate--multi-agent-orchestration-templates)
 - [Agent archetypes & traits](#agent-archetypes--traits)
 - [Where your data lives](#where-your-data-lives)
 - [Architecture](#architecture)
@@ -79,7 +79,11 @@ cd ruvos
 ./setup.sh
 ```
 
-Then open a new terminal (so `PATH`/`RUVOS_HOME` take effect) and check it:
+Then:
+
+1. **Restart Claude Code.** It loads MCP servers at startup, so a fresh start is
+   required to pick up the newly-registered `ruvos` server (and any binary update).
+2. Open a new terminal (so `PATH`/`RUVOS_HOME` take effect) and confirm:
 
 ```bash
 claude mcp list          # ruvos: ✓ Connected
@@ -130,7 +134,7 @@ like it uses any other MCP server. You speak normally:
 | *"Remember we're using PostgreSQL for this project"* | `memory.store` |
 | *"What did we decide about the database schema?"* | `memory.search` |
 | *"Pick up where we left off yesterday"* | `session.resume` |
-| *"Run a full feature workflow for user auth"* | `workflow.run` |
+| *"Orchestrate a full feature pipeline for user auth"* | `orchestrate.run` |
 | *"Is it safe to run this command?"* | `hooks.pre` (risk assessment) |
 | *"What's the system health?"* | `gov.health` |
 | *"Show me what happened in the last hour"* | `gov.events` (audit log) |
@@ -160,7 +164,7 @@ before the risky refactor"* → `session.fork`.
 | **plugin** (2) | `list`, `invoke` | Discover and run plugins (markdown + shell commands) |
 | **gov** (3) | `health`, `witness_verify`, `events` | System health + safety score, `.rvf` signature verification, signed audit log |
 | **relay** (3) | `announce`, `list`, `send` | Cross-instance coordination — independent Claude Code instances discover and message each other via pure file mailboxes (no daemon, no port, no DB) |
-| **workflow** (1) | `run` | Orchestration templates: `feature` / `bugfix` / `refactor` / `security` |
+| **orchestrate** (1) | `run` | Orchestration templates: `feature` / `bugfix` / `refactor` / `security` |
 
 ---
 
@@ -176,7 +180,7 @@ Claude (using rUvOS automatically):
   → session.create  { name: "users-endpoint" }
   → memory.store    { key: "spec", value: "POST /users, zod validation, ...",
                       namespace: "users-api" }
-  → workflow.run    { workflow_type: "feature", task: "POST /users with validation" }
+  → orchestrate.run { template: "feature", task: "POST /users with validation" }
   ...planner → coder → tester → reviewer run, each leaving a real artifact...
 
 [next day]
@@ -441,18 +445,18 @@ Every `announce`/`send` is recorded in the signed `gov.events` audit log.
 
 ---
 
-### `workflow` — multi-agent orchestration templates
+### `orchestrate` — multi-agent orchestration templates
 
 One call runs an ordered pipeline of agents; each step leaves a real artifact.
 Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
 (researcher → coder → tester), `refactor` (architect → coder → reviewer),
 `security` (security → coder → tester).
 
-**`workflow.run`** — run a whole pipeline for a task in one go.
-🗣️ *"Run a full feature workflow for user auth."*
+**`orchestrate.run`** — run a whole pipeline for a task in one go.
+🗣️ *"Orchestrate a full feature pipeline for user auth."*
 ```jsonc
-{"name":"workflow.run","arguments":{"workflow_type":"feature","task":"build POST /users with validation"}}
-// → { "workflow_id":"…", "workflow_type":"feature", "status":"completed", "step_count":4,
+{"name":"orchestrate.run","arguments":{"template":"feature","task":"build POST /users with validation"}}
+// → { "orchestration_id":"…", "template":"feature", "status":"completed", "step_count":4,
 //     "steps":[ { "archetype":"planner",  "agent_id":"…", "artifact_path":"…" },
 //               { "archetype":"coder",    … },
 //               { "archetype":"tester",   … },
@@ -463,7 +467,7 @@ Templates: `feature` (planner → coder → tester → reviewer), `bugfix`
 
 ## Agent archetypes & traits
 
-`agent.spawn` and `workflow.run` use 12 archetypes, composable with traits:
+`agent.spawn` and `orchestrate.run` use 12 archetypes, composable with traits:
 
 **Archetypes:** `coder`, `reviewer`, `tester`, `researcher`, `architect`, `planner`,
 `security`, `perf`, `devops`, `data`, `docs`, `coordinator`

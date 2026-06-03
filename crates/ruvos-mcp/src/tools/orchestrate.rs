@@ -1,4 +1,4 @@
-//! Workflow domain tool (1): run.
+//! Orchestrate domain tool (1): run.
 //!
 //! Executes an orchestration template by really spawning the template's
 //! sequence of agents (via the agent tool), each of which produces a real
@@ -10,7 +10,7 @@ use crate::{Result, RuvosError};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-/// Known templates: workflow_type -> ordered archetype pipeline.
+/// Known templates: template -> ordered archetype pipeline.
 fn template(kind: &str) -> Option<&'static [&'static str]> {
     match kind {
         "feature" => Some(&["planner", "coder", "tester", "reviewer"]),
@@ -21,27 +21,27 @@ fn template(kind: &str) -> Option<&'static [&'static str]> {
     }
 }
 
-pub struct WorkflowRunHandler;
+pub struct OrchestrateRunHandler;
 
-impl ToolHandler for WorkflowRunHandler {
+impl ToolHandler for OrchestrateRunHandler {
     fn name(&self) -> &'static str {
         "run"
     }
 
     fn domain(&self) -> &'static str {
-        "workflow"
+        "orchestrate"
     }
 
     fn validate(&self, params: &Value) -> Result<()> {
         let kind = params
-            .get("workflow_type")
+            .get("template")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                RuvosError::InvalidParams("missing 'workflow_type' field (string)".to_string())
+                RuvosError::InvalidParams("missing 'template' field (string)".to_string())
             })?;
         if template(kind).is_none() {
             return Err(RuvosError::InvalidParams(format!(
-                "unknown workflow_type '{}'; expected feature|bugfix|refactor|security",
+                "unknown template '{}'; expected feature|bugfix|refactor|security",
                 kind
             )));
         }
@@ -55,10 +55,7 @@ impl ToolHandler for WorkflowRunHandler {
 
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
-            let kind = params["workflow_type"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
+            let kind = params["template"].as_str().unwrap_or_default().to_string();
             let task = params["task"].as_str().unwrap_or_default().to_string();
             let model = params
                 .get("model")
@@ -66,17 +63,16 @@ impl ToolHandler for WorkflowRunHandler {
                 .unwrap_or("claude-haiku-4-5")
                 .to_string();
 
-            let pipeline = template(&kind).ok_or_else(|| {
-                RuvosError::InvalidParams(format!("unknown workflow_type '{}'", kind))
-            })?;
+            let pipeline = template(&kind)
+                .ok_or_else(|| RuvosError::InvalidParams(format!("unknown template '{}'", kind)))?;
 
-            let workflow_id = Uuid::new_v4().to_string();
+            let orchestration_id = Uuid::new_v4().to_string();
             let spawner = AgentSpawnHandler;
             let mut steps = Vec::new();
 
             // Really run each archetype in order; each produces a real artifact.
             for archetype in pipeline {
-                let step_prompt = format!("[{} workflow] {}", kind, task);
+                let step_prompt = format!("[{} orchestration] {}", kind, task);
                 let spawned = spawner
                     .execute(json!({
                         "archetype": archetype,
@@ -93,8 +89,8 @@ impl ToolHandler for WorkflowRunHandler {
             }
 
             Ok(json!({
-                "workflow_id": workflow_id,
-                "workflow_type": kind,
+                "orchestration_id": orchestration_id,
+                "template": kind,
                 "task": task,
                 "status": "completed",
                 "step_count": steps.len(),
@@ -115,10 +111,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn feature_workflow_runs_full_pipeline() {
+    async fn feature_orchestration_runs_full_pipeline() {
         let _g = isolate();
-        let r = WorkflowRunHandler
-            .execute(json!({"workflow_type": "feature", "task": "add POST /users"}))
+        let r = OrchestrateRunHandler
+            .execute(json!({"template": "feature", "task": "add POST /users"}))
             .await
             .unwrap();
 
@@ -133,17 +129,17 @@ mod tests {
             let path = step["artifact_path"].as_str().unwrap();
             assert!(
                 std::path::Path::new(path).exists(),
-                "workflow step must produce a real artifact at {}",
+                "orchestration step must produce a real artifact at {}",
                 path
             );
         }
     }
 
     #[tokio::test]
-    async fn bugfix_workflow_has_three_steps() {
+    async fn bugfix_orchestration_has_three_steps() {
         let _g = isolate();
-        let r = WorkflowRunHandler
-            .execute(json!({"workflow_type": "bugfix", "task": "fix null deref"}))
+        let r = OrchestrateRunHandler
+            .execute(json!({"template": "bugfix", "task": "fix null deref"}))
             .await
             .unwrap();
         assert_eq!(r["step_count"], 3);
@@ -151,14 +147,14 @@ mod tests {
 
     #[test]
     fn validation_rejects_unknown_template() {
-        assert!(WorkflowRunHandler
-            .validate(&json!({"workflow_type": "magic", "task": "x"}))
+        assert!(OrchestrateRunHandler
+            .validate(&json!({"template": "magic", "task": "x"}))
             .is_err());
-        assert!(WorkflowRunHandler
-            .validate(&json!({"workflow_type": "feature"}))
+        assert!(OrchestrateRunHandler
+            .validate(&json!({"template": "feature"}))
             .is_err());
-        assert!(WorkflowRunHandler
-            .validate(&json!({"workflow_type": "feature", "task": "x"}))
+        assert!(OrchestrateRunHandler
+            .validate(&json!({"template": "feature", "task": "x"}))
             .is_ok());
     }
 }

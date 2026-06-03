@@ -10,10 +10,10 @@ pub mod hooks;
 pub mod hooks_route;
 pub mod intel;
 pub mod memory;
+pub mod orchestrate;
 pub mod plugin;
 pub mod relay;
 pub mod session;
-pub mod workflow;
 
 use serde::{Deserialize, Serialize};
 
@@ -73,8 +73,8 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(relay::RelayListHandler));
     registry.register(Box::new(relay::RelaySendHandler));
 
-    // Register workflow tools
-    registry.register(Box::new(workflow::WorkflowRunHandler));
+    // Register orchestrate tools
+    registry.register(Box::new(orchestrate::OrchestrateRunHandler));
 
     registry
 }
@@ -213,13 +213,13 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Deliver a message to another instance's file mailbox by id".to_string(),
             domain: "relay".to_string(),
         },
-        // Workflow (1)
+        // Orchestrate (1)
         ToolMetadata {
-            name: "workflow.run".to_string(),
+            name: "orchestrate.run".to_string(),
             description:
-                "Execute an orchestration template (feature / bugfix / refactor / security)"
+                "Run a multi-agent orchestration template (feature / bugfix / refactor / security)"
                     .to_string(),
-            domain: "workflow".to_string(),
+            domain: "orchestrate".to_string(),
         },
     ]
 }
@@ -250,7 +250,7 @@ mod integration_tests {
         assert!(tools.iter().any(|t| t.starts_with("plugin.")));
         assert!(tools.iter().any(|t| t.starts_with("gov.")));
         assert!(tools.iter().any(|t| t.starts_with("relay.")));
-        assert!(tools.iter().any(|t| t.starts_with("workflow.")));
+        assert!(tools.iter().any(|t| t.starts_with("orchestrate.")));
         assert!(tools.iter().any(|t| t == "echo.test"));
     }
 
@@ -286,8 +286,8 @@ mod integration_tests {
             ("plugin.list", json!({})),
             ("gov.health", json!({})),
             (
-                "workflow.run",
-                json!({"workflow_type": "feature", "task": "ship it"}),
+                "orchestrate.run",
+                json!({"template": "feature", "task": "ship it"}),
             ),
         ];
 
