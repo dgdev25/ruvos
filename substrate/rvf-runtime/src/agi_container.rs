@@ -300,10 +300,6 @@ impl AgiContainerBuilder {
         payload.extend_from_slice(&header.to_bytes());
         payload.extend_from_slice(&sections);
 
-        // Mark manifest as present for validation.
-        let mut segs = self.segments.clone();
-        segs.manifest_present = true;
-
         Ok((payload, header))
     }
 

@@ -3,7 +3,7 @@
 //! These tests use proptest to verify invariants and edge cases
 //! that are critical for production reliability.
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use proptest::prelude::*;
 use proptest::strategy::{Just, ValueTree};
 use proptest::test_runner::TestRunner;
@@ -13,9 +13,7 @@ use uuid::Uuid;
 
 use crate::memory::MemoryStorage;
 use crate::models::{AgentStatus, TaskPriority, TaskStatus};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::sqlite::SqliteStorage;
-use crate::{AgentModel, EventModel, MessageModel, MetricModel, Storage, StorageError, TaskModel};
+use crate::{AgentModel, Storage, StorageError, TaskModel};
 
 // ===== Arbitrary Instance Generators =====
 
@@ -220,7 +218,7 @@ proptest! {
 
             // Generate tasks that may reference agents
             let mut tasks = vec![];
-            for i in 0..task_count {
+            for _i in 0..task_count {
                 let task = arb_task_model(agent_ids.clone())
                     .new_tree(&mut TestRunner::default())
                     .unwrap()

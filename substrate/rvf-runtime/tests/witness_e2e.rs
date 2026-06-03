@@ -4,9 +4,7 @@
 //! HMAC-SHA256 signatures, policy enforcement, and deterministic replay.
 
 use rvf_runtime::seed_crypto;
-use rvf_runtime::witness::{
-    GovernancePolicy, ParsedWitness, ScorecardBuilder, WitnessBuilder, WitnessError,
-};
+use rvf_runtime::witness::{GovernancePolicy, ParsedWitness, ScorecardBuilder, WitnessBuilder};
 use rvf_types::witness::*;
 
 const KEY: &[u8] = b"e2e-test-key-for-witness-bundle!";

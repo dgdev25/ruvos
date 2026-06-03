@@ -2,10 +2,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use ruv_swarm_transport::{
-    in_process::InProcessTransport,
-    protocol::Message,
-    shared_memory::{SharedMemoryInfo, SharedMemoryTransport},
-    Transport, TransportConfig,
+    in_process::InProcessTransport, protocol::Message, Transport, TransportConfig,
 };
 use tokio::runtime::Runtime;
 
@@ -97,7 +94,6 @@ fn bench_in_process_broadcast(c: &mut Criterion) {
 
 fn bench_shared_memory_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("shared_memory_throughput");
-    let rt = Runtime::new().unwrap();
 
     group.throughput(Throughput::Elements(1000));
     group.bench_function("ring_buffer_1000_messages", |b| {

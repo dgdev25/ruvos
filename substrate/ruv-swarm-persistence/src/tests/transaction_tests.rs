@@ -15,6 +15,7 @@ struct MockTransaction {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // mock transaction-op variants; payloads recorded for ordering tests
 enum TransactionOp {
     StoreAgent(AgentModel),
     UpdateAgent(AgentModel),

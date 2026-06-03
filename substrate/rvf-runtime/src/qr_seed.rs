@@ -889,7 +889,7 @@ mod tests {
             builder = builder.add_layer(layer);
         }
 
-        let (payload, header) = builder.build().unwrap();
+        let (_payload, header) = builder.build().unwrap();
         assert!(header.has_download_manifest());
         assert!(header.download_manifest_size > 0);
         assert!(header.fits_in_qr());

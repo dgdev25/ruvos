@@ -30,3 +30,6 @@ num_cpus = "1.16"
 [features]
 default = ["rusqlite-backend"]
 rusqlite-backend = []
+# Enables proptest-based property tests (the `proptest` crate is always a
+# dev-dependency; this flag gates the heavier property-test modules).
+proptest = []

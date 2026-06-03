@@ -33,7 +33,12 @@ futures-util = "0.3"
 tempfile = "3"
 tokio-test = "0.4"
 rand = "0.8"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [features]
 default = ["websocket"]
 websocket = []
+
+[[bench]]
+name = "transport_benchmarks"
+harness = false

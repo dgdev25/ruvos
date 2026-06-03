@@ -28,6 +28,9 @@ use crate::read_path::{self, VectorData};
 use crate::status::{CompactionState, StoreStatus};
 use crate::write_path::SegmentWriter;
 
+/// An extracted WASM module: (WasmHeader bytes, bytecode).
+pub type WasmModule = (Vec<u8>, Vec<u8>);
+
 /// Helper to convert any error into an RvfError with the given code.
 fn err(code: ErrorCode) -> RvfError {
     RvfError::Code(code)
@@ -939,6 +942,7 @@ impl RvfStore {
     ///
     /// The KernelBinding ties the manifest root hash to the kernel, preventing
     /// segment-swap attacks.
+    #[allow(clippy::too_many_arguments)]
     pub fn embed_kernel_with_binding(
         &mut self,
         arch: u8,
@@ -1301,6 +1305,7 @@ impl RvfStore {
     /// 2. `role = Microkernel` (the RVF query engine, ~5.5 KB)
     ///
     /// The file then carries both its runtime and its data.
+    #[allow(clippy::too_many_arguments)]
     pub fn embed_wasm(
         &mut self,
         role: u8,
@@ -1401,7 +1406,7 @@ impl RvfStore {
     /// Returns a vector of (WasmHeader bytes, bytecode) tuples for each WASM_SEG,
     /// sorted by the `bootstrap_priority` field (lowest first). This ordering
     /// determines the bootstrap chain: interpreter first, then microkernel.
-    pub fn extract_wasm_all(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, RvfError> {
+    pub fn extract_wasm_all(&self) -> Result<Vec<WasmModule>, RvfError> {
         let entries: Vec<_> = self
             .segment_dir
             .iter()
@@ -2601,8 +2606,8 @@ mod tests {
 
         let mut store = RvfStore::create(&path, options).unwrap();
 
-        let v1 = vec![1.0, 0.0, 0.0, 0.0];
-        let v2 = vec![0.0, 1.0, 0.0, 0.0];
+        let v1 = [1.0, 0.0, 0.0, 0.0];
+        let v2 = [0.0, 1.0, 0.0, 0.0];
         store
             .ingest_batch(&[&v1[..], &v2[..]], &[1, 2], None)
             .unwrap();
@@ -2667,9 +2672,9 @@ mod tests {
         let mut store = RvfStore::create(&path, options).unwrap();
 
         // Perform 3 operations to build a chain of 3 witnesses.
-        let v1 = vec![1.0, 0.0, 0.0, 0.0];
-        let v2 = vec![0.0, 1.0, 0.0, 0.0];
-        let v3 = vec![0.0, 0.0, 1.0, 0.0];
+        let v1 = [1.0, 0.0, 0.0, 0.0];
+        let v2 = [0.0, 1.0, 0.0, 0.0];
+        let v3 = [0.0, 0.0, 1.0, 0.0];
 
         store.ingest_batch(&[&v1[..]], &[1], None).unwrap();
         let hash_after_first = *store.last_witness_hash();
@@ -2713,7 +2718,7 @@ mod tests {
 
         let mut store = RvfStore::create(&path, options).unwrap();
 
-        let v1 = vec![1.0, 0.0, 0.0, 0.0];
+        let v1 = [1.0, 0.0, 0.0, 0.0];
         store.ingest_batch(&[&v1[..]], &[1], None).unwrap();
         store.delete(&[1]).unwrap();
 
@@ -2745,7 +2750,7 @@ mod tests {
 
         let mut store = RvfStore::create(&path, options).unwrap();
 
-        let v1 = vec![1.0, 0.0, 0.0, 0.0];
+        let v1 = [1.0, 0.0, 0.0, 0.0];
         store.ingest_batch(&[&v1[..]], &[1], None).unwrap();
 
         // Regular query should NOT create a witness (immutable &self).

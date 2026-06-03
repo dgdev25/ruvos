@@ -6,7 +6,7 @@
 use crate::memory::MemoryStorage;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::sqlite::SqliteStorage;
-use crate::{AgentModel, EventModel, MessageModel, MetricModel, Storage, StorageError, TaskModel};
+use crate::{AgentModel, EventModel, MessageModel, MetricModel, Storage, TaskModel};
 use chrono::{Duration, Utc};
 use futures::future::join_all;
 use std::collections::HashSet;
@@ -313,7 +313,7 @@ async fn test_concurrent_updates_optimistic_locking() {
     }
 
     // Final state should be one of the status enum values
-    let final_agent = storage.get_agent(&agent.id).await.unwrap().unwrap();
+    let _final_agent = storage.get_agent(&agent.id).await.unwrap().unwrap();
     // Just verify it was updated (should be one of the enum values)
 }
 

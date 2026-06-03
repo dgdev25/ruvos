@@ -25,9 +25,11 @@ use std::time::Duration;
 fn create_test_store(dim: u16, count: usize) -> (tempfile::TempDir, RvfStore) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.rvf");
-    let mut opts = RvfOptions::default();
-    opts.dimension = dim;
-    opts.security_policy = SecurityPolicy::Permissive; // For test simplicity.
+    let opts = RvfOptions {
+        dimension: dim,
+        security_policy: SecurityPolicy::Permissive, // For test simplicity.
+        ..Default::default()
+    };
     let mut store = RvfStore::create(&path, opts).unwrap();
 
     // Ingest vectors in a single batch.
@@ -258,8 +260,8 @@ fn combined_nprobe_takes_max() {
 
 #[test]
 fn cv_threshold_consistent() {
-    assert!(DEGENERATE_CV_THRESHOLD > 0.0);
-    assert!(DEGENERATE_CV_THRESHOLD < 1.0);
+    const { assert!(DEGENERATE_CV_THRESHOLD > 0.0) };
+    const { assert!(DEGENERATE_CV_THRESHOLD < 1.0) };
     // Uniform distances should be below threshold.
     let cv = centroid_distance_cv(&vec![1.0; 100], 10);
     assert!(cv < DEGENERATE_CV_THRESHOLD);
@@ -351,7 +353,7 @@ fn hardening_fields_pointer_lookup() {
 
 #[test]
 fn hardening_fields_fits_in_reserved() {
-    assert!(HardeningFields::RESERVED_OFFSET + 96 <= 252);
+    const { assert!(HardeningFields::RESERVED_OFFSET + 96 <= 252) };
 }
 
 // ========================================================================

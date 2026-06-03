@@ -27,3 +27,8 @@ serde_json = "1"
 
 [features]
 default = []
+# Optional server/launcher backends. The backing crates (rvf-server, rvf-launch)
+# are not part of this workspace; these features gate the corresponding code
+# paths and are declared here so the cfg checks are recognized.
+serve = []
+launch = []

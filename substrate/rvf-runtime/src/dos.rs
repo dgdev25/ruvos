@@ -243,12 +243,7 @@ impl ProofOfWork {
     /// Returns `None` if no nonce found within `max_attempts`.
     pub fn solve(&self) -> Option<u64> {
         let max_attempts: u64 = 1u64 << self.difficulty.min(Self::MAX_DIFFICULTY).min(30);
-        for nonce in 0..max_attempts.saturating_mul(4) {
-            if self.verify(nonce) {
-                return Some(nonce);
-            }
-        }
-        None
+        (0..max_attempts.saturating_mul(4)).find(|&nonce| self.verify(nonce))
     }
 }
 

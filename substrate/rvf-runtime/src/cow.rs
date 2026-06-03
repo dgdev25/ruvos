@@ -472,7 +472,7 @@ mod tests {
         engine.freeze(1).unwrap();
         assert!(engine.is_frozen());
 
-        let result = engine.write_vector(0, &vec![0u8; 64]);
+        let result = engine.write_vector(0, &[0u8; 64]);
         assert!(result.is_err());
     }
 
@@ -495,7 +495,7 @@ mod tests {
         assert!(!stats.frozen);
 
         // Buffer a write
-        engine.write_vector(0, &vec![0u8; 64]).unwrap();
+        engine.write_vector(0, &[0u8; 64]).unwrap();
         let stats = engine.stats();
         assert_eq!(stats.pending_writes, 1);
     }

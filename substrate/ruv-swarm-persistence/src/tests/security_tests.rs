@@ -4,10 +4,7 @@
 //! and ensure proper error handling.
 
 use crate::memory::MemoryStorage;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::sqlite::SqliteStorage;
 use crate::{AgentModel, QueryBuilder, Storage, StorageError, TaskModel};
-use chrono::Utc;
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -68,8 +65,6 @@ mod sql_injection_tests {
 mod transaction_tests {
     use super::*;
     use crate::tests::test_utils::TestFixture;
-    use std::sync::Arc;
-    use tokio::sync::Barrier;
 
     #[tokio::test]
     async fn test_real_transaction_isolation() {

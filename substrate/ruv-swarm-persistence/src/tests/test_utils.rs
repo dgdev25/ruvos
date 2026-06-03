@@ -1,4 +1,8 @@
 //! Test utilities for database isolation and fixture management
+//!
+//! These are intentional shared test helpers; not every helper is exercised by
+//! every test module, so dead-code lints are suppressed for the scaffolding.
+#![allow(dead_code)]
 
 use crate::memory::MemoryStorage;
 #[cfg(not(target_arch = "wasm32"))]
