@@ -5,9 +5,14 @@
 //! or by a neural provider API when `RUVOS_EMBED_API_KEY` is configured.
 //! Approximate-nearest-neighbour retrieval runs on `ruvector-core`'s real HNSW
 //! index, not a hand-rolled scan.
+//!
+//! For small candidate sets (n < 1000), `rabitq_rank` offers an in-memory
+//! alternative using `ruvector-rabitq`'s `RabitqPlusIndex`: 1-bit quantization
+//! with exact rerank, zero disk I/O.
 
 use ruvector_core::types::DbOptions;
 use ruvector_core::{DistanceMetric, SearchQuery, VectorDB, VectorEntry};
+use ruvector_rabitq::{AnnIndex, RabitqPlusIndex};
 use uuid::Uuid;
 
 /// Embedding dimensionality. Matches common sentence-embedding sizes so a
@@ -100,6 +105,32 @@ pub fn hnsw_rank(items: &[(String, String)], query: &str, k: usize) -> anyhow::R
     result
 }
 
+/// Rank `items` (id, text) against `query` using a `RabitqPlusIndex` — 1-bit
+/// quantized with exact f32 rerank on the top candidates.  Entirely in-memory:
+/// no temp files, faster than `hnsw_rank` for small-to-medium n.
+///
+/// Returns up to `k` ids nearest-first.  Falls back gracefully when n < k.
+pub fn rabitq_rank(
+    items: &[(String, String)],
+    query: &str,
+    k: usize,
+) -> anyhow::Result<Vec<String>> {
+    if items.is_empty() || k == 0 {
+        return Ok(Vec::new());
+    }
+
+    // Build in-memory RaBitQ+ index.  Seed 0 gives deterministic rotation.
+    let mut idx = RabitqPlusIndex::new(EMBED_DIM, 0, 4);
+    let ids: Vec<String> = items.iter().map(|(id, _)| id.clone()).collect();
+    for (pos, (_, text)) in items.iter().enumerate() {
+        idx.add(pos, embed(text))?;
+    }
+
+    let query_vec = embed(query);
+    let results = idx.search(&query_vec, k.min(items.len()))?;
+    Ok(results.into_iter().map(|r| ids[r.id].clone()).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,6 +179,33 @@ mod tests {
     #[test]
     fn empty_items_yield_empty_ranking() {
         let ranked = hnsw_rank(&[], "anything", 5).unwrap();
+        assert!(ranked.is_empty());
+    }
+
+    #[test]
+    fn rabitq_ranks_relevant_item_first() {
+        let items = vec![
+            (
+                "db".to_string(),
+                "postgres database connection pooling".to_string(),
+            ),
+            (
+                "ui".to_string(),
+                "react frontend button styling".to_string(),
+            ),
+            (
+                "net".to_string(),
+                "tcp socket networking timeout".to_string(),
+            ),
+        ];
+        let ranked = rabitq_rank(&items, "database connection", 3).unwrap();
+        assert!(!ranked.is_empty(), "RaBitQ must return candidates");
+        assert_eq!(ranked[0], "db", "most relevant item ranks first via RaBitQ");
+    }
+
+    #[test]
+    fn rabitq_empty_items_yield_empty() {
+        let ranked = rabitq_rank(&[], "anything", 5).unwrap();
         assert!(ranked.is_empty());
     }
 }

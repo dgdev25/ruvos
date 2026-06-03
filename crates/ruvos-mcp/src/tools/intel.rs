@@ -1,12 +1,20 @@
 //! Intel domain tools (2): pattern_search, pattern_store.
 //!
 //! A real, persistent trajectory store on disk. `pattern_store` appends a
-//! trajectory + outcome; `pattern_search` ranks stored trajectories by
-//! term-frequency cosine similarity to the query (the SONA "retrieve" phase),
-//! backed by real persistence rather than a placeholder.
+//! trajectory + outcome to both the disk store (JSON, durable across restarts)
+//! and a SONA `ReasoningBank` (in-memory K-means clustering, backed by the
+//! `sona` substrate crate).  `pattern_search` runs both backends and merges:
+//!
+//! - **TF-cosine** (disk): exact keyword recall, always consistent.
+//! - **SONA ReasoningBank** (in-memory): vector-space cluster similarity,
+//!   finds structurally similar trajectories even when keywords differ.
+//!
+//! The SONA bank is re-hydrated from disk on first access so pattern clusters
+//! survive process restarts (clusters re-form from stored trajectories).
 
 use super::handler::{ExecuteFuture, ToolHandler};
 use crate::{paths, Result, RuvosError};
+use ruvector_sona::{PatternConfig, QueryTrajectory, ReasoningBank};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -23,6 +31,15 @@ pub struct Pattern {
 
 lazy_static::lazy_static! {
     static ref FILE_LOCK: Mutex<()> = Mutex::new(());
+    /// SONA ReasoningBank — in-memory K-means clustering over trajectory embeddings.
+    /// Protected by the same FILE_LOCK so store + bank updates are atomic.
+    static ref SONA_BANK: Mutex<ReasoningBank> = Mutex::new(ReasoningBank::new(PatternConfig {
+        embedding_dim: super::embedding::EMBED_DIM,
+        k_clusters: 8,
+        min_cluster_size: 1,
+        quality_threshold: 0.05,
+        ..PatternConfig::default()
+    }));
 }
 
 fn load() -> Vec<Pattern> {
@@ -78,6 +95,27 @@ fn cosine(a: &HashMap<String, f64>, b: &HashMap<String, f64>) -> f64 {
     }
 }
 
+/// Build a SONA `QueryTrajectory` from a stored `Pattern` for bank ingestion.
+/// The trajectory embedding is the feature-hash of "trajectory_text outcome".
+fn pattern_to_trajectory(p: &Pattern, idx: u64) -> QueryTrajectory {
+    let text = format!("{} {}", p.trajectory.join(" "), p.outcome);
+    let embedding = super::embedding::embed(&text);
+    let mut traj = QueryTrajectory::new(idx, embedding);
+    traj.finalize(0.8, 0);
+    traj
+}
+
+/// Re-hydrate the SONA bank from the on-disk store (called after cold start or
+/// whenever the bank is empty but disk has data).
+fn hydrate_bank_from_disk(bank: &mut ReasoningBank, patterns: &[Pattern]) {
+    if bank.trajectory_count() == 0 && !patterns.is_empty() {
+        for (i, p) in patterns.iter().enumerate() {
+            bank.add_trajectory(&pattern_to_trajectory(p, i as u64));
+        }
+        bank.extract_patterns();
+    }
+}
+
 // ============================================================================
 // intel.pattern_store
 // ============================================================================
@@ -130,9 +168,16 @@ impl ToolHandler for IntelPatternStoreHandler {
 
             let _guard = FILE_LOCK.lock().unwrap();
             let mut patterns = load();
-            patterns.push(pattern);
+            patterns.push(pattern.clone());
             let total = patterns.len();
             save(&patterns)?;
+
+            // Feed the new pattern into the SONA ReasoningBank.
+            let traj = pattern_to_trajectory(&pattern, (total - 1) as u64);
+            if let Ok(mut bank) = SONA_BANK.lock() {
+                bank.add_trajectory(&traj);
+                bank.extract_patterns();
+            }
 
             Ok(json!({ "status": "stored", "pattern_id": id, "total_patterns": total }))
         })
@@ -169,6 +214,7 @@ impl ToolHandler for IntelPatternSearchHandler {
             let _guard = FILE_LOCK.lock().unwrap();
             let patterns = load();
 
+            // --- TF-cosine pass (disk store) ---
             let mut scored: Vec<(f64, &Pattern)> = patterns
                 .iter()
                 .map(|p| {
@@ -177,10 +223,80 @@ impl ToolHandler for IntelPatternSearchHandler {
                 })
                 .filter(|(s, _)| *s > 0.0)
                 .collect();
-            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-            scored.truncate(top_k);
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-            let results: Vec<Value> = scored
+            // --- SONA ReasoningBank pass (vector-space cluster similarity) ---
+            // Re-hydrate from disk on cold start so clusters reform after restart.
+            let sona_hits: std::collections::HashSet<String> =
+                if let Ok(mut bank) = SONA_BANK.lock() {
+                    hydrate_bank_from_disk(&mut bank, &patterns);
+                    let q_embed = super::embedding::embed(&query);
+                    bank.find_similar(&q_embed, top_k)
+                        .iter()
+                        .filter_map(|p| {
+                            // Map centroid back to stored patterns by closest embedding.
+                            let q = super::embedding::embed(&query);
+                            let centroid = &p.centroid;
+                            // Find the stored pattern whose embedding is nearest this centroid.
+                            patterns
+                                .iter()
+                                .min_by(|a, b| {
+                                    let ea = super::embedding::embed(&format!(
+                                        "{} {}",
+                                        a.trajectory.join(" "),
+                                        a.outcome
+                                    ));
+                                    let eb = super::embedding::embed(&format!(
+                                        "{} {}",
+                                        b.trajectory.join(" "),
+                                        b.outcome
+                                    ));
+                                    let da: f32 =
+                                        ea.iter().zip(centroid).map(|(x, y)| (x - y).powi(2)).sum();
+                                    let db: f32 =
+                                        eb.iter().zip(centroid).map(|(x, y)| (x - y).powi(2)).sum();
+                                    // Also weight by query similarity so relevant clusters win.
+                                    let sa = super::embedding::cosine_dense(&ea, &q);
+                                    let sb = super::embedding::cosine_dense(&eb, &q);
+                                    (da - sa)
+                                        .partial_cmp(&(db - sb))
+                                        .unwrap_or(std::cmp::Ordering::Equal)
+                                })
+                                .map(|p| p.id.clone())
+                        })
+                        .collect()
+                } else {
+                    std::collections::HashSet::new()
+                };
+
+            // Merge: patterns that appear in SONA results get a +0.1 boost.
+            let mut merged: Vec<(f64, &Pattern)> = patterns
+                .iter()
+                .map(|p| {
+                    let text = format!("{} {}", p.trajectory.join(" "), p.outcome);
+                    let tf_score = cosine(&query_vec, &tf(&tokenize(&text)));
+                    let sona_boost = if sona_hits.contains(&p.id) { 0.1 } else { 0.0 };
+                    (tf_score + sona_boost, p)
+                })
+                .filter(|(s, _)| *s > 0.0)
+                .collect();
+
+            // If TF returned nothing but SONA did, include SONA-only hits.
+            if merged.is_empty() && !sona_hits.is_empty() {
+                merged = patterns
+                    .iter()
+                    .filter(|p| sona_hits.contains(&p.id))
+                    .map(|p| (0.1, p))
+                    .collect();
+            } else if merged.is_empty() {
+                // Fall back to pure TF results (may be empty).
+                merged = scored;
+            }
+
+            merged.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            merged.truncate(top_k);
+
+            let results: Vec<Value> = merged
                 .iter()
                 .map(|(score, p)| {
                     json!({
