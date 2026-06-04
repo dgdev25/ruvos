@@ -3,7 +3,12 @@
 //! Source of truth is disk so state survives process restarts. The root is
 //! `$RUVOS_HOME` when set (used by tests to isolate), otherwise `./.ruvos`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+const BUNDLED_SKILLS_PACK: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/skills/public/skills.redb"
+));
 
 #[cfg(test)]
 thread_local! {
@@ -91,5 +96,33 @@ pub fn skills_pack_file() -> PathBuf {
 pub fn ensure_root() -> std::io::Result<PathBuf> {
     let root = data_root();
     std::fs::create_dir_all(&root)?;
+    ensure_skills_pack(&root)?;
     Ok(root)
+}
+
+fn ensure_skills_pack(root: &Path) -> std::io::Result<()> {
+    let pack = root.join("skills.redb");
+    if pack.exists() {
+        return Ok(());
+    }
+    std::fs::write(pack, BUNDLED_SKILLS_PACK)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ensure_root_bootstraps_bundled_skills_pack() {
+        let root = std::env::temp_dir().join(format!("ruvos-paths-{}", std::process::id()));
+        if root.exists() {
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+        set_test_root(root.clone());
+
+        let resolved = ensure_root().unwrap();
+
+        assert_eq!(resolved, root);
+        assert!(resolved.join("skills.redb").exists());
+    }
 }

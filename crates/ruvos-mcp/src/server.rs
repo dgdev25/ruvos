@@ -7,7 +7,7 @@
 //! - `tools/list` -> tool definitions with JSON Schema
 //! - `tools/call` -> dispatch to a tool handler by name
 
-use crate::{JsonRpcRequest, JsonRpcResponse, Result, RuvosError, ToolRegistry};
+use crate::{paths, JsonRpcRequest, JsonRpcResponse, Result, RuvosError, ToolRegistry};
 use tokio::io::{stdin as tokio_stdin, stdout as tokio_stdout};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tracing::info;
@@ -192,6 +192,7 @@ impl JsonRpcServer {
 
 /// Serve the MCP server on stdin/stdout.
 pub async fn serve() -> anyhow::Result<()> {
+    paths::ensure_root().map_err(|e| anyhow::anyhow!("initializing data root: {e}"))?;
     info!("MCP server initialized with 45 tool registry");
 
     let registry = crate::tools::create_registry();

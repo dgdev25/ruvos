@@ -50,6 +50,7 @@ live swarm state store.
 - `core`, `domain`, and `archive` candidates remain available for alternate pack builds.
 - `exclude` candidates are skipped from pack generation entirely.
 - `skills pack install` copies the bundled `docs/skills/public/skills.redb` into `$RUVOS_HOME/skills.redb` (or `./.ruvos/skills.redb` when unset).
+- `mcp serve` and `doctor` bootstrap the bundled pack automatically if `skills.redb` is missing.
 
 ## Default pack
 
@@ -65,5 +66,5 @@ the curated selection manifest.
 - `agent.spawn` uses a provided bundle when present; otherwise it auto-selects up to 3 relevant skills from `skills.redb`.
 - Each orchestration writes the chosen bundle to `generated/<orchestration_id>/selected-skills.json`.
 - Each completed run records success/failure feedback back into `skills.redb`.
-- Public users install the pack with `ruvos skills pack install`; the installer copies `docs/skills/public/skills.redb` into the runtime data directory.
+- Public users can install the pack with `ruvos skills pack install`; the installer copies `docs/skills/public/skills.redb` into the runtime data directory, and the runtime bootstraps it automatically on first start if needed.
 - Use feedback to rank the best skills over time.
