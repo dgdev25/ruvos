@@ -58,7 +58,7 @@ the curated selection manifest.
 
 - Open the pack only for the duration of the query.
 - Keep retrieval lexical first.
-- `orchestrate.run` selects one skill bundle per run using the full orchestration plan and passes it to every spawned step.
+- `orchestrate.run` selects one skill bundle per run using the full orchestration plan plus goal/capability/retry hints, and passes it to every spawned step.
 - `agent.spawn` uses a provided bundle when present; otherwise it auto-selects up to 3 relevant skills from `skills.redb`.
 - Each orchestration writes the chosen bundle to `generated/<orchestration_id>/selected-skills.json`.
 - Each completed run records success/failure feedback back into `skills.redb`.

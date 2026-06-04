@@ -124,12 +124,17 @@ pub fn select_orchestration_skill_bundle(
     template: &str,
     task: &str,
     pipeline: &[String],
+    extra_context: &[String],
     limit: usize,
 ) -> anyhow::Result<Option<SkillBundle>> {
     let mut query = format!("{template} {task}");
     if !pipeline.is_empty() {
         query.push(' ');
         query.push_str(&pipeline.join(" "));
+    }
+    if !extra_context.is_empty() {
+        query.push(' ');
+        query.push_str(&extra_context.join(" "));
     }
     select_skill_bundle("coordinator", &query, limit)
 }
@@ -358,6 +363,7 @@ mod tests {
                 "security".to_string(),
                 "reviewer".to_string(),
             ],
+            &["security".to_string(), "plan".to_string()],
             3,
         )
         .unwrap()

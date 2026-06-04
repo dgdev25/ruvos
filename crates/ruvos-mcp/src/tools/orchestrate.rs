@@ -324,22 +324,6 @@ impl ToolHandler for OrchestrateRunHandler {
             };
 
             let orchestration_id = Uuid::new_v4().to_string();
-            let task_skill_bundle =
-                match select_orchestration_skill_bundle(&label, &task, &pipeline, 5) {
-                    Ok(bundle) => bundle,
-                    Err(error) => {
-                        tracing::debug!(
-                            "task skill selection unavailable for {}: {}",
-                            label,
-                            error
-                        );
-                        None
-                    }
-                };
-            let selected_skill_bundle_path = task_skill_bundle
-                .as_ref()
-                .and_then(|bundle| bundle.persist_to_disk(&orchestration_id).ok());
-
             // Optional bounded retry/rework (ADR-007). 0 (default) = the plain
             // stop-on-failure pipeline; >0 routes through the conditional-edge
             // graph so a failed step loops back to the nearest coder, bounded.
@@ -347,6 +331,31 @@ impl ToolHandler for OrchestrateRunHandler {
                 .get("max_retries")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as usize;
+            let mut selection_hints = Vec::new();
+            if max_retries > 0 {
+                selection_hints.push(format!("retries={max_retries}"));
+            }
+            if let Some(goal_obj) = params.get("goal").and_then(|v| v.as_object()) {
+                selection_hints.extend(goal_obj.keys().cloned());
+            }
+            selection_hints.extend(extra.iter().map(|capability| capability.name.clone()));
+
+            let task_skill_bundle = match select_orchestration_skill_bundle(
+                &label,
+                &task,
+                &pipeline,
+                &selection_hints,
+                5,
+            ) {
+                Ok(bundle) => bundle,
+                Err(error) => {
+                    tracing::debug!("task skill selection unavailable for {}: {}", label, error);
+                    None
+                }
+            };
+            let selected_skill_bundle_path = task_skill_bundle
+                .as_ref()
+                .and_then(|bundle| bundle.persist_to_disk(&orchestration_id).ok());
 
             let mut steps = Vec::new();
             let mut generated_sources = Vec::new();
