@@ -92,6 +92,11 @@ pub fn swarm_policy_file() -> PathBuf {
     data_root().join("swarm-policy.json")
 }
 
+/// Path to the JSON-backed swarm run-history store.
+pub fn swarm_history_file() -> PathBuf {
+    data_root().join("swarm-history.json")
+}
+
 /// Path to the JSON-backed swarm learning trajectory store.
 pub fn swarm_learning_file() -> PathBuf {
     data_root().join("swarm-learning.json")

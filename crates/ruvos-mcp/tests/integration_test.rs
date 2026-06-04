@@ -98,7 +98,7 @@ fn test_mcp_protocol_handshake() {
     );
     let list = read_response(&mut reader);
     let tools = list["result"]["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 45, "expected all 45 rUvOS tools");
+    assert_eq!(tools.len(), 50, "expected all 50 rUvOS tools");
     assert!(tools.iter().any(|t| t["name"] == "session.create"));
     assert!(
         tools.iter().all(|t| t["inputSchema"].is_object()),

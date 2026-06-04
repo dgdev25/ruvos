@@ -1,4 +1,4 @@
-//! Gov domain tools (5): witness_verify, health, events, replay, report.
+//! Gov domain tools (10): witness_verify, health, events, replay, report, swarm_policy, swarm_history, swarm_recommendation, swarm_plan, swarm_status.
 //!
 //! `witness_verify` runs a real HMAC-SHA256 signature check on an `.rvf`
 //! container (via `ruvos-session`). `health` reports real, introspected system
@@ -6,8 +6,15 @@
 //! `events` queries the signed audit/event log persisted by `ruvos-store`.
 
 use super::handler::{ExecuteFuture, ToolHandler};
-use crate::{paths, Result, RuvosError};
+use crate::{paths, swarm, Result, RuvosError};
 use serde_json::{json, Value};
+
+fn read_json<T: serde::de::DeserializeOwned + Default>(path: std::path::PathBuf) -> T {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<T>(&text).ok())
+        .unwrap_or_default()
+}
 
 // ============================================================================
 // gov.witness_verify
@@ -407,6 +414,18 @@ impl ToolHandler for GovReportHandler {
                         .count() as u64
                 })
                 .unwrap_or(0);
+            let swarm_snapshot = {
+                let current = swarm::current();
+                let policy = read_json::<Value>(paths::swarm_policy_file());
+                let history = read_json::<Value>(paths::swarm_history_file());
+                let learning = read_json::<Value>(paths::swarm_learning_file());
+                json!({
+                    "current": current,
+                    "policy": policy,
+                    "history": history,
+                    "learning": learning,
+                })
+            };
             let success_rate = if orchestrate_runs == 0 {
                 1.0
             } else {
@@ -425,8 +444,290 @@ impl ToolHandler for GovReportHandler {
                     "repair_events": repair_events,
                     "relay_contracts": relay_contracts,
                     "replayable_sessions": replayable_sessions,
+                    "swarm": swarm_snapshot,
                     "tool_count": crate::tools::tool_registry().len(),
                 }
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// gov.swarm_recommendation
+// ============================================================================
+
+pub struct GovSwarmRecommendationHandler;
+
+impl ToolHandler for GovSwarmRecommendationHandler {
+    fn name(&self) -> &'static str {
+        "swarm_recommendation"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, params: &Value) -> Result<()> {
+        let has_objective = params.get("objective").and_then(|v| v.as_str()).is_some();
+        let has_task = params.get("task").and_then(|v| v.as_str()).is_some();
+        let has_goal = params.get("goal").and_then(|v| v.as_str()).is_some();
+        if has_objective || has_task || has_goal {
+            Ok(())
+        } else {
+            Err(RuvosError::InvalidParams(
+                "missing 'objective', 'task', or 'goal' field (string)".to_string(),
+            ))
+        }
+    }
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let member_count = params
+                .get("members")
+                .and_then(|v| v.as_array())
+                .map(|members| members.len())
+                .unwrap_or_else(|| {
+                    params
+                        .get("member_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize
+                });
+            let max_agents = params
+                .get("max_agents")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(6) as u32;
+            let recommendation =
+                super::swarm::recommend_topology(&params, member_count, max_agents);
+
+            let assignment_hint = match recommendation.topology.as_str() {
+                "mesh" => {
+                    "Use peer fan-out, direct member-to-member messaging, and broad coordination."
+                }
+                "hybrid" => {
+                    "Use a coordinator-led plan with parallel coder/tester roles and rebalance if needed."
+                }
+                "adaptive" => {
+                    "Keep roles fluid and revisit the topology after checkpoints or recovery events."
+                }
+                _ => {
+                    "Use a coordinator-led handoff chain with a small number of clearly owned tasks."
+                }
+            };
+            let provided_roles: Vec<String> = params
+                .get("members")
+                .and_then(|v| v.as_array())
+                .map(|members| {
+                    members
+                        .iter()
+                        .filter_map(|member| member.get("role").and_then(|v| v.as_str()))
+                        .map(String::from)
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            Ok(json!({
+                "recommended_topology": recommendation.topology,
+                "source": recommendation.source,
+                "reason": recommendation.reason,
+                "assignment_hint": assignment_hint,
+                "member_count": member_count,
+                "max_agents": max_agents,
+                "provided_roles": provided_roles,
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// gov.swarm_plan
+// ============================================================================
+
+pub struct GovSwarmPlanHandler;
+
+impl ToolHandler for GovSwarmPlanHandler {
+    fn name(&self) -> &'static str {
+        "swarm_plan"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, params: &Value) -> Result<()> {
+        let has_objective = params.get("objective").and_then(|v| v.as_str()).is_some();
+        let has_task = params.get("task").and_then(|v| v.as_str()).is_some();
+        let has_goal = params.get("goal").and_then(|v| v.as_str()).is_some();
+        if has_objective || has_task || has_goal {
+            Ok(())
+        } else {
+            Err(RuvosError::InvalidParams(
+                "missing 'objective', 'task', or 'goal' field (string)".to_string(),
+            ))
+        }
+    }
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let member_count = params
+                .get("members")
+                .and_then(|v| v.as_array())
+                .map(|members| members.len())
+                .unwrap_or_else(|| {
+                    params
+                        .get("member_count")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) as usize
+                });
+            let max_agents = params
+                .get("max_agents")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(6) as u32;
+            let plan = swarm::recommend_plan(&params, member_count, max_agents);
+            Ok(plan)
+        })
+    }
+}
+
+// ============================================================================
+// gov.swarm_status
+// ============================================================================
+
+pub struct GovSwarmStatusHandler;
+
+impl ToolHandler for GovSwarmStatusHandler {
+    fn name(&self) -> &'static str {
+        "swarm_status"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, _params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let Some(state) = swarm::current() else {
+                return Ok(json!({
+                    "exists": false,
+                    "status": "inactive",
+                }));
+            };
+            let plan = swarm::recommend_plan(
+                &json!({
+                    "objective": state.objective,
+                    "topology": state.topology,
+                    "members": state.members.iter().map(|member| json!({
+                        "agent_id": member.agent_id,
+                        "role": member.role,
+                    })).collect::<Vec<_>>(),
+                    "max_agents": state.max_agents,
+                }),
+                state.members.len(),
+                state.max_agents,
+            );
+            Ok(json!({
+                "exists": true,
+                "state": state,
+                "plan": plan,
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// gov.swarm_policy
+// ============================================================================
+
+pub struct GovSwarmPolicyHandler;
+
+impl ToolHandler for GovSwarmPolicyHandler {
+    fn name(&self) -> &'static str {
+        "swarm_policy"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let signature = params.get("signature").and_then(|v| v.as_str());
+            let policy: swarm::SwarmPolicy = read_json(paths::swarm_policy_file());
+            let entries: Vec<Value> = policy
+                .entries
+                .values()
+                .filter(|entry| {
+                    signature
+                        .map(|wanted| entry.signature == wanted)
+                        .unwrap_or(true)
+                })
+                .map(|entry| {
+                    json!({
+                        "signature": entry.signature,
+                        "preferred_topology": entry.preferred_topology,
+                        "success_count": entry.success_count,
+                        "failure_count": entry.failure_count,
+                        "last_outcome": entry.last_outcome,
+                        "updated_at": entry.updated_at,
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "version": policy.version,
+                "count": entries.len(),
+                "entries": entries,
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// gov.swarm_history
+// ============================================================================
+
+pub struct GovSwarmHistoryHandler;
+
+impl ToolHandler for GovSwarmHistoryHandler {
+    fn name(&self) -> &'static str {
+        "swarm_history"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(25) as usize;
+            let signature = params.get("signature").and_then(|v| v.as_str());
+            let status = params.get("status").and_then(|v| v.as_str());
+            let mut history: swarm::SwarmRunHistory = read_json(paths::swarm_history_file());
+            history
+                .records
+                .sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+            let records: Vec<Value> = history
+                .records
+                .into_iter()
+                .filter(|record| {
+                    signature
+                        .map(|wanted| record.signature == wanted)
+                        .unwrap_or(true)
+                        && status.map(|wanted| record.status == wanted).unwrap_or(true)
+                })
+                .take(limit)
+                .map(|record| {
+                    json!({
+                        "signature": record.signature,
+                        "objective": record.objective,
+                        "topology": record.topology,
+                        "status": record.status,
+                        "detail": record.detail,
+                        "member_count": record.member_count,
+                        "max_agents": record.max_agents,
+                        "updated_at": record.updated_at,
+                    })
+                })
+                .collect();
+            Ok(json!({
+                "version": history.version,
+                "count": records.len(),
+                "records": records,
             }))
         })
     }
@@ -486,7 +787,7 @@ mod tests {
         let _g = isolate();
         let r = GovHealthHandler.execute(json!({})).await.unwrap();
         assert_eq!(r["status"], "ok");
-        assert_eq!(r["tool_count"], 45);
+        assert_eq!(r["tool_count"], 50);
         assert!(r["pid"].as_u64().unwrap() > 0, "real process id");
         assert_eq!(r["persisted"]["sessions"], 0);
     }
@@ -561,11 +862,77 @@ mod tests {
             .execute(json!({"archetype": "coder", "prompt": "report", "model": "m"}))
             .await
             .unwrap();
+        super::super::swarm::SwarmCreateHandler
+            .execute(json!({
+                "objective": "broadcast updates across peer workers",
+                "members": [{"agent_id": "worker-1", "role": "coder"}]
+            }))
+            .await
+            .unwrap();
+        super::super::swarm::SwarmCompleteHandler
+            .execute(json!({
+                "summary": "done",
+                "completed_by": "worker-1"
+            }))
+            .await
+            .unwrap();
 
         let report = GovReportHandler.execute(json!({})).await.unwrap();
         assert!(report["report"]["event_count"].as_u64().unwrap() >= 1);
-        assert_eq!(report["report"]["tool_count"], 45);
+        assert_eq!(report["report"]["tool_count"], 50);
         assert!(report["report"]["success_rate"].as_f64().unwrap() >= 0.0);
+        assert!(report["report"]["swarm"]["current"].is_object());
+        assert!(report["report"]["swarm"]["policy"].is_object());
+        assert!(report["report"]["swarm"]["history"].is_object());
+    }
+
+    #[tokio::test]
+    async fn swarm_policy_and_history_are_queryable() {
+        let _g = isolate();
+
+        super::super::swarm::SwarmCreateHandler
+            .execute(json!({
+                "objective": "broadcast updates across peer workers",
+                "members": [{"agent_id": "worker-1", "role": "coder"}]
+            }))
+            .await
+            .unwrap();
+        super::super::swarm::SwarmCompleteHandler
+            .execute(json!({
+                "summary": "mesh run finished",
+                "completed_by": "worker-1"
+            }))
+            .await
+            .unwrap();
+
+        let policy = GovSwarmPolicyHandler.execute(json!({})).await.unwrap();
+        assert!(policy["count"].as_u64().unwrap() >= 1);
+        assert!(policy["entries"].is_array());
+
+        let plan = GovSwarmPlanHandler
+            .execute(json!({
+                "objective": "broadcast updates across peer workers",
+                "members": [{"agent_id": "worker-1", "role": "coder"}]
+            }))
+            .await
+            .unwrap();
+        assert_eq!(plan["recommended_topology"], "mesh");
+        assert!(plan["phases"].is_array());
+
+        let status = GovSwarmStatusHandler.execute(json!({})).await.unwrap();
+        assert!(status["exists"].as_bool().unwrap());
+        assert!(status["plan"].is_object());
+
+        let history = GovSwarmHistoryHandler
+            .execute(json!({"limit": 5}))
+            .await
+            .unwrap();
+        assert!(history["count"].as_u64().unwrap() >= 1);
+        assert!(history["records"].is_array());
+        assert_eq!(
+            history["records"][0]["topology"],
+            policy["entries"][0]["preferred_topology"]
+        );
     }
 
     #[test]
@@ -575,5 +942,10 @@ mod tests {
         assert!(GovEventsHandler.validate(&json!({})).is_ok());
         assert!(GovReplayHandler.validate(&json!({})).is_err());
         assert!(GovReportHandler.validate(&json!({})).is_ok());
+        assert!(GovSwarmRecommendationHandler.validate(&json!({})).is_err());
+        assert!(GovSwarmPlanHandler.validate(&json!({})).is_err());
+        assert!(GovSwarmStatusHandler.validate(&json!({})).is_ok());
+        assert!(GovSwarmPolicyHandler.validate(&json!({})).is_ok());
+        assert!(GovSwarmHistoryHandler.validate(&json!({})).is_ok());
     }
 }

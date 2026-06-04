@@ -11,6 +11,7 @@ use crate::runtime::{
     classify_failure, publish_event, repair_action_for, FailureClass, RuntimeEvent,
 };
 use crate::skills::{record_skill_bundle_feedback, select_orchestration_skill_bundle, SkillBundle};
+use crate::swarm;
 use crate::{Result, RuvosError};
 use ruvos_goap::{GoapAction, GoapGoal, StateValue};
 use ruvos_graphflow::{EdgeCond, FlowGraph};
@@ -110,17 +111,18 @@ async fn run_step(
     task: &str,
     model: &str,
     archetype: &str,
+    swarm_role: Option<&str>,
     runner: Option<&str>,
     context: Option<&str>,
     skill_bundle: Option<&SkillBundle>,
 ) -> Result<(bool, Value)> {
+    let role_prefix = swarm_role
+        .map(|role| format!("[{} orchestration as {}] {}", label, role, task))
+        .unwrap_or_else(|| format!("[{} orchestration] {}", label, task));
     let prompt = if let Some(context) = context {
-        format!(
-            "[{} orchestration] {}\n\nPrevious artifact to consume:\n{}",
-            label, task, context
-        )
+        format!("{role_prefix}\n\nPrevious artifact to consume:\n{context}")
     } else {
-        format!("[{} orchestration] {}", label, task)
+        role_prefix
     };
     let spawned = AgentSpawnHandler
         .execute(json!({
@@ -134,6 +136,7 @@ async fn run_step(
     let success = spawned["success"].as_bool().unwrap_or(true);
     let step = json!({
         "archetype": archetype,
+        "swarm_role": swarm_role,
         "agent_id": spawned["agent_id"],
         "status": spawned["status"],
         "success": success,
@@ -340,6 +343,46 @@ impl ToolHandler for OrchestrateRunHandler {
             }
             selection_hints.extend(extra.iter().map(|capability| capability.name.clone()));
 
+            let swarm_plan = swarm::recommend_plan(
+                &json!({
+                    "objective": task.clone(),
+                    "task": task.clone(),
+                    "goal": params.get("goal").cloned(),
+                    "template": label.clone(),
+                    "members": pipeline.iter().map(|archetype| {
+                        json!({
+                            "agent_id": archetype,
+                            "role": archetype,
+                        })
+                    }).collect::<Vec<_>>(),
+                    "max_agents": pipeline.len().max(1) as u32,
+                }),
+                pipeline.len(),
+                pipeline.len().max(1) as u32,
+            );
+            let swarm_roles: Vec<String> = swarm_plan
+                .get("default_roles")
+                .and_then(|value| value.as_array())
+                .map(|roles| {
+                    roles
+                        .iter()
+                        .filter_map(|role| role.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let swarm_phases: Vec<String> = swarm_plan
+                .get("phases")
+                .and_then(|value| value.as_array())
+                .map(|phases| {
+                    phases
+                        .iter()
+                        .filter_map(|phase| phase.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            selection_hints.extend(swarm_roles.clone());
+            selection_hints.extend(swarm_phases.clone());
+
             let task_skill_bundle = match select_orchestration_skill_bundle(
                 &label,
                 &task,
@@ -361,6 +404,16 @@ impl ToolHandler for OrchestrateRunHandler {
             let mut generated_sources = Vec::new();
             let mut all_ok = true;
             let mut previous_artifact: Option<String> = None;
+            let swarm_step_roles: Vec<String> = pipeline
+                .iter()
+                .enumerate()
+                .map(|(index, archetype)| {
+                    swarm_roles
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| archetype.clone())
+                })
+                .collect();
             publish_event(RuntimeEvent {
                 kind: "orchestrate.run.started".to_string(),
                 payload: json!({
@@ -370,6 +423,8 @@ impl ToolHandler for OrchestrateRunHandler {
                     "planned": planned,
                     "plan_cost": plan_cost,
                     "max_retries": max_retries,
+                    "swarm_plan": &swarm_plan,
+                    "swarm_roles": &swarm_step_roles,
                     "selected_skills": &task_skill_bundle,
                     "selected_skill_bundle_path": &selected_skill_bundle_path,
                 }),
@@ -386,6 +441,7 @@ impl ToolHandler for OrchestrateRunHandler {
                         &task,
                         &model,
                         archetype,
+                        swarm_step_roles.get(step_index).map(String::as_str),
                         runner,
                         previous_artifact.as_deref(),
                         task_skill_bundle.as_ref(),
@@ -400,6 +456,7 @@ impl ToolHandler for OrchestrateRunHandler {
                             "success": success,
                             "artifact_path": step["artifact_path"],
                             "agent_id": step["agent_id"],
+                            "swarm_role": step["swarm_role"],
                             "selected_skills": step["selected_skills"],
                         }),
                         agent_id: step["agent_id"].as_str().map(|s| s.to_string()),
@@ -461,6 +518,7 @@ impl ToolHandler for OrchestrateRunHandler {
                         &task,
                         &model,
                         &current,
+                        swarm_step_roles.get(step_index).map(String::as_str),
                         runner,
                         previous_artifact.as_deref(),
                         task_skill_bundle.as_ref(),
@@ -487,6 +545,7 @@ impl ToolHandler for OrchestrateRunHandler {
                             "success": success,
                             "artifact_path": step["artifact_path"],
                             "agent_id": step["agent_id"],
+                            "swarm_role": step["swarm_role"],
                             "selected_skills": step["selected_skills"],
                         }),
                         agent_id: step["agent_id"].as_str().map(|s| s.to_string()),
@@ -574,6 +633,8 @@ impl ToolHandler for OrchestrateRunHandler {
                     "task": task.clone(),
                     "step_count": steps.len(),
                     "success": all_ok,
+                    "swarm_plan": &swarm_plan,
+                    "swarm_roles": &swarm_step_roles,
                     "selected_skills": &task_skill_bundle,
                     "selected_skill_bundle_path": &selected_skill_bundle_path,
                 }),
@@ -605,6 +666,8 @@ impl ToolHandler for OrchestrateRunHandler {
                 "success": all_ok,
                 "planned": planned,
                 "plan_cost": plan_cost,
+                "swarm_plan": swarm_plan,
+                "swarm_roles": swarm_step_roles,
                 "step_count": steps.len(),
                 "generated_sources": generated_sources,
                 "selected_skills": &task_skill_bundle,
@@ -695,6 +758,8 @@ mod tests {
 
         assert_eq!(r["status"], "completed");
         assert_eq!(r["step_count"], 4);
+        assert!(r["swarm_plan"].is_object());
+        assert!(r["swarm_plan"]["phases"].is_array());
         let steps = r["steps"].as_array().unwrap();
         assert_eq!(steps[0]["archetype"], "planner");
         assert_eq!(steps[1]["archetype"], "coder");

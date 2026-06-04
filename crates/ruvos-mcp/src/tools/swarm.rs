@@ -124,10 +124,10 @@ fn swarm_metrics(
     })
 }
 
-struct TopologyDecision {
-    topology: String,
-    reason: String,
-    source: String,
+pub struct TopologyDecision {
+    pub topology: String,
+    pub reason: String,
+    pub source: String,
 }
 
 fn swarm_text(params: &Value) -> String {
@@ -146,7 +146,11 @@ fn swarm_text(params: &Value) -> String {
     .to_lowercase()
 }
 
-fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> TopologyDecision {
+pub fn recommend_topology(
+    params: &Value,
+    member_count: usize,
+    max_agents: u32,
+) -> TopologyDecision {
     if let Some(topology) = params.get("topology").and_then(|v| v.as_str()) {
         return TopologyDecision {
             topology: topology.to_string(),
@@ -224,6 +228,10 @@ fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> Topol
         reason: "defaulted to hierarchical".to_string(),
         source: "inferred".to_string(),
     }
+}
+
+fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> TopologyDecision {
+    recommend_topology(params, member_count, max_agents)
 }
 
 fn member_exists(state: &swarm::SwarmState, agent_id: &str) -> bool {

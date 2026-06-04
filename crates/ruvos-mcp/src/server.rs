@@ -193,7 +193,7 @@ impl JsonRpcServer {
 /// Serve the MCP server on stdin/stdout.
 pub async fn serve() -> anyhow::Result<()> {
     paths::ensure_root().map_err(|e| anyhow::anyhow!("initializing data root: {e}"))?;
-    info!("MCP server initialized with 45 tool registry");
+    info!("MCP server initialized with 50 tool registry");
 
     let registry = crate::tools::create_registry();
     let server = JsonRpcServer::new(registry);

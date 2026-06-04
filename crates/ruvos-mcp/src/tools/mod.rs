@@ -1,4 +1,4 @@
-//! Tool registry for all 45 MCP tools.
+//! Tool registry for all 50 MCP tools.
 
 pub mod agent;
 pub mod agent_store;
@@ -30,7 +30,7 @@ pub struct ToolMetadata {
     pub domain: String,
 }
 
-/// Create a new registry with all 45 tools + test tools registered.
+/// Create a new registry with all 50 tools + test tools registered.
 pub fn create_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
@@ -75,6 +75,11 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(gov::GovEventsHandler));
     registry.register(Box::new(gov::GovReplayHandler));
     registry.register(Box::new(gov::GovReportHandler));
+    registry.register(Box::new(gov::GovSwarmRecommendationHandler));
+    registry.register(Box::new(gov::GovSwarmPlanHandler));
+    registry.register(Box::new(gov::GovSwarmStatusHandler));
+    registry.register(Box::new(gov::GovSwarmPolicyHandler));
+    registry.register(Box::new(gov::GovSwarmHistoryHandler));
 
     // Register relay tools
     registry.register(Box::new(relay::RelayAnnounceHandler));
@@ -105,7 +110,7 @@ pub fn create_registry() -> ToolRegistry {
     registry
 }
 
-/// Return the registry of all 45 tools (metadata only).
+/// Return the registry of all 50 tools (metadata only).
 pub fn tool_registry() -> Vec<ToolMetadata> {
     vec![
         // Memory (4)
@@ -220,7 +225,7 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Run a plugin command (shell exec via tokio)".to_string(),
             domain: "plugin".to_string(),
         },
-        // Gov (5)
+        // Gov (10)
         ToolMetadata {
             name: "gov.witness_verify".to_string(),
             description: "Verify .rvf signature chain".to_string(),
@@ -247,6 +252,33 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             name: "gov.report".to_string(),
             description: "Generate a governance report with quality and benchmark signals"
                 .to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.swarm_recommendation".to_string(),
+            description: "Recommend swarm topology and assignment hints for a proposed task"
+                .to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.swarm_plan".to_string(),
+            description: "Return a concrete swarm role/phase plan for a proposed task".to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.swarm_status".to_string(),
+            description: "Summarize the active swarm with a suggested plan overlay".to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.swarm_policy".to_string(),
+            description: "Inspect learned swarm policy entries and topology preferences"
+                .to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.swarm_history".to_string(),
+            description: "Inspect recent swarm run history and learning outcomes".to_string(),
             domain: "gov".to_string(),
         },
         // Relay (6)
@@ -371,8 +403,8 @@ mod integration_tests {
     #[test]
     fn test_full_registry_creation() {
         let registry = create_registry();
-        // All 45 tools + 1 test echo tool = 46
-        assert_eq!(registry.tool_count(), 46);
+        // All 50 tools + 1 test echo tool = 51
+        assert_eq!(registry.tool_count(), 51);
     }
 
     #[test]
@@ -439,6 +471,17 @@ mod integration_tests {
                 json!({"session_id": "00000000-0000-0000-0000-000000000000"}),
             ),
             ("gov.report", json!({})),
+            (
+                "gov.swarm_recommendation",
+                json!({"objective": "broadcast updates across peer workers", "members": [{"agent_id": "worker-1", "role": "coder"}]}),
+            ),
+            (
+                "gov.swarm_plan",
+                json!({"objective": "broadcast updates across peer workers", "members": [{"agent_id": "worker-1", "role": "coder"}]}),
+            ),
+            ("gov.swarm_status", json!({})),
+            ("gov.swarm_policy", json!({})),
+            ("gov.swarm_history", json!({"limit": 5})),
             (
                 "relay.contract_store",
                 json!({
