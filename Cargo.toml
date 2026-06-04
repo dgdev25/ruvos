@@ -33,6 +33,8 @@ members = [
     "substrate/ruv-swarm-transport",
     # Temporal knowledge graph
     "substrate/ruvos-memory-graph",
+    # Portable redb-backed skills pack
+    "substrate/ruvos-skills",
     # Behavioral safety guardrails and adaptive boundaries
     "substrate/ruvos-safety",
     # Pure-Rust redb store + signed .rvf snapshots (replaces SQLite persistence)

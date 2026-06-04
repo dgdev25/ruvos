@@ -57,6 +57,11 @@ Tool count is unchanged (24) — this is a rename, not an addition.
   rUvOS is pre-1.0 (`v4.0.0-rc.1`) and the tool is new this development cycle.
 - README and examples updated accordingly.
 
+## Validation
+
+- Covered by `crates/ruvos-mcp/src/tools/orchestrate.rs` tests.
+- Exercised by `crates/ruvos-mcp/tests/integration_test.rs` through `orchestrate.run`.
+
 ## Alternatives considered
 
 - **Prefix with `ruvos-`** (`ruvos-workflow.run`) — rejected: the `mcp__ruvos__`

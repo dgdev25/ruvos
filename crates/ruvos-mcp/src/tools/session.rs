@@ -4,6 +4,7 @@
 //! Disk is the source of truth, so sessions survive process restarts.
 
 use super::handler::{ExecuteFuture, ToolHandler};
+use crate::runtime::{publish_event, RuntimeEvent};
 use crate::{paths, Result, RuvosError};
 use ruvos_session::{fork_session, read_session, write_session, Session};
 use serde_json::{json, Value};
@@ -77,6 +78,18 @@ impl ToolHandler for SessionCreateHandler {
                 .await
                 .map_err(|e| RuvosError::InternalError(format!("failed to write .rvf: {}", e)))?;
 
+            publish_event(RuntimeEvent {
+                kind: "session.created".to_string(),
+                payload: json!({
+                    "session_id": session.id.to_string(),
+                    "name": if name.is_empty() { Value::Null } else { Value::String(name.clone()) },
+                    "rvf_path": path.clone(),
+                    "state_keys": session.state.keys().cloned().collect::<Vec<_>>(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             Ok(json!({
                 "session_id": session.id.to_string(),
                 "name": if name.is_empty() { Value::Null } else { Value::String(name) },
@@ -137,17 +150,30 @@ impl ToolHandler for SessionResumeHandler {
             };
 
             match read_session(&path).await {
-                Ok(session) => Ok(json!({
-                    "session_id": session.id.to_string(),
-                    "name": if session.name.is_empty() { Value::Null } else { Value::String(session.name) },
-                    "rvf_path": session.rvf_path,
-                    "created_at": session.created_at,
-                    "updated_at": session.updated_at,
-                    "parent_id": session.parent.map(|p| p.to_string()),
-                    "state": session.state,
-                    "status": "resumed",
-                    "found": true
-                })),
+                Ok(session) => {
+                    let session_id_value = session.id.to_string();
+                    let rvf_path_value = session.rvf_path.clone();
+                    publish_event(RuntimeEvent {
+                        kind: "session.resumed".to_string(),
+                        payload: json!({
+                            "session_id": session_id_value,
+                            "rvf_path": rvf_path_value,
+                        }),
+                        agent_id: None,
+                        task_id: None,
+                    });
+                    Ok(json!({
+                        "session_id": session.id.to_string(),
+                        "name": if session.name.is_empty() { Value::Null } else { Value::String(session.name) },
+                        "rvf_path": session.rvf_path,
+                        "created_at": session.created_at,
+                        "updated_at": session.updated_at,
+                        "parent_id": session.parent.map(|p| p.to_string()),
+                        "state": session.state,
+                        "status": "resumed",
+                        "found": true
+                    }))
+                }
                 Err(_) => Ok(json!({
                     "session_id": session_id,
                     "status": "not_found",
@@ -215,14 +241,29 @@ impl ToolHandler for SessionForkHandler {
             let base_dir = paths::sessions_dir().to_string_lossy().into_owned();
 
             match fork_session(&source_path, &base_dir).await {
-                Ok(child) => Ok(json!({
-                    "forked_id": child.id.to_string(),
-                    "source_session_id": source_session_id,
-                    "rvf_path": child.rvf_path,
-                    "created_at": child.created_at,
-                    "status": "forked",
-                    "success": true
-                })),
+                Ok(child) => {
+                    let forked_id = child.id.to_string();
+                    let forked_path = child.rvf_path.clone();
+                    let source_session_value = source_session_id.clone();
+                    publish_event(RuntimeEvent {
+                        kind: "session.forked".to_string(),
+                        payload: json!({
+                            "source_session_id": source_session_value,
+                            "forked_id": forked_id,
+                            "rvf_path": forked_path,
+                        }),
+                        agent_id: None,
+                        task_id: None,
+                    });
+                    Ok(json!({
+                        "forked_id": child.id.to_string(),
+                        "source_session_id": source_session_id,
+                        "rvf_path": child.rvf_path,
+                        "created_at": child.created_at,
+                        "status": "forked",
+                        "success": true
+                    }))
+                }
                 Err(_) => Ok(json!({
                     "forked_id": Value::Null,
                     "source_session_id": source_session_id,

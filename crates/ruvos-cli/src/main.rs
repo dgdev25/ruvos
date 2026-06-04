@@ -3,6 +3,7 @@
 //! Single static binary entry point. Dispatches to subcommands (init, mcp serve, agent spawn, etc.).
 
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use tracing::info;
 
 #[derive(Parser)]
@@ -22,6 +23,25 @@ enum Commands {
         #[arg(short, long)]
         name: Option<String>,
     },
+    /// Run a local health/invariant check.
+    Doctor {
+        /// Emit JSON instead of human-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Exit non-zero if any invariant is violated.
+        #[arg(long)]
+        strict: bool,
+    },
+    /// Audit the source skills corpus and emit a manifest.
+    Skills {
+        #[command(subcommand)]
+        command: SkillsCommand,
+    },
+    /// Generate or verify the canonical contract manifest.
+    Contracts {
+        #[command(subcommand)]
+        command: ContractsCommand,
+    },
     /// Start the MCP server on stdio
     Mcp {
         #[command(subcommand)]
@@ -33,6 +53,77 @@ enum Commands {
 enum McpCommand {
     /// Serve the MCP server
     Serve,
+}
+
+#[derive(Subcommand)]
+enum ContractsCommand {
+    /// Emit the canonical contract manifest.
+    Generate {
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = ruvos_cli::commands::contracts::ContractFormat::Json)]
+        format: ruvos_cli::commands::contracts::ContractFormat,
+        /// Write the manifest to a file instead of stdout.
+        #[arg(long)]
+        write: Option<PathBuf>,
+    },
+    /// Verify a manifest file matches the live registry.
+    Check {
+        /// Manifest path to verify.
+        #[arg(
+            value_name = "PATH",
+            default_value = "docs/contracts/contract-manifest.json"
+        )]
+        path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillsCommand {
+    /// Audit the source corpus and write a deterministic manifest.
+    Audit {
+        /// Path to the source corpus root.
+        #[arg(long, default_value = "/mnt/datadisk/dev/skillbase")]
+        corpus_root: PathBuf,
+        /// Path to the source SQLite corpus database.
+        #[arg(long, default_value = "/mnt/datadisk/dev/skillbase/data/skills.db")]
+        db: PathBuf,
+        /// Output path for the manifest.
+        #[arg(long, default_value = "generated/skills-audit.json")]
+        write: PathBuf,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = ruvos_cli::commands::skills::SkillsAuditFormat::Json)]
+        format: ruvos_cli::commands::skills::SkillsAuditFormat,
+    },
+    /// Build a portable skills pack from an audit manifest.
+    Pack {
+        #[command(subcommand)]
+        command: SkillsPackCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillsPackCommand {
+    /// Build `skills.redb` from an audit manifest.
+    Build {
+        /// Path to the audit manifest.
+        #[arg(long, default_value = "generated/skills-audit.json")]
+        manifest: PathBuf,
+        /// Path to the curated skill selection manifest.
+        #[arg(long, default_value = "docs/skills/selected-300-ruvos.json")]
+        selection_manifest: PathBuf,
+        /// Path to the source SQLite corpus database.
+        #[arg(long, default_value = "/mnt/datadisk/dev/skillbase/data/skills.db")]
+        db: PathBuf,
+        /// Output path for the redb pack.
+        #[arg(long, default_value = "generated/skills.redb")]
+        output: PathBuf,
+        /// Selected tiers to include in the default pack.
+        #[arg(long, value_enum, default_value_t = ruvos_cli::commands::skills::SkillsPackTier::Core)]
+        tier: ruvos_cli::commands::skills::SkillsPackTier,
+        /// Include additional tiers in the pack output.
+        #[arg(long, value_enum)]
+        extra_tier: Vec<ruvos_cli::commands::skills::SkillsPackTier>,
+    },
 }
 
 #[tokio::main]
@@ -49,6 +140,54 @@ async fn main() -> anyhow::Result<()> {
             info!("Initializing rUvOS project: {:?}", name);
             ruvos_cli::commands::init::init(name).await?;
         }
+        Commands::Doctor { json, strict } => {
+            ruvos_cli::commands::doctor::doctor(json, strict).await?;
+        }
+        Commands::Skills { command } => match command {
+            SkillsCommand::Audit {
+                corpus_root,
+                db,
+                write,
+                format,
+            } => {
+                let report =
+                    ruvos_cli::commands::skills::audit(corpus_root, db, Some(write), format)?;
+                ruvos_cli::commands::skills::print_audit_summary(&report);
+            }
+            SkillsCommand::Pack { command } => match command {
+                SkillsPackCommand::Build {
+                    manifest,
+                    selection_manifest,
+                    db,
+                    output,
+                    tier,
+                    extra_tier,
+                } => {
+                    let mut selected_tiers = vec![tier];
+                    selected_tiers.extend(extra_tier);
+                    selected_tiers.sort();
+                    selected_tiers.dedup();
+                    let report = ruvos_cli::commands::skills::build_pack(
+                        ruvos_cli::commands::skills::PackBuildConfig {
+                            manifest_path: manifest,
+                            source_db: db,
+                            output,
+                            selection_manifest: Some(selection_manifest),
+                            selected_tiers,
+                        },
+                    )?;
+                    ruvos_cli::commands::skills::print_pack_summary(&report);
+                }
+            },
+        },
+        Commands::Contracts { command } => match command {
+            ContractsCommand::Generate { format, write } => {
+                ruvos_cli::commands::contracts::generate(format, write)?;
+            }
+            ContractsCommand::Check { path } => {
+                ruvos_cli::commands::contracts::check(path)?;
+            }
+        },
         Commands::Mcp { command } => match command {
             McpCommand::Serve => {
                 info!("Starting MCP server");

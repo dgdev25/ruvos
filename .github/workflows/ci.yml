@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --all-features
+      - run: cargo build --workspace --jobs 4
 
   lint:
     name: Clippy
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo clippy --workspace --all-targets --jobs 4 -- -D warnings
 
   format:
     name: Format
@@ -49,4 +49,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --lib --all-features
+      - run: cargo test --workspace --jobs 4
+
+  workflow-contract:
+    name: Workflow Contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo run -p ruvos-cli -- contracts check docs/contracts/contract-manifest.json
+      - run: RUVOS_HOME="$RUNNER_TEMP/ruvos" cargo run -p ruvos-cli -- doctor --strict
+      - run: cargo test -p ruvos-mcp --test integration_test -- --nocapture

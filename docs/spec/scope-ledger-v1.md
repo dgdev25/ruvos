@@ -3,6 +3,10 @@
 > The contract that gates the Rust rewrite. Everything not on this list is **deleted**, not deferred. If a tool / agent / hook is missing from this document and someone wants it back, it goes through a new ADR — not a "while we're at it" port.
 >
 > Read alongside `REWRITE-SUMMARY.md`. This is the artifact Phase 0 must produce; Phase 1 cannot start until it's signed off.
+>
+> Live implementation note: the machine-readable contract source of truth is
+> [`docs/contracts/contract-manifest.json`](../contracts/contract-manifest.json).
+> If that file disagrees with this ledger, the manifest and implementation win.
 
 ---
 

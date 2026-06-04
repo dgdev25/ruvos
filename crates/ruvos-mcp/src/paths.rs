@@ -47,6 +47,11 @@ pub fn intel_file() -> PathBuf {
     data_root().join("intel.json")
 }
 
+/// Path to the JSON-backed intent memory store.
+pub fn intent_file() -> PathBuf {
+    data_root().join("intent.json")
+}
+
 /// Path to the JSON-backed memory-retrieval bandit reward store.
 pub fn memory_rewards_file() -> PathBuf {
     data_root().join("memory-rewards.json")
@@ -65,6 +70,21 @@ pub fn memory_graph_file() -> PathBuf {
 /// Directory holding cross-instance relay presence records + inboxes.
 pub fn relays_dir() -> PathBuf {
     data_root().join("relays")
+}
+
+/// Path to the JSON-backed coordination contract store.
+pub fn coordination_file() -> PathBuf {
+    relays_dir().join("contracts.json")
+}
+
+/// Path to the JSON-backed swarm state store.
+pub fn swarm_file() -> PathBuf {
+    data_root().join("swarm.json")
+}
+
+/// Path to the portable skills pack.
+pub fn skills_pack_file() -> PathBuf {
+    data_root().join("skills.redb")
 }
 
 /// Ensure the data root exists, returning it.

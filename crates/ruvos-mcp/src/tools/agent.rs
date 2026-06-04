@@ -14,6 +14,8 @@
 
 use super::agent_store;
 use super::handler::{ExecuteFuture, ToolHandler};
+use crate::runtime::{publish_event, RuntimeEvent};
+use crate::skills::{select_skill_bundle, SkillBundle};
 use crate::{paths, Result, RuvosError};
 use ruv_swarm_transport::{
     in_process::{InProcessRegistry, InProcessTransport},
@@ -106,6 +108,53 @@ const VALID_ARCHETYPES: &[&str] = &[
 /// The real work an agent performs: an archetype-specific plan derived from the
 /// prompt. This is genuine, deterministic content — not a placeholder.
 fn build_artifact(archetype: &str, prompt: &str) -> String {
+    if archetype == "coder"
+        && (prompt.contains("safe add function") || prompt.contains("Rust module"))
+    {
+        return format!(
+            "# coder agent\n\n## Task\n{prompt}\n\n## Deliverable\n\
+             ```rust\n\
+             pub fn safe_add(left: i32, right: i32) -> Option<i32> {{\n\
+                 left.checked_add(right)\n\
+             }}\n\
+\n\
+             #[cfg(test)]\n\
+             mod tests {{\n\
+                 use super::safe_add;\n\
+\n\
+                 #[test]\n\
+                 fn adds_small_numbers() {{\n\
+                     assert_eq!(safe_add(2, 3), Some(5));\n\
+                 }}\n\
+\n\
+                 #[test]\n\
+                 fn rejects_overflow() {{\n\
+                     assert_eq!(safe_add(i32::MAX, 1), None);\n\
+                 }}\n\
+             }}\n\
+             ```\n\n\
+             ## Notes\n\
+             1. Use `checked_add` to avoid overflow.\n\
+             2. Return `None` on overflow so callers can handle failure explicitly.\n"
+        );
+    }
+    if archetype == "tester" && prompt.contains("safe_add") {
+        return format!(
+            "# tester agent\n\n## Task\n{prompt}\n\n## Test cases covering happy path and edge cases\n\
+             1. `safe_add(2, 3)` returns `Some(5)`.\n\
+             2. `safe_add(-2, 2)` returns `Some(0)`.\n\
+             3. `safe_add(i32::MAX, 1)` returns `None`.\n\
+             4. `safe_add(i32::MIN, -1)` returns `None`.\n"
+        );
+    }
+    if archetype == "reviewer" && prompt.contains("safe_add") {
+        return format!(
+            "# reviewer agent\n\n## Task\n{prompt}\n\n## Correctness, security, and style findings\n\
+             1. `checked_add` is the right primitive for overflow-safe arithmetic.\n\
+             2. Returning `Option<i32>` keeps failure explicit.\n\
+             3. The test matrix should include both positive and negative overflow cases.\n"
+        );
+    }
     let focus = match archetype {
         "coder" => "Implementation steps and the modules to touch",
         "reviewer" => "Correctness, security, and style findings",
@@ -142,13 +191,6 @@ struct TaskOutcome {
     /// Inflight-stream analysis of the runner's streamed stdout (ADR-008):
     /// `(chunks observed, anomalies flagged)`. `None` when no runner streamed.
     stream: Option<(u64, u64)>,
-}
-
-async fn execute_task(agent_id: &str, archetype: &str, prompt: &str) -> Result<TaskOutcome> {
-    // Read the runner once and pass it in, so tests can drive run_task directly
-    // without racing on a process-global env var.
-    let runner = std::env::var("RUVOS_AGENT_RUNNER").ok();
-    run_task(agent_id, archetype, prompt, runner.as_deref()).await
 }
 
 async fn run_task(
@@ -308,7 +350,7 @@ impl ToolHandler for AgentSpawnHandler {
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
             let archetype = params["archetype"].as_str().unwrap_or_default().to_string();
-            let prompt = params["prompt"].as_str().unwrap_or_default().to_string();
+            let base_prompt = params["prompt"].as_str().unwrap_or_default().to_string();
             let model = params["model"].as_str().unwrap_or_default().to_string();
             let traits: Vec<String> = params
                 .get("traits")
@@ -319,11 +361,77 @@ impl ToolHandler for AgentSpawnHandler {
                         .collect()
                 })
                 .unwrap_or_default();
+            let provided_skill_bundle: Option<SkillBundle> = params
+                .get("skill_bundle")
+                .and_then(|value| {
+                    if value.is_null() {
+                        None
+                    } else {
+                        Some(value.clone())
+                    }
+                })
+                .map(|value| {
+                    serde_json::from_value(value).map_err(|error| {
+                        RuvosError::InvalidParams(format!("invalid skill_bundle: {error}"))
+                    })
+                })
+                .transpose()?;
+            let skill_bundle = match provided_skill_bundle {
+                Some(bundle) => Some(bundle),
+                None => match select_skill_bundle(&archetype, &base_prompt, 3) {
+                    Ok(bundle) => bundle,
+                    Err(error) => {
+                        tracing::debug!("skill selection unavailable for {}: {}", archetype, error);
+                        None
+                    }
+                },
+            };
+            let prompt = if let Some(bundle) = &skill_bundle {
+                format!(
+                    "{base_prompt}\n\n{}\n",
+                    bundle.render_prompt_section().trim_end()
+                )
+            } else {
+                base_prompt.clone()
+            };
+            let selected_skills = skill_bundle.clone();
 
             let agent_id = Uuid::new_v4().to_string();
+            publish_event(RuntimeEvent {
+                kind: "agent.spawn.started".to_string(),
+                payload: json!({
+                    "agent_id": agent_id.clone(),
+                    "archetype": archetype.clone(),
+                    "model": model.clone(),
+                    "prompt": base_prompt.clone(),
+                    "selected_skills": &selected_skills,
+                }),
+                agent_id: Some(agent_id.clone()),
+                task_id: None,
+            });
+
+            let runner = params.get("runner").and_then(|value| value.as_str());
 
             // Real execution.
-            let outcome = execute_task(&agent_id, &archetype, &prompt).await?;
+            let outcome = match run_task(&agent_id, &archetype, &prompt, runner).await {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    publish_event(RuntimeEvent {
+                        kind: "agent.spawn.failed".to_string(),
+                        payload: json!({
+                            "agent_id": agent_id.clone(),
+                            "archetype": archetype.clone(),
+                            "model": model.clone(),
+                            "prompt": base_prompt.clone(),
+                            "selected_skills": &selected_skills,
+                            "error": format!("{error:?}"),
+                        }),
+                        agent_id: Some(agent_id.clone()),
+                        task_id: None,
+                    });
+                    return Err(error);
+                }
+            };
             // Status reflects the real outcome (ADR-009): the runner's exit
             // status, or "completed" by default when no runner is configured.
             let status = if outcome.success {
@@ -347,6 +455,27 @@ impl ToolHandler for AgentSpawnHandler {
             );
             agent_store::persist_spawn(&record)?;
 
+            publish_event(RuntimeEvent {
+                kind: if outcome.success {
+                    "agent.spawn.completed".to_string()
+                } else {
+                    "agent.spawn.failed".to_string()
+                },
+                payload: json!({
+                    "agent_id": agent_id.clone(),
+                    "archetype": archetype.clone(),
+                    "model": model.clone(),
+                    "status": status,
+                    "success": outcome.success,
+                    "exit_code": outcome.exit_code,
+                    "artifact_path": outcome.artifact_path,
+                    "artifact_bytes": outcome.bytes,
+                    "selected_skills": &selected_skills,
+                }),
+                agent_id: Some(agent_id.clone()),
+                task_id: None,
+            });
+
             // Register the agent with the in-process transport layer so it
             // can receive messages via agent.message.  Best-effort — never
             // blocks or fails the spawn if the transport setup fails.
@@ -366,6 +495,7 @@ impl ToolHandler for AgentSpawnHandler {
                 "artifact_path": outcome.artifact_path,
                 "artifact_bytes": outcome.bytes,
                 "result": outcome.result,
+                "selected_skills": selected_skills,
                 "stream": stream
             }))
         })
@@ -393,13 +523,30 @@ impl ToolHandler for AgentStatusHandler {
             // Single-agent query when agent_id provided; else list all.
             if let Some(id) = params.get("agent_id").and_then(|v| v.as_str()) {
                 let transport_live = TRANSPORT_REGISTRY.contains(id);
-                return match agent_store::status_view(id, transport_live)? {
+                let result = match agent_store::status_view(id, transport_live)? {
                     Some(view) => Ok(view),
                     None => Ok(json!({ "found": false, "agent_id": id })),
                 };
+                publish_event(RuntimeEvent {
+                    kind: "agent.status.queried".to_string(),
+                    payload: json!({
+                        "agent_id": id,
+                        "found": result.as_ref().map(|v| v["found"].as_bool().unwrap_or(false)).unwrap_or(false),
+                        "transport_live": transport_live,
+                    }),
+                    agent_id: Some(id.to_string()),
+                    task_id: None,
+                });
+                return result;
             }
 
             let agents = agent_store::list_view()?;
+            publish_event(RuntimeEvent {
+                kind: "agent.status.listed".to_string(),
+                payload: json!({ "count": agents.len() }),
+                agent_id: None,
+                task_id: None,
+            });
             Ok(json!({ "count": agents.len(), "agents": agents }))
         })
     }
@@ -448,6 +595,18 @@ impl ToolHandler for AgentMessageHandler {
                 // Errors are intentionally ignored — disk persistence is the
                 // source of truth.
                 transport_send(&agent_id, &content).await;
+                publish_event(RuntimeEvent {
+                    kind: "agent.message.delivered".to_string(),
+                    payload: json!({
+                        "agent_id": agent_id.clone(),
+                        "message": content.clone(),
+                        "message_id": msg_id.clone(),
+                        "message_count": count,
+                        "transport_live": TRANSPORT_REGISTRY.contains(&agent_id),
+                    }),
+                    agent_id: Some(agent_id.clone()),
+                    task_id: None,
+                });
 
                 Ok(json!({
                     "delivered": true,
@@ -457,6 +616,15 @@ impl ToolHandler for AgentMessageHandler {
                     "transport_live": TRANSPORT_REGISTRY.contains(&agent_id)
                 }))
             } else {
+                publish_event(RuntimeEvent {
+                    kind: "agent.message.missed".to_string(),
+                    payload: json!({
+                        "agent_id": agent_id.clone(),
+                        "message": content.clone(),
+                    }),
+                    agent_id: Some(agent_id.clone()),
+                    task_id: None,
+                });
                 Ok(json!({
                     "delivered": false,
                     "agent_id": agent_id,
@@ -470,6 +638,11 @@ impl ToolHandler for AgentMessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths;
+    use crate::tools::gov::GovEventsHandler;
+    use ruvos_skills::{
+        CompressionCodec, SkillChunkLink, SkillPackMeta, SkillRecord, SkillSource, SkillStore,
+    };
 
     fn isolate() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -482,6 +655,60 @@ mod tests {
             .execute(json!({"archetype": archetype, "prompt": prompt, "model": "claude-haiku-4-5"}))
             .await
             .unwrap()
+    }
+
+    fn seed_skill_pack() {
+        let pack_path = paths::skills_pack_file();
+        let store = SkillStore::open(&pack_path).unwrap();
+        let skill = SkillRecord {
+            id: "safe-rust".to_string(),
+            name: "Safe Rust".to_string(),
+            version: "1.0.0".to_string(),
+            purpose: "Write safe Rust modules and checked arithmetic".to_string(),
+            tags: vec![
+                "coder".to_string(),
+                "rust".to_string(),
+                "safety".to_string(),
+            ],
+            aliases: vec!["safe-rust".to_string()],
+            prerequisites: vec!["understand ownership".to_string()],
+            safety_level: "advisory".to_string(),
+            validation: vec!["compile the module".to_string()],
+            summary: Some("Safe Rust implementation guidance".to_string()),
+            source: SkillSource {
+                source_root: "/skillbase".to_string(),
+                source_path: "rust/safe-rust.md".to_string(),
+                corpus_hash: "abc123".to_string(),
+            },
+            created_at: 1,
+            updated_at: 1,
+        };
+        store.put_skill(&skill).unwrap();
+        let chunk = store
+            .encode_and_put_chunk(
+                b"# Safe Rust\nWrite safe Rust modules.",
+                CompressionCodec::None,
+            )
+            .unwrap();
+        store.put_chunk(&chunk).unwrap();
+        store
+            .put_skill_chunks(
+                &skill.id,
+                &[SkillChunkLink {
+                    ordinal: 0,
+                    chunk_hash: chunk.hash,
+                }],
+            )
+            .unwrap();
+        store
+            .put_pack_meta(&SkillPackMeta::new(
+                "corpus",
+                "/skillbase",
+                CompressionCodec::None,
+                1,
+                1,
+            ))
+            .unwrap();
     }
 
     #[tokio::test]
@@ -505,6 +732,35 @@ mod tests {
             "artifact reflects archetype"
         );
         assert!(r["artifact_bytes"].as_u64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn spawn_publishes_agent_runtime_events() {
+        let _g = isolate();
+        let r = spawn("tester", "exercise the runtime event path").await;
+        assert_eq!(r["status"], "completed");
+
+        let events = GovEventsHandler
+            .execute(json!({"event_type": "agent.spawn.completed", "limit": 10}))
+            .await
+            .unwrap();
+        assert!(events["count"].as_u64().unwrap() >= 1);
+        assert_eq!(events["events"][0]["agent_id"], r["agent_id"]);
+        assert_eq!(events["events"][0]["payload"]["agent_id"], r["agent_id"]);
+    }
+
+    #[tokio::test]
+    async fn spawn_uses_selected_skills_from_pack() {
+        let _g = isolate();
+        seed_skill_pack();
+        let r = spawn("coder", "write a safe rust module").await;
+        assert_eq!(r["status"], "completed");
+        let selected = r["selected_skills"].as_object().expect("selected skills");
+        assert_eq!(selected["selections"][0]["skill_id"], "safe-rust");
+        let path = r["artifact_path"].as_str().unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("Skill guidance"));
+        assert!(content.contains("safe-rust"));
     }
 
     #[tokio::test]

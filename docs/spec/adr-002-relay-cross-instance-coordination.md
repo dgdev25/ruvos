@@ -112,3 +112,8 @@ v1**. File mailboxes are the default and only mode initially.
 - **Names considered:** `peer` (rejected — references prior art), `beacon`,
   `fleet`, `presence`. `relay` chosen — it reads naturally for both discovery and
   message-passing between nodes, and is clearly distinct from `session.*`.
+
+## Validation
+
+- Covered by relay unit tests in `crates/ruvos-mcp/src/tools/relay.rs`.
+- Exercised end-to-end by `crates/ruvos-mcp/tests/integration_test.rs`.

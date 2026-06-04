@@ -96,3 +96,9 @@ ADR if a concrete, non-duplicative need appears.
 - **Expose full `task.*` as MCP tools** — maximum capability but reintroduces the
   duplication/drift with the host's task list and risks scope creep. Rejected in
   favor of internal-only tasks.
+
+## Validation
+
+- Covered by `substrate/ruvos-store/tests/store_tests.rs` for store behavior.
+- Covered by `crates/ruvos-mcp/src/tools/gov.rs` tests for `gov.health` and `gov.events`.
+- Exercised end-to-end by `crates/ruvos-mcp/tests/integration_test.rs`.

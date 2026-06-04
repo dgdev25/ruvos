@@ -45,6 +45,30 @@ pub struct RelayMessage {
     pub sent_at: String,
 }
 
+/// A durable collaboration contract between agents and instances.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CoordinationRole {
+    pub agent_id: String,
+    pub role: String,
+    pub responsibility: String,
+}
+
+/// A durable ownership / handoff record.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CoordinationContract {
+    pub id: String,
+    pub topic: String,
+    pub owner: String,
+    pub participants: Vec<String>,
+    pub roles: Vec<CoordinationRole>,
+    pub handoff_to: Option<String>,
+    pub blockers: Vec<String>,
+    pub status: String,
+    pub resolution: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Stable instance id for this process: a v4 uuid generated once.
 pub fn instance_id() -> &'static str {
     static ID: OnceLock<String> = OnceLock::new();
@@ -57,6 +81,10 @@ fn presence_path(id: &str) -> PathBuf {
 
 fn inbox_dir(id: &str) -> PathBuf {
     paths::relays_dir().join(format!("{id}.inbox"))
+}
+
+fn contracts_path() -> PathBuf {
+    paths::coordination_file()
 }
 
 /// Best-effort `git remote get-url origin` for the current working directory.
@@ -88,6 +116,55 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     std::fs::rename(&tmp, path)
         .map_err(|e| RuvosError::InternalError(format!("relay commit: {e}")))?;
     Ok(())
+}
+
+fn load_contracts() -> Vec<CoordinationContract> {
+    let Ok(bytes) = std::fs::read(contracts_path()) else {
+        return Vec::new();
+    };
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+fn save_contracts(contracts: &[CoordinationContract]) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(contracts)
+        .map_err(|e| RuvosError::InternalError(format!("coord serialize: {e}")))?;
+    atomic_write(&contracts_path(), &bytes)
+}
+
+fn upsert_contract(contract: CoordinationContract) -> Result<CoordinationContract> {
+    paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("relay root: {e}")))?;
+    std::fs::create_dir_all(paths::relays_dir())
+        .map_err(|e| RuvosError::InternalError(format!("relay dir: {e}")))?;
+
+    let mut contracts = load_contracts();
+    if let Some(existing) = contracts
+        .iter_mut()
+        .find(|existing| existing.id == contract.id)
+    {
+        *existing = contract.clone();
+    } else {
+        contracts.push(contract.clone());
+    }
+    save_contracts(&contracts)?;
+    Ok(contract)
+}
+
+fn get_contract(id: &str) -> Option<CoordinationContract> {
+    load_contracts()
+        .into_iter()
+        .find(|contract| contract.id == id)
+}
+
+fn list_contracts(owner: Option<&str>, status: Option<&str>) -> Vec<CoordinationContract> {
+    load_contracts()
+        .into_iter()
+        .filter(|contract| owner.map(|owner| contract.owner == owner).unwrap_or(true))
+        .filter(|contract| {
+            status
+                .map(|status| contract.status == status)
+                .unwrap_or(true)
+        })
+        .collect()
 }
 
 fn read_presence(path: &Path) -> Option<Presence> {
@@ -246,6 +323,51 @@ pub fn drain_inbox(id: &str) -> Result<Vec<RelayMessage>> {
     Ok(out)
 }
 
+/// Store or update a durable coordination contract.
+pub fn store_contract(mut contract: CoordinationContract) -> Result<CoordinationContract> {
+    if contract.id.is_empty() {
+        contract.id = uuid::Uuid::new_v4().to_string();
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    if contract.created_at.is_empty() {
+        contract.created_at = now.clone();
+    }
+    contract.updated_at = now;
+    upsert_contract(contract)
+}
+
+/// Fetch a contract by id.
+pub fn fetch_contract(id: &str) -> Option<CoordinationContract> {
+    get_contract(id)
+}
+
+/// List contracts filtered by owner and/or status.
+pub fn contracts(owner: Option<&str>, status: Option<&str>) -> Vec<CoordinationContract> {
+    list_contracts(owner, status)
+}
+
+/// Resolve a contract into a final state.
+pub fn resolve_contract(
+    id: &str,
+    resolution: &str,
+    status: &str,
+    handoff_to: Option<&str>,
+) -> Result<Option<CoordinationContract>> {
+    let mut contracts = load_contracts();
+    let Some(contract) = contracts.iter_mut().find(|contract| contract.id == id) else {
+        return Ok(None);
+    };
+    contract.resolution = Some(resolution.to_string());
+    contract.status = status.to_string();
+    contract.handoff_to = handoff_to
+        .map(String::from)
+        .or_else(|| contract.handoff_to.clone());
+    contract.updated_at = chrono::Utc::now().to_rfc3339();
+    let updated = contract.clone();
+    save_contracts(&contracts)?;
+    Ok(Some(updated))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,5 +493,37 @@ mod tests {
 
         // Drained: inbox is now empty.
         assert!(drain_inbox("peer-b").unwrap().is_empty());
+    }
+
+    #[test]
+    fn contracts_roundtrip_and_resolve() {
+        let _g = isolate();
+        let contract = CoordinationContract {
+            id: String::new(),
+            topic: "release".into(),
+            owner: "agent-a".into(),
+            participants: vec!["agent-b".into()],
+            roles: vec![CoordinationRole {
+                agent_id: "agent-a".into(),
+                role: "owner".into(),
+                responsibility: "ship safely".into(),
+            }],
+            handoff_to: Some("agent-b".into()),
+            blockers: vec!["review".into()],
+            status: "open".into(),
+            resolution: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        let stored = store_contract(contract).unwrap();
+        let fetched = fetch_contract(&stored.id).unwrap();
+        assert_eq!(fetched.topic, "release");
+        assert_eq!(contracts(Some("agent-a"), Some("open")).len(), 1);
+
+        let resolved = resolve_contract(&stored.id, "approved", "resolved", None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(resolved.status, "resolved");
+        assert_eq!(resolved.resolution.as_deref(), Some("approved"));
     }
 }

@@ -17,7 +17,9 @@ use crate::{paths, Result, RuvosError};
 use ruvector_sona::{PatternConfig, QueryTrajectory, ReasoningBank};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -26,6 +28,17 @@ pub struct Pattern {
     pub id: String,
     pub trajectory: Vec<String>,
     pub outcome: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntentRecord {
+    pub id: String,
+    pub kind: String,
+    pub text: String,
+    pub tags: Vec<String>,
+    pub source: String,
+    pub confidence: f64,
     pub created_at: String,
 }
 
@@ -62,6 +75,26 @@ fn save(patterns: &[Pattern]) -> Result<()> {
     Ok(())
 }
 
+fn load_intents() -> Vec<IntentRecord> {
+    match fs::read(paths::intent_file()) {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn save_intents(intents: &[IntentRecord]) -> Result<()> {
+    paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("data dir: {}", e)))?;
+    let path = paths::intent_file();
+    let bytes = serde_json::to_vec_pretty(intents)
+        .map_err(|e| RuvosError::InternalError(format!("serialize intents: {}", e)))?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &bytes)
+        .map_err(|e| RuvosError::InternalError(format!("write intents: {}", e)))?;
+    fs::rename(&tmp, &path)
+        .map_err(|e| RuvosError::InternalError(format!("commit intents: {}", e)))?;
+    Ok(())
+}
+
 fn tokenize(text: &str) -> Vec<String> {
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -93,6 +126,115 @@ fn cosine(a: &HashMap<String, f64>, b: &HashMap<String, f64>) -> f64 {
     } else {
         dot / (na * nb)
     }
+}
+
+fn line_count(path: &Path) -> usize {
+    fs::read_to_string(path)
+        .map(|content| content.lines().count())
+        .unwrap_or(0)
+}
+
+fn test_count(path: &Path) -> usize {
+    fs::read_to_string(path)
+        .map(|content| {
+            content.matches("#[test]").count() + content.matches("#[tokio::test]").count()
+        })
+        .unwrap_or(0)
+}
+
+fn should_skip_dir(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("target" | ".git" | ".ruvos" | "node_modules" | "dist" | "coverage")
+    )
+}
+
+fn collect_files(root: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if !should_skip_dir(&path) {
+                collect_files(&path, files);
+            }
+        } else if path.is_file() {
+            files.push(path);
+        }
+    }
+}
+
+fn repo_insight_snapshot(root: &Path) -> Value {
+    let mut files = Vec::new();
+    collect_files(root, &mut files);
+
+    let rust_files: Vec<PathBuf> = files
+        .iter()
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("rs"))
+        .cloned()
+        .collect();
+    let cargo_manifests = files
+        .iter()
+        .filter(|path| path.file_name().and_then(|name| name.to_str()) == Some("Cargo.toml"))
+        .count();
+
+    let mut crate_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut hot_files: Vec<(usize, usize, String)> = Vec::new();
+    for file in &rust_files {
+        let relative = file.strip_prefix(root).unwrap_or(file);
+        let first_dir = relative
+            .components()
+            .next()
+            .and_then(|component| component.as_os_str().to_str())
+            .unwrap_or(".")
+            .to_string();
+        *crate_counts.entry(first_dir).or_insert(0) += 1;
+
+        let lines = line_count(file);
+        let tests = test_count(file);
+        hot_files.push((tests, lines, relative.to_string_lossy().into_owned()));
+    }
+
+    hot_files.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.cmp(&a.1))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+
+    let test_gap_candidates: Vec<Value> = hot_files
+        .iter()
+        .filter(|(tests, lines, _)| *tests == 0 && *lines >= 200)
+        .take(5)
+        .map(|(_, lines, path)| json!({ "path": path, "lines": lines }))
+        .collect();
+
+    let hotspot_files: Vec<Value> = hot_files
+        .iter()
+        .take(5)
+        .map(|(tests, lines, path)| json!({ "path": path, "tests": tests, "lines": lines }))
+        .collect();
+
+    let tool_domains = {
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for tool in crate::tools::tool_registry() {
+            *counts.entry(tool.domain).or_insert(0) += 1;
+        }
+        counts
+    };
+
+    json!({
+        "root": root.to_string_lossy(),
+        "summary": {
+            "rust_files": rust_files.len(),
+            "cargo_manifests": cargo_manifests,
+            "tool_count": crate::tools::tool_registry().len(),
+            "domains": tool_domains,
+        },
+        "hotspots": hotspot_files,
+        "test_gap_candidates": test_gap_candidates,
+        "crate_file_counts": crate_counts,
+    })
 }
 
 /// Build a SONA `QueryTrajectory` from a stored `Pattern` for bank ingestion.
@@ -313,6 +455,214 @@ impl ToolHandler for IntelPatternSearchHandler {
     }
 }
 
+// ============================================================================
+// intel.intent_store
+// ============================================================================
+
+pub struct IntelIntentStoreHandler;
+
+impl ToolHandler for IntelIntentStoreHandler {
+    fn name(&self) -> &'static str {
+        "intent_store"
+    }
+
+    fn domain(&self) -> &'static str {
+        "intel"
+    }
+
+    fn validate(&self, params: &Value) -> Result<()> {
+        if params.get("kind").and_then(|v| v.as_str()).is_none() {
+            return Err(RuvosError::InvalidParams(
+                "missing 'kind' field (string)".to_string(),
+            ));
+        }
+        if params.get("text").and_then(|v| v.as_str()).is_none() {
+            return Err(RuvosError::InvalidParams(
+                "missing 'text' field (string)".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let kind = params["kind"].as_str().unwrap_or_default().to_string();
+            let text = params["text"].as_str().unwrap_or_default().to_string();
+            let source = params
+                .get("source")
+                .and_then(|value| value.as_str())
+                .unwrap_or("user")
+                .to_string();
+            let confidence = params
+                .get("confidence")
+                .and_then(|value| value.as_f64())
+                .unwrap_or(1.0)
+                .clamp(0.0, 1.0);
+            let tags: Vec<String> = params
+                .get("tags")
+                .and_then(|value| value.as_array())
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| value.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let record = IntentRecord {
+                id: Uuid::new_v4().to_string(),
+                kind,
+                text,
+                tags,
+                source,
+                confidence,
+                created_at: chrono::Utc::now().to_rfc3339(),
+            };
+
+            let _guard = FILE_LOCK.lock().unwrap();
+            let mut intents = load_intents();
+            intents.push(record.clone());
+            let total = intents.len();
+            save_intents(&intents)?;
+
+            Ok(json!({
+                "status": "stored",
+                "intent_id": record.id,
+                "total_intents": total
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// intel.intent_search
+// ============================================================================
+
+pub struct IntelIntentSearchHandler;
+
+impl ToolHandler for IntelIntentSearchHandler {
+    fn name(&self) -> &'static str {
+        "intent_search"
+    }
+
+    fn domain(&self) -> &'static str {
+        "intel"
+    }
+
+    fn validate(&self, params: &Value) -> Result<()> {
+        if params.get("query").and_then(|v| v.as_str()).is_none() {
+            return Err(RuvosError::InvalidParams(
+                "missing 'query' field (string)".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let query = params["query"].as_str().unwrap_or_default().to_string();
+            let top_k = params.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+            let kind_filter = params
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let query_vec = tf(&tokenize(&query));
+            let query_tokens = tokenize(&query);
+            let query_token_set: std::collections::HashSet<String> =
+                query_tokens.iter().cloned().collect();
+
+            let _guard = FILE_LOCK.lock().unwrap();
+            let intents = load_intents();
+
+            let mut scored: Vec<(f64, &IntentRecord)> = intents
+                .iter()
+                .filter(|intent| {
+                    kind_filter
+                        .as_ref()
+                        .map(|kind| &intent.kind == kind)
+                        .unwrap_or(true)
+                })
+                .map(|intent| {
+                    let text = format!("{} {} {}", intent.kind, intent.tags.join(" "), intent.text);
+                    let text_score = cosine(&query_vec, &tf(&tokenize(&text)));
+                    let tag_overlap = intent
+                        .tags
+                        .iter()
+                        .filter(|tag| query_token_set.contains(&tag.to_lowercase()))
+                        .count() as f64;
+                    let kind_boost = if query_tokens.iter().any(|token| token == &intent.kind) {
+                        0.2
+                    } else {
+                        0.0
+                    };
+                    (
+                        text_score + (tag_overlap * 0.1) + kind_boost + intent.confidence * 0.01,
+                        intent,
+                    )
+                })
+                .filter(|(score, _)| *score > 0.0)
+                .collect();
+
+            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            scored.truncate(top_k);
+
+            let results: Vec<Value> = scored
+                .iter()
+                .map(|(score, intent)| {
+                    json!({
+                        "intent_id": intent.id,
+                        "kind": intent.kind,
+                        "text": intent.text,
+                        "tags": intent.tags,
+                        "source": intent.source,
+                        "confidence": intent.confidence,
+                        "created_at": intent.created_at,
+                        "score": (score * 10000.0).round() / 10000.0,
+                    })
+                })
+                .collect();
+
+            Ok(json!({
+                "query": query,
+                "count": results.len(),
+                "intents": results
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// intel.repo_inspect
+// ============================================================================
+
+pub struct IntelRepoInspectHandler;
+
+impl ToolHandler for IntelRepoInspectHandler {
+    fn name(&self) -> &'static str {
+        "repo_inspect"
+    }
+
+    fn domain(&self) -> &'static str {
+        "intel"
+    }
+
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let root = params
+                .get("root")
+                .and_then(|value| value.as_str())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+            Ok(repo_insight_snapshot(&root))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,9 +726,56 @@ mod tests {
         assert_eq!(r["count"], 0);
     }
 
+    #[tokio::test]
+    async fn intent_store_and_search_roundtrip() {
+        let _g = isolate();
+        IntelIntentStoreHandler
+            .execute(json!({
+                "kind": "goal",
+                "text": "keep builds green",
+                "tags": ["ci", "release"],
+                "source": "user",
+                "confidence": 0.9
+            }))
+            .await
+            .unwrap();
+        IntelIntentStoreHandler
+            .execute(json!({
+                "kind": "preference",
+                "text": "prefer small focused patches",
+                "tags": ["workflow"]
+            }))
+            .await
+            .unwrap();
+
+        let r = IntelIntentSearchHandler
+            .execute(json!({"query": "builds green ci", "kind": "goal"}))
+            .await
+            .unwrap();
+        let intents = r["intents"].as_array().unwrap();
+        assert!(!intents.is_empty());
+        assert_eq!(intents[0]["kind"], "goal");
+        assert!(intents[0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("builds green"));
+    }
+
+    #[tokio::test]
+    async fn repo_inspect_returns_repo_snapshot() {
+        let _g = isolate();
+        let r = IntelRepoInspectHandler.execute(json!({})).await.unwrap();
+        assert!(r["summary"]["rust_files"].as_u64().unwrap() > 0);
+        assert!(r["summary"]["tool_count"].as_u64().unwrap() >= 1);
+        assert!(r["hotspots"].as_array().unwrap().len() <= 5);
+    }
+
     #[test]
     fn validation() {
         assert!(IntelPatternStoreHandler.validate(&json!({})).is_err());
         assert!(IntelPatternSearchHandler.validate(&json!({})).is_err());
+        assert!(IntelIntentStoreHandler.validate(&json!({})).is_err());
+        assert!(IntelIntentSearchHandler.validate(&json!({})).is_err());
+        assert!(IntelRepoInspectHandler.validate(&json!({})).is_ok());
     }
 }

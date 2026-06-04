@@ -1,4 +1,4 @@
-//! Tool registry for all 24 MCP tools.
+//! Tool registry for all 45 MCP tools.
 
 pub mod agent;
 pub mod agent_store;
@@ -16,6 +16,7 @@ pub mod plugin;
 pub mod relay;
 pub mod retrieval;
 pub mod session;
+pub mod swarm;
 
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +30,7 @@ pub struct ToolMetadata {
     pub domain: String,
 }
 
-/// Create a new registry with all 24 tools + test tools registered.
+/// Create a new registry with all 45 tools + test tools registered.
 pub fn create_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
@@ -60,6 +61,9 @@ pub fn create_registry() -> ToolRegistry {
     // Register intel tools
     registry.register(Box::new(intel::IntelPatternSearchHandler));
     registry.register(Box::new(intel::IntelPatternStoreHandler));
+    registry.register(Box::new(intel::IntelIntentSearchHandler));
+    registry.register(Box::new(intel::IntelIntentStoreHandler));
+    registry.register(Box::new(intel::IntelRepoInspectHandler));
 
     // Register plugin tools
     registry.register(Box::new(plugin::PluginListHandler::new()));
@@ -69,19 +73,39 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(gov::GovWitnessVerifyHandler));
     registry.register(Box::new(gov::GovHealthHandler));
     registry.register(Box::new(gov::GovEventsHandler));
+    registry.register(Box::new(gov::GovReplayHandler));
+    registry.register(Box::new(gov::GovReportHandler));
 
     // Register relay tools
     registry.register(Box::new(relay::RelayAnnounceHandler));
     registry.register(Box::new(relay::RelayListHandler));
     registry.register(Box::new(relay::RelaySendHandler));
+    registry.register(Box::new(relay::RelayContractStoreHandler));
+    registry.register(Box::new(relay::RelayContractsHandler));
+    registry.register(Box::new(relay::RelayContractResolveHandler));
 
     // Register orchestrate tools
     registry.register(Box::new(orchestrate::OrchestrateRunHandler));
 
+    // Register swarm tools
+    registry.register(Box::new(swarm::SwarmCreateHandler));
+    registry.register(Box::new(swarm::SwarmStatusHandler));
+    registry.register(Box::new(swarm::SwarmAssignHandler));
+    registry.register(Box::new(swarm::SwarmHeartbeatHandler));
+    registry.register(Box::new(swarm::SwarmMessageHandler));
+    registry.register(Box::new(swarm::SwarmCompleteHandler));
+    registry.register(Box::new(swarm::SwarmFailHandler));
+    registry.register(Box::new(swarm::SwarmHealthHandler));
+    registry.register(Box::new(swarm::SwarmRebalanceHandler));
+    registry.register(Box::new(swarm::SwarmJoinHandler));
+    registry.register(Box::new(swarm::SwarmLeaveHandler));
+    registry.register(Box::new(swarm::SwarmReportHandler));
+    registry.register(Box::new(swarm::SwarmMetricsHandler));
+
     registry
 }
 
-/// Return the registry of all 24 tools (metadata only).
+/// Return the registry of all 45 tools (metadata only).
 pub fn tool_registry() -> Vec<ToolMetadata> {
     vec![
         // Memory (4)
@@ -159,7 +183,7 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Get model + archetype recommendation for a task".to_string(),
             domain: "hooks".to_string(),
         },
-        // Intel (2)
+        // Intel (5)
         ToolMetadata {
             name: "intel.pattern_search".to_string(),
             description: "Find similar past trajectories (4-step retrieve phase)".to_string(),
@@ -168,6 +192,21 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         ToolMetadata {
             name: "intel.pattern_store".to_string(),
             description: "Store outcome for the distill/consolidate phases".to_string(),
+            domain: "intel".to_string(),
+        },
+        ToolMetadata {
+            name: "intel.intent_search".to_string(),
+            description: "Search durable goals, preferences, and recurring workflows".to_string(),
+            domain: "intel".to_string(),
+        },
+        ToolMetadata {
+            name: "intel.intent_store".to_string(),
+            description: "Persist a stable goal or preference into intent memory".to_string(),
+            domain: "intel".to_string(),
+        },
+        ToolMetadata {
+            name: "intel.repo_inspect".to_string(),
+            description: "Snapshot repo health: hotspots, test gaps, and domain counts".to_string(),
             domain: "intel".to_string(),
         },
         // Plugin (2)
@@ -181,7 +220,7 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Run a plugin command (shell exec via tokio)".to_string(),
             domain: "plugin".to_string(),
         },
-        // Gov (2)
+        // Gov (5)
         ToolMetadata {
             name: "gov.witness_verify".to_string(),
             description: "Verify .rvf signature chain".to_string(),
@@ -199,7 +238,18 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
                     .to_string(),
             domain: "gov".to_string(),
         },
-        // Relay (3)
+        ToolMetadata {
+            name: "gov.replay".to_string(),
+            description: "Replay a session or task trace from events and artifacts".to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.report".to_string(),
+            description: "Generate a governance report with quality and benchmark signals"
+                .to_string(),
+            domain: "gov".to_string(),
+        },
+        // Relay (6)
         ToolMetadata {
             name: "relay.announce".to_string(),
             description: "Register/refresh this instance's presence for cross-instance discovery"
@@ -218,6 +268,21 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Deliver a message to another instance's file mailbox by id".to_string(),
             domain: "relay".to_string(),
         },
+        ToolMetadata {
+            name: "relay.contract_store".to_string(),
+            description: "Persist a durable ownership / handoff contract".to_string(),
+            domain: "relay".to_string(),
+        },
+        ToolMetadata {
+            name: "relay.contracts".to_string(),
+            description: "List stored collaboration contracts".to_string(),
+            domain: "relay".to_string(),
+        },
+        ToolMetadata {
+            name: "relay.contract_resolve".to_string(),
+            description: "Resolve a contract with a decision and handoff".to_string(),
+            domain: "relay".to_string(),
+        },
         // Orchestrate (1)
         ToolMetadata {
             name: "orchestrate.run".to_string(),
@@ -227,6 +292,73 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
                  goal + capabilities; static templates are the fallback"
                     .to_string(),
             domain: "orchestrate".to_string(),
+        },
+        // Swarm (2)
+        ToolMetadata {
+            name: "swarm.create".to_string(),
+            description: "Create a durable swarm with topology, roles, and objective".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.status".to_string(),
+            description: "Inspect the active swarm membership and progress".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.assign".to_string(),
+            description: "Assign a task to a swarm member and persist the handoff".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.heartbeat".to_string(),
+            description: "Refresh a swarm member heartbeat and liveness state".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.message".to_string(),
+            description: "Send a message between swarm members or broadcast to the swarm"
+                .to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.complete".to_string(),
+            description: "Mark a swarm as completed and persist its final summary".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.fail".to_string(),
+            description: "Mark a swarm as failed with a recorded reason".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.health".to_string(),
+            description: "Report swarm liveness, utilization, and freshness".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.rebalance".to_string(),
+            description: "Move tasks off stale swarm members onto live members".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.join".to_string(),
+            description: "Add or reactivate a swarm member".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.leave".to_string(),
+            description: "Mark a swarm member as left".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.report".to_string(),
+            description: "Generate a swarm summary with recent activity".to_string(),
+            domain: "swarm".to_string(),
+        },
+        ToolMetadata {
+            name: "swarm.metrics".to_string(),
+            description: "Return numeric swarm health and throughput metrics".to_string(),
+            domain: "swarm".to_string(),
         },
     ]
 }
@@ -239,8 +371,8 @@ mod integration_tests {
     #[test]
     fn test_full_registry_creation() {
         let registry = create_registry();
-        // All 24 tools + 1 test echo tool = 25
-        assert_eq!(registry.tool_count(), 25);
+        // All 45 tools + 1 test echo tool = 46
+        assert_eq!(registry.tool_count(), 46);
     }
 
     #[test]
@@ -258,6 +390,7 @@ mod integration_tests {
         assert!(tools.iter().any(|t| t.starts_with("gov.")));
         assert!(tools.iter().any(|t| t.starts_with("relay.")));
         assert!(tools.iter().any(|t| t.starts_with("orchestrate.")));
+        assert!(tools.iter().any(|t| t.starts_with("swarm.")));
         assert!(tools.iter().any(|t| t == "echo.test"));
     }
 
@@ -290,12 +423,68 @@ mod integration_tests {
                 json!({"trajectory": ["a", "b"], "outcome": "ok"}),
             ),
             ("intel.pattern_search", json!({"query": "a"})),
+            (
+                "intel.intent_store",
+                json!({"kind": "goal", "text": "ship safely", "tags": ["release"]}),
+            ),
+            (
+                "intel.intent_search",
+                json!({"query": "ship", "kind": "goal"}),
+            ),
+            ("intel.repo_inspect", json!({})),
             ("plugin.list", json!({})),
             ("gov.health", json!({})),
+            (
+                "gov.replay",
+                json!({"session_id": "00000000-0000-0000-0000-000000000000"}),
+            ),
+            ("gov.report", json!({})),
+            (
+                "relay.contract_store",
+                json!({
+                    "topic": "release",
+                    "owner": "agent-a",
+                    "participants": ["agent-b"],
+                    "roles": [{"agent_id": "agent-a", "role": "owner", "responsibility": "ship safely"}]
+                }),
+            ),
+            ("relay.contracts", json!({})),
+            (
+                "relay.contract_resolve",
+                json!({"id": "missing", "resolution": "done"}),
+            ),
             (
                 "orchestrate.run",
                 json!({"template": "feature", "task": "ship it"}),
             ),
+            (
+                "swarm.create",
+                json!({
+                    "objective": "ship it",
+                    "topology": "hierarchical",
+                    "members": [
+                        {"agent_id": "worker-1", "role": "coder"}
+                    ]
+                }),
+            ),
+            ("swarm.status", json!({})),
+            (
+                "swarm.assign",
+                json!({"agent_id": "worker-1", "task_id": "task-1"}),
+            ),
+            ("swarm.heartbeat", json!({"agent_id": "worker-1"})),
+            ("swarm.message", json!({"to": "worker-1", "body": "ping"})),
+            ("swarm.complete", json!({"summary": "done"})),
+            ("swarm.fail", json!({"reason": "failed"})),
+            ("swarm.health", json!({})),
+            ("swarm.rebalance", json!({})),
+            ("swarm.join", json!({"agent_id": "worker-1"})),
+            (
+                "swarm.leave",
+                json!({"agent_id": "worker-1", "force": true}),
+            ),
+            ("swarm.report", json!({})),
+            ("swarm.metrics", json!({})),
         ];
 
         for (method, params) in tests {

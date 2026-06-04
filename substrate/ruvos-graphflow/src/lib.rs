@@ -90,29 +90,91 @@ pub struct RunReport {
     pub success: bool,
 }
 
+/// Runtime events emitted by [`run_with_observer`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunEvent {
+    Started {
+        start: String,
+        max_visits: usize,
+        max_steps: usize,
+    },
+    Step {
+        node: String,
+        success: bool,
+        next: Option<String>,
+    },
+    Terminal {
+        node: String,
+        success: bool,
+    },
+    VisitCapExceeded {
+        node: String,
+        max_visits: usize,
+    },
+    StepBudgetExceeded {
+        max_steps: usize,
+    },
+}
+
 /// Synchronous reference driver. Walks from the start node, calling `step(node)`
 /// (returns success) and following [`FlowGraph::next`]. A node may be revisited up
 /// to `max_visits` times (bounding retry/rework loops); `max_steps` caps total
 /// work. `success` is `true` only when execution reaches a terminal node after a
 /// successful step.
-pub fn run<F>(graph: &FlowGraph, max_visits: usize, max_steps: usize, mut step: F) -> RunReport
+pub fn run<F>(graph: &FlowGraph, max_visits: usize, max_steps: usize, step: F) -> RunReport
 where
     F: FnMut(&str) -> bool,
+{
+    run_with_observer(graph, max_visits, max_steps, step, |_| {})
+}
+
+/// Synchronous reference driver with lifecycle event observation.
+pub fn run_with_observer<F, O>(
+    graph: &FlowGraph,
+    max_visits: usize,
+    max_steps: usize,
+    mut step: F,
+    mut observer: O,
+) -> RunReport
+where
+    F: FnMut(&str) -> bool,
+    O: FnMut(&RunEvent),
 {
     let mut visits: HashMap<String, usize> = HashMap::new();
     let mut path = Vec::new();
     let mut current = graph.start().to_string();
 
+    observer(&RunEvent::Started {
+        start: current.clone(),
+        max_visits,
+        max_steps,
+    });
+
     for _ in 0..max_steps {
         *visits.entry(current.clone()).or_insert(0) += 1;
         path.push(current.clone());
         let ok = step(&current);
+        let next = graph.next(&current, ok).map(|node| node.to_string());
+        observer(&RunEvent::Step {
+            node: current.clone(),
+            success: ok,
+            next: next.clone(),
+        });
 
-        match graph.next(&current, ok) {
-            None => return RunReport { success: ok, path }, // terminal node
+        match next {
+            None => {
+                observer(&RunEvent::Terminal {
+                    node: current.clone(),
+                    success: ok,
+                });
+                return RunReport { success: ok, path };
+            }
             Some(next) => {
-                let next = next.to_string();
                 if visits.get(&next).copied().unwrap_or(0) >= max_visits {
+                    observer(&RunEvent::VisitCapExceeded {
+                        node: next.clone(),
+                        max_visits,
+                    });
                     return RunReport {
                         success: false, // retry/rework budget exhausted
                         path,
@@ -122,6 +184,7 @@ where
             }
         }
     }
+    observer(&RunEvent::StepBudgetExceeded { max_steps });
     RunReport {
         success: false, // step budget exhausted
         path,
@@ -148,6 +211,27 @@ mod tests {
         assert_eq!(g.next("tester", true), Some("reviewer"));
         assert_eq!(g.next("tester", false), Some("coder"));
         assert_eq!(g.next("reviewer", true), None); // terminal
+    }
+
+    #[test]
+    fn run_with_observer_emits_step_and_terminal_events() {
+        let mut events = Vec::new();
+        let report = run_with_observer(
+            &pipeline(),
+            3,
+            20,
+            |_| true,
+            |event| {
+                events.push(event.clone());
+            },
+        );
+        assert!(report.success);
+        assert!(matches!(events.first(), Some(RunEvent::Started { .. })));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RunEvent::Step { node, success: true, .. } if node == "planner"
+        )));
+        assert!(events.iter().any(|event| matches!(event, RunEvent::Terminal { node, success: true } if node == "reviewer")));
     }
 
     #[test]

@@ -8,6 +8,7 @@ pub enum RuvosError {
     MethodNotFound,         // -32601
     InvalidParams(String),  // -32602
     InternalError(String),  // -32603
+    PermissionDenied(String),
 
     // Handler errors
     HandlerError(String),
@@ -22,6 +23,7 @@ impl RuvosError {
             RuvosError::MethodNotFound => -32601,
             RuvosError::InvalidParams(_) => -32602,
             RuvosError::InternalError(_)
+            | RuvosError::PermissionDenied(_)
             | RuvosError::HandlerError(_)
             | RuvosError::ValidationError(_) => -32000,
         }
@@ -34,6 +36,7 @@ impl RuvosError {
             RuvosError::MethodNotFound => "Method not found".to_string(),
             RuvosError::InvalidParams(msg) => format!("Invalid params: {}", msg),
             RuvosError::InternalError(msg) => format!("Internal error: {}", msg),
+            RuvosError::PermissionDenied(msg) => format!("Permission denied: {}", msg),
             RuvosError::HandlerError(msg) => format!("Handler error: {}", msg),
             RuvosError::ValidationError(msg) => format!("Validation error: {}", msg),
         }

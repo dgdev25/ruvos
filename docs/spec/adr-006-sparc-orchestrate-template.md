@@ -43,6 +43,11 @@ No new tool, no new dependency, no new crate — a one-line addition to the
 - **Zero-defect:** add a `sparc_orchestration_runs_six_phases` test alongside the
   existing template tests.
 
+## Validation
+
+- Covered by the `orchestrate_plan` template-planning tests, including `sparc`.
+- Exercised by `crates/ruvos-mcp/src/tools/orchestrate.rs` and the MCP integration test.
+
 ## Alternatives considered
 
 - **Depend on the SPARC CLI** — rejected: Python runtime, and there is no

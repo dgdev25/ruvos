@@ -6,7 +6,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-4.0.0--rc.1-14b8a6">
   <img alt="built with Rust" src="https://img.shields.io/badge/built%20with-Rust-d9772a?logo=rust&logoColor=white">
   <img alt="protocol MCP" src="https://img.shields.io/badge/protocol-MCP-3b82f6">
-  <img alt="24 MCP tools" src="https://img.shields.io/badge/MCP%20tools-24-2ac3de">
+  <img alt="45 MCP tools" src="https://img.shields.io/badge/MCP%20tools-45-2ac3de">
   <img alt="pure Rust" src="https://img.shields.io/badge/no%20SQLite%20·%20no%20Node-pure%20Rust-3fb950">
   <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
@@ -49,7 +49,7 @@ external database, no cloud account.
 ## ✨ Highlights
 
 <p align="center">
-  <img src="assets/features.svg" alt="Nine tool domains, 24 tools: memory, session, agent, hooks, intel, plugin, gov, relay, orchestrate." width="100%">
+  <img src="assets/features.svg" alt="Ten tool domains, 40 tools: memory, session, agent, hooks, intel, plugin, gov, relay, orchestrate, swarm." width="100%">
 </p>
 
 - 🧠 **Memory that lasts** — store facts and recall them by *meaning*, not exact words. Hybrid search (dense vectors + BM25 keywords) with a temporal knowledge graph, and a feedback loop that learns which results were useful.
@@ -79,7 +79,7 @@ and confirm:
 claude mcp list           # ruvos: ✓ Connected
 ```
 
-That's it — all 24 rUvOS tools are now available to Claude Code in every project.
+That's it — all 45 rUvOS tools are now available to Claude Code in every project.
 
 <details>
 <summary>What <code>setup.sh</code> removes (and what it leaves alone)</summary>
@@ -109,7 +109,7 @@ claude mcp list                                        # ruvos: ✓ Connected
 ## 🧭 How it works
 
 **You don't type commands or keywords.** Once the MCP server is connected, Claude
-Code sees the 24 tools and decides which to call from what you ask. The loop:
+Code sees the 45 tools and decides which to call from what you ask. The loop:
 
 <p align="center">
   <img src="assets/how-it-works.svg" alt="The loop: you ask in plain language → recall relevant past decisions → a planner computes the agent pipeline → agents run (failures retry or stop) → outcomes are learned, which sharpens the next recall and plan. A safety gate and signed audit log sit underneath every step." width="100%">
@@ -243,7 +243,7 @@ detection), and the response carries `stream: { observed, anomalies }`.
 ### `gov` — health, provenance & audit
 ```jsonc
 {"name":"gov.health","arguments":{}}
-// → { "status":"ok", "tool_count":24, "persisted":{…}, "safety":{"score":1.0} }
+// → { "status":"ok", "tool_count":45, "persisted":{…}, "safety":{"score":1.0} }
 {"name":"gov.witness_verify","arguments":{"rvf_path":".ruvos/rvf/6305….rvf"}}
 {"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}
 ```
@@ -288,7 +288,7 @@ of the **RuVector kernel + substrate** (pure-Rust vector search, learning, graph
 crypto, planning, and coordination).
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Two layers. Top: the rUvOS orchestration shell — ruvos-cli, ruvos-mcp (24 tools), ruvos-host (CLI adapters), plugin-host, ruvos-hooks (safety+learn), ruvos-session (.rvf) — runs on RuVector. Bottom: the RuVector kernel + substrate (pure Rust): vector search (HNSW/RaBitQ/ACORN), memory + learning (sona, knowledge graph), planning (GOAP A*, DAG retry), state + provenance (redb, .rvf witness), safety, stream analysis (DTW), coordination (swarm transport), and federated search (rulake)." width="100%">
+  <img src="assets/architecture.svg" alt="Two layers. Top: the rUvOS orchestration shell — ruvos-cli, ruvos-mcp (45 tools), ruvos-host (CLI adapters), plugin-host, ruvos-hooks (safety+learn), ruvos-session (.rvf) — runs on RuVector. Bottom: the RuVector kernel + substrate (pure Rust): vector search (HNSW/RaBitQ/ACORN), memory + learning (sona, knowledge graph), planning (GOAP A*, DAG retry), state + provenance (redb, .rvf witness), safety, stream analysis (DTW), coordination (swarm transport), and federated search (rulake)." width="100%">
 </p>
 
 **Disk is the source of truth.** All state persists under `$RUVOS_HOME` (default
@@ -315,13 +315,18 @@ $RUVOS_HOME/
 
 rUvOS implements the full MCP handshake (`initialize` → `notifications/initialized` →
 `tools/list` → `tools/call`), so any MCP client discovers and calls the tools
-natively. Design decisions are recorded as ADRs in [`docs/spec/`](docs/spec).
+natively. Design decisions are recorded as ADRs in [`docs/spec/`](docs/spec), and
+the live tool/archetype/hook contract is generated into
+[`docs/contracts/contract-manifest.json`](docs/contracts/contract-manifest.json).
+Swarm coordination is documented as a control plane in
+[`docs/roadmaps/swarm-layer-strategy.md`](docs/roadmaps/swarm-layer-strategy.md)
+even though its commands are exposed through the same MCP tool boundary.
 
 ---
 
 ## 🩺 Status
 
-**`v4.0.0-rc.1` — production-grade.** 24 MCP tools, real persistence, 2000+ tests,
+**`v4.0.0-rc.1` — production-grade.** 45 MCP tools, real persistence, 2000+ tests,
 zero compiler/clippy warnings across the whole workspace (a standing zero-defect
 policy). Honest scope notes:
 
@@ -336,18 +341,22 @@ Recent work shipped as ADRs: GOAP-planned orchestration (004), hybrid + bandit m
 (005), SPARC template (006), conditional retry/rework (007), inflight stream
 observability (008), and a real per-step outcome signal (009).
 
+Roadmap for the next runtime phases: [`docs/roadmaps/agentic-os-roadmap.md`](docs/roadmaps/agentic-os-roadmap.md).
+
 ---
 
 ## 🛠️ Development
 
 ```bash
-cargo build --release && ruvos mcp serve
+just build-release
+just doctor
+just contracts-check
 
 # Full zero-defect gate (use --jobs 4 to avoid OOM on the 30+ crate tree)
-cargo build  --workspace --jobs 4
-cargo clippy --workspace --all-targets --jobs 4 -- -D warnings
-cargo fmt --check
-cargo test  --workspace --jobs 4
+just build
+just clippy
+just fmt
+just test
 ```
 
 **Enforced project rules** (see `CLAUDE.md`): zero-defect workspace (0 errors, 0

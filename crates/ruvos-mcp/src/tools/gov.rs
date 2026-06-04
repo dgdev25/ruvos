@@ -1,4 +1,4 @@
-//! Gov domain tools (3): witness_verify, health, events.
+//! Gov domain tools (5): witness_verify, health, events, replay, report.
 //!
 //! `witness_verify` runs a real HMAC-SHA256 signature check on an `.rvf`
 //! container (via `ruvos-session`). `health` reports real, introspected system
@@ -239,9 +239,203 @@ impl ToolHandler for GovEventsHandler {
     }
 }
 
+// ============================================================================
+// gov.replay
+// ============================================================================
+
+pub struct GovReplayHandler;
+
+impl ToolHandler for GovReplayHandler {
+    fn name(&self) -> &'static str {
+        "replay"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, params: &Value) -> Result<()> {
+        if params.get("session_id").and_then(|v| v.as_str()).is_none()
+            && params.get("task_id").and_then(|v| v.as_str()).is_none()
+        {
+            return Err(RuvosError::InvalidParams(
+                "missing 'session_id' or 'task_id' field (string)".to_string(),
+            ));
+        }
+        Ok(())
+    }
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let session_id = params.get("session_id").and_then(|v| v.as_str());
+            let task_id = params.get("task_id").and_then(|v| v.as_str());
+            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(200) as usize;
+
+            let Some(store) = crate::store::try_store() else {
+                return Ok(json!({ "count": 0, "events": [], "store_busy": true }));
+            };
+            let events = store
+                .events_since(0)
+                .map_err(|e| RuvosError::InternalError(format!("replay events: {e}")))?;
+
+            let mut trace: Vec<Value> = events
+                .into_iter()
+                .filter(|event| {
+                    let payload_session = event.payload.get("session_id").and_then(|v| v.as_str());
+                    let payload_task = event.payload.get("task_id").and_then(|v| v.as_str());
+                    session_id
+                        .map(|wanted| payload_session == Some(wanted))
+                        .unwrap_or(true)
+                        && task_id
+                            .map(|wanted| payload_task == Some(wanted))
+                            .unwrap_or(true)
+                })
+                .map(|event| {
+                    json!({
+                        "id": event.id,
+                        "event_type": event.event_type,
+                        "agent_id": event.agent_id,
+                        "task_id": event.task_id,
+                        "payload": event.payload,
+                        "timestamp": event.timestamp
+                    })
+                })
+                .collect();
+
+            trace.sort_by(|a, b| a["timestamp"].as_str().cmp(&b["timestamp"].as_str()));
+            trace.truncate(limit);
+
+            let replay = if let Some(session_id) = session_id {
+                let path = paths::sessions_dir().join(format!("{}.rvf", session_id));
+                let session = if path.exists() {
+                    match ruvos_session::read_session(path.to_string_lossy().as_ref()).await {
+                        Ok(session) => Some(json!({
+                            "session_id": session.id.to_string(),
+                            "name": if session.name.is_empty() { Value::Null } else { Value::String(session.name) },
+                            "rvf_path": session.rvf_path,
+                            "created_at": session.created_at,
+                            "updated_at": session.updated_at,
+                            "parent_id": session.parent.map(|p| p.to_string()),
+                            "state": session.state,
+                        })),
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+                json!({
+                    "session": session,
+                    "session_id": session_id,
+                })
+            } else {
+                json!({
+                    "task_id": task_id,
+                })
+            };
+
+            Ok(json!({
+                "count": trace.len(),
+                "replay": replay,
+                "events": trace
+            }))
+        })
+    }
+}
+
+// ============================================================================
+// gov.report
+// ============================================================================
+
+pub struct GovReportHandler;
+
+impl ToolHandler for GovReportHandler {
+    fn name(&self) -> &'static str {
+        "report"
+    }
+    fn domain(&self) -> &'static str {
+        "gov"
+    }
+    fn validate(&self, _params: &Value) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, params: Value) -> ExecuteFuture {
+        Box::pin(async move {
+            let since = params.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
+            let Some(store) = crate::store::try_store() else {
+                return Ok(json!({ "store_busy": true, "report": {} }));
+            };
+            let events = store
+                .events_since(since)
+                .map_err(|e| RuvosError::InternalError(format!("report events: {e}")))?;
+
+            let total = events.len() as u64;
+            let agent_spawns = events
+                .iter()
+                .filter(|event| event.event_type == "agent.spawn.completed")
+                .count() as u64;
+            let agent_failures = events
+                .iter()
+                .filter(|event| event.event_type == "agent.spawn.failed")
+                .count() as u64;
+            let orchestrate_runs = events
+                .iter()
+                .filter(|event| event.event_type == "orchestrate.run.completed")
+                .count() as u64
+                + events
+                    .iter()
+                    .filter(|event| event.event_type == "orchestrate.run.failed")
+                    .count() as u64;
+            let orchestrate_failures = events
+                .iter()
+                .filter(|event| event.event_type == "orchestrate.run.failed")
+                .count() as u64;
+            let repair_events = events
+                .iter()
+                .filter(|event| event.event_type.starts_with("repair."))
+                .count() as u64;
+            let relay_contracts = events
+                .iter()
+                .filter(|event| event.event_type == "relay.contract.stored")
+                .count() as u64;
+            let replayable_sessions = std::fs::read_dir(paths::sessions_dir())
+                .map(|rd| {
+                    rd.filter_map(|entry| entry.ok())
+                        .filter(|entry| {
+                            entry
+                                .path()
+                                .extension()
+                                .map(|ext| ext == "rvf")
+                                .unwrap_or(false)
+                        })
+                        .count() as u64
+                })
+                .unwrap_or(0);
+            let success_rate = if orchestrate_runs == 0 {
+                1.0
+            } else {
+                (orchestrate_runs - orchestrate_failures) as f64 / orchestrate_runs as f64
+            };
+
+            Ok(json!({
+                "since": since,
+                "report": {
+                    "event_count": total,
+                    "success_rate": success_rate,
+                    "agent_spawns": agent_spawns,
+                    "agent_failures": agent_failures,
+                    "orchestrate_runs": orchestrate_runs,
+                    "orchestrate_failures": orchestrate_failures,
+                    "repair_events": repair_events,
+                    "relay_contracts": relay_contracts,
+                    "replayable_sessions": replayable_sessions,
+                    "tool_count": crate::tools::tool_registry().len(),
+                }
+            }))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::session::SessionCreateHandler;
     use ruvos_session::{write_session, Session};
 
     fn isolate() -> tempfile::TempDir {
@@ -292,7 +486,7 @@ mod tests {
         let _g = isolate();
         let r = GovHealthHandler.execute(json!({})).await.unwrap();
         assert_eq!(r["status"], "ok");
-        assert_eq!(r["tool_count"], 24);
+        assert_eq!(r["tool_count"], 45);
         assert!(r["pid"].as_u64().unwrap() > 0, "real process id");
         assert_eq!(r["persisted"]["sessions"], 0);
     }
@@ -339,10 +533,47 @@ mod tests {
         assert!(by_type["count"].as_u64().unwrap() >= 1);
     }
 
+    #[tokio::test]
+    async fn replay_returns_session_trace() {
+        let _g = isolate();
+        let created = SessionCreateHandler
+            .execute(json!({"name": "traceable"}))
+            .await
+            .unwrap();
+        let session_id = created["session_id"].as_str().unwrap().to_string();
+        super::super::agent::AgentSpawnHandler
+            .execute(json!({"archetype": "coder", "prompt": "trace", "model": "m"}))
+            .await
+            .unwrap();
+
+        let replay = GovReplayHandler
+            .execute(json!({"session_id": session_id}))
+            .await
+            .unwrap();
+        assert!(replay["count"].as_u64().unwrap() >= 1);
+        assert_eq!(replay["replay"]["session_id"], created["session_id"]);
+    }
+
+    #[tokio::test]
+    async fn report_summarizes_system_state() {
+        let _g = isolate();
+        super::super::agent::AgentSpawnHandler
+            .execute(json!({"archetype": "coder", "prompt": "report", "model": "m"}))
+            .await
+            .unwrap();
+
+        let report = GovReportHandler.execute(json!({})).await.unwrap();
+        assert!(report["report"]["event_count"].as_u64().unwrap() >= 1);
+        assert_eq!(report["report"]["tool_count"], 45);
+        assert!(report["report"]["success_rate"].as_f64().unwrap() >= 0.0);
+    }
+
     #[test]
     fn validation() {
         assert!(GovWitnessVerifyHandler.validate(&json!({})).is_err());
         assert!(GovHealthHandler.validate(&json!({})).is_ok());
         assert!(GovEventsHandler.validate(&json!({})).is_ok());
+        assert!(GovReplayHandler.validate(&json!({})).is_err());
+        assert!(GovReportHandler.validate(&json!({})).is_ok());
     }
 }

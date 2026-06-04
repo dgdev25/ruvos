@@ -1,6 +1,7 @@
 //! Hooks domain tools (3): pre, post, route
 
 use super::handler::{ExecuteFuture, ToolHandler};
+use crate::runtime::{publish_event, RuntimeEvent};
 use crate::Result;
 use ruvos_hooks::{HookDispatcher, HookKind, HookOutcome};
 use ruvos_safety::{SafetyLevel, ValidationRequest};
@@ -109,15 +110,28 @@ impl ToolHandler for HooksPreHandler {
                 .cloned()
                 .unwrap_or(Value::Object(Default::default()));
 
+            publish_event(RuntimeEvent {
+                kind: "hooks.pre.started".to_string(),
+                payload: json!({
+                    "kind": kind_str,
+                    "payload_keys": payload.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             let response = dispatcher
                 .dispatch_pre(hook_kind, payload.clone())
                 .await
                 .map_err(|e| crate::RuvosError::InternalError(e.to_string()))?;
+            let response_status = response.status.clone();
+            let response_routing = response.routing.clone();
+            let response_context = response.context.clone();
 
             let mut out = json!({
-                "status": response.status,
-                "routing": response.routing,
-                "context": response.context,
+                "status": response_status,
+                "routing": response_routing,
+                "context": response_context,
             });
 
             // Additive risk assessment for edit / command pre-hooks: run the
@@ -129,6 +143,17 @@ impl ToolHandler for HooksPreHandler {
                     map.insert("blocked".to_string(), json!(blocked));
                 }
             }
+
+            publish_event(RuntimeEvent {
+                kind: "hooks.pre.completed".to_string(),
+                payload: json!({
+                    "kind": kind_str,
+                    "status": response.status,
+                    "routing": response.routing,
+                }),
+                agent_id: None,
+                task_id: None,
+            });
 
             Ok(out)
         })
@@ -289,6 +314,16 @@ impl ToolHandler for HooksPostHandler {
                 .cloned()
                 .unwrap_or(Value::Object(Default::default()));
 
+            publish_event(RuntimeEvent {
+                kind: "hooks.post.started".to_string(),
+                payload: json!({
+                    "kind": kind_str,
+                    "success": obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             let success = obj
                 .get("success")
                 .and_then(|v| v.as_bool())
@@ -316,11 +351,25 @@ impl ToolHandler for HooksPostHandler {
                 .dispatch_post(hook_kind, payload, outcome)
                 .await
                 .map_err(|e| crate::RuvosError::InternalError(e.to_string()))?;
+            let response_status = response.status.clone();
+            let response_routing = response.routing.clone();
+            let response_context = response.context.clone();
+
+            publish_event(RuntimeEvent {
+                kind: "hooks.post.completed".to_string(),
+                payload: json!({
+                    "kind": kind_str,
+                    "status": response_status.clone(),
+                    "routing": response_routing.clone(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
 
             Ok(json!({
-                "status": response.status,
-                "routing": response.routing,
-                "context": response.context,
+                "status": response_status,
+                "routing": response_routing,
+                "context": response_context,
             }))
         })
     }

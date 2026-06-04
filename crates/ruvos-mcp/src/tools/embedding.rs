@@ -58,6 +58,35 @@ pub fn embed(text: &str) -> Vec<f32> {
     v
 }
 
+/// Lifecycle events emitted by dense retrieval primitives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DenseRetrievalEvent {
+    HnswStarted {
+        item_count: usize,
+        query: String,
+        limit: usize,
+    },
+    HnswCompleted {
+        result_count: usize,
+    },
+    AcornStarted {
+        item_count: usize,
+        query: String,
+        limit: usize,
+    },
+    AcornCompleted {
+        result_count: usize,
+    },
+    RabitqStarted {
+        item_count: usize,
+        query: String,
+        limit: usize,
+    },
+    RabitqCompleted {
+        result_count: usize,
+    },
+}
+
 /// Cosine similarity of two dense vectors (both expected L2-normalized).
 pub fn cosine_dense(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
@@ -67,7 +96,26 @@ pub fn cosine_dense(a: &[f32], b: &[f32]) -> f32 {
 /// up to `k` (id, score) pairs nearest first. Builds a transient on-disk index
 /// in a unique temp directory and removes it afterward.
 pub fn hnsw_rank(items: &[(String, String)], query: &str, k: usize) -> anyhow::Result<Vec<String>> {
+    hnsw_rank_with_observer(items, query, k, |_| {})
+}
+
+/// Rank `items` (id, text) against `query` using a real HNSW index, with lifecycle observation.
+pub fn hnsw_rank_with_observer<F>(
+    items: &[(String, String)],
+    query: &str,
+    k: usize,
+    mut observer: F,
+) -> anyhow::Result<Vec<String>>
+where
+    F: FnMut(&DenseRetrievalEvent),
+{
+    observer(&DenseRetrievalEvent::HnswStarted {
+        item_count: items.len(),
+        query: query.to_string(),
+        limit: k,
+    });
     if items.is_empty() || k == 0 {
+        observer(&DenseRetrievalEvent::HnswCompleted { result_count: 0 });
         return Ok(Vec::new());
     }
 
@@ -103,6 +151,11 @@ pub fn hnsw_rank(items: &[(String, String)], query: &str, k: usize) -> anyhow::R
 
     // Always clean up the transient index directory.
     let _ = std::fs::remove_dir_all(&dir);
+    if let Ok(ref result) = result {
+        observer(&DenseRetrievalEvent::HnswCompleted {
+            result_count: result.len(),
+        });
+    }
     result
 }
 
@@ -116,7 +169,26 @@ pub fn rabitq_rank(
     query: &str,
     k: usize,
 ) -> anyhow::Result<Vec<String>> {
+    rabitq_rank_with_observer(items, query, k, |_| {})
+}
+
+/// Rank `items` (id, text) against `query` using RaBitQ with lifecycle observation.
+pub fn rabitq_rank_with_observer<F>(
+    items: &[(String, String)],
+    query: &str,
+    k: usize,
+    mut observer: F,
+) -> anyhow::Result<Vec<String>>
+where
+    F: FnMut(&DenseRetrievalEvent),
+{
+    observer(&DenseRetrievalEvent::RabitqStarted {
+        item_count: items.len(),
+        query: query.to_string(),
+        limit: k,
+    });
     if items.is_empty() || k == 0 {
+        observer(&DenseRetrievalEvent::RabitqCompleted { result_count: 0 });
         return Ok(Vec::new());
     }
 
@@ -129,7 +201,11 @@ pub fn rabitq_rank(
 
     let query_vec = embed(query);
     let results = idx.search(&query_vec, k.min(items.len()))?;
-    Ok(results.into_iter().map(|r| ids[r.id].clone()).collect())
+    let ranked: Vec<String> = results.into_iter().map(|r| ids[r.id].clone()).collect();
+    observer(&DenseRetrievalEvent::RabitqCompleted {
+        result_count: ranked.len(),
+    });
+    Ok(ranked)
 }
 
 /// Predicate-aware ANN ranking via ACORN (predicate-agnostic filtered HNSW).
@@ -149,7 +225,27 @@ pub fn acorn_rank(
     k: usize,
     keep: &dyn Fn(usize) -> bool,
 ) -> anyhow::Result<Vec<String>> {
+    acorn_rank_with_observer(items, query, k, keep, |_| {})
+}
+
+/// Predicate-aware ANN ranking via ACORN with lifecycle observation.
+pub fn acorn_rank_with_observer<F>(
+    items: &[(String, String)],
+    query: &str,
+    k: usize,
+    keep: &dyn Fn(usize) -> bool,
+    mut observer: F,
+) -> anyhow::Result<Vec<String>>
+where
+    F: FnMut(&DenseRetrievalEvent),
+{
+    observer(&DenseRetrievalEvent::AcornStarted {
+        item_count: items.len(),
+        query: query.to_string(),
+        limit: k,
+    });
     if items.is_empty() || k == 0 {
+        observer(&DenseRetrievalEvent::AcornCompleted { result_count: 0 });
         return Ok(Vec::new());
     }
     let ids: Vec<String> = items.iter().map(|(id, _)| id.clone()).collect();
@@ -159,10 +255,14 @@ pub fn acorn_rank(
     // `k` is the traversal budget; it must not exceed the graph size.
     let budget = k.min(ids.len());
     let hits = index.search(&embed(query), budget, &|pos: u32| keep(pos as usize))?;
-    Ok(hits
+    let result: Vec<String> = hits
         .into_iter()
         .map(|(pos, _)| ids[pos as usize].clone())
-        .collect())
+        .collect();
+    observer(&DenseRetrievalEvent::AcornCompleted {
+        result_count: result.len(),
+    });
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -211,6 +311,34 @@ mod tests {
     }
 
     #[test]
+    fn hnsw_observer_emits_lifecycle_events() {
+        let items = vec![
+            (
+                "db".to_string(),
+                "postgres database connection pooling".to_string(),
+            ),
+            (
+                "ui".to_string(),
+                "react frontend button styling".to_string(),
+            ),
+        ];
+        let mut events = Vec::new();
+        let ranked = hnsw_rank_with_observer(&items, "database connection", 2, |event| {
+            events.push(event.clone());
+        })
+        .unwrap();
+        assert_eq!(ranked[0], "db");
+        assert!(matches!(
+            events.first(),
+            Some(DenseRetrievalEvent::HnswStarted { .. })
+        ));
+        assert!(matches!(
+            events.last(),
+            Some(DenseRetrievalEvent::HnswCompleted { .. })
+        ));
+    }
+
+    #[test]
     fn empty_items_yield_empty_ranking() {
         let ranked = hnsw_rank(&[], "anything", 5).unwrap();
         assert!(ranked.is_empty());
@@ -235,6 +363,34 @@ mod tests {
         let ranked = rabitq_rank(&items, "database connection", 3).unwrap();
         assert!(!ranked.is_empty(), "RaBitQ must return candidates");
         assert_eq!(ranked[0], "db", "most relevant item ranks first via RaBitQ");
+    }
+
+    #[test]
+    fn rabitq_observer_emits_lifecycle_events() {
+        let items = vec![
+            (
+                "db".to_string(),
+                "postgres database connection pooling".to_string(),
+            ),
+            (
+                "ui".to_string(),
+                "react frontend button styling".to_string(),
+            ),
+        ];
+        let mut events = Vec::new();
+        let ranked = rabitq_rank_with_observer(&items, "database connection", 2, |event| {
+            events.push(event.clone());
+        })
+        .unwrap();
+        assert_eq!(ranked[0], "db");
+        assert!(matches!(
+            events.first(),
+            Some(DenseRetrievalEvent::RabitqStarted { .. })
+        ));
+        assert!(matches!(
+            events.last(),
+            Some(DenseRetrievalEvent::RabitqCompleted { .. })
+        ));
     }
 
     #[test]
@@ -264,6 +420,32 @@ mod tests {
             ranked
         );
         assert_eq!(ranked[0], "db1", "most relevant matching item ranks first");
+    }
+
+    #[test]
+    fn acorn_observer_emits_lifecycle_events() {
+        let items = vec![
+            (
+                "db1".to_string(),
+                "postgres database connection".to_string(),
+            ),
+            ("ui".to_string(), "react frontend button".to_string()),
+        ];
+        let keep = |pos: usize| items[pos].0.starts_with("db");
+        let mut events = Vec::new();
+        let ranked = acorn_rank_with_observer(&items, "database connection", 2, &keep, |event| {
+            events.push(event.clone());
+        })
+        .unwrap();
+        assert_eq!(ranked[0], "db1");
+        assert!(matches!(
+            events.first(),
+            Some(DenseRetrievalEvent::AcornStarted { .. })
+        ));
+        assert!(matches!(
+            events.last(),
+            Some(DenseRetrievalEvent::AcornCompleted { .. })
+        ));
     }
 
     #[test]

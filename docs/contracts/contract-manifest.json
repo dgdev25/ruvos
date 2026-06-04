@@ -1,0 +1,225 @@
+{
+  "version": "4.0.0-rc.1",
+  "tool_count": 24,
+  "tools": [
+    {
+      "name": "memory.search",
+      "domain": "memory",
+      "description": "Hybrid search — fuses dense vectors (HNSW/RaBitQ/ACORN) with BM25 lexical ranking (RRF), then MMR diversity + recency; optional filter_tags restricts to entries with all given tags, and optional feedback:[{key,useful}] trains a bandit that reweights future results"
+    },
+    {
+      "name": "memory.store",
+      "domain": "memory",
+      "description": "Insert/update an entry with optional embedding + tags"
+    },
+    {
+      "name": "memory.retrieve",
+      "domain": "memory",
+      "description": "Get a single entry by key"
+    },
+    {
+      "name": "memory.list",
+      "domain": "memory",
+      "description": "List entries in a namespace with filters"
+    },
+    {
+      "name": "session.create",
+      "domain": "session",
+      "description": "Start a session, return id, persist as .rvf"
+    },
+    {
+      "name": "session.resume",
+      "domain": "session",
+      "description": "Restore a session by id (full context + memory)"
+    },
+    {
+      "name": "session.fork",
+      "domain": "session",
+      "description": "COW-branch a session for parallel exploration"
+    },
+    {
+      "name": "agent.spawn",
+      "domain": "agent",
+      "description": "Spawn a host agent: {host, archetype, prompt, traits, model, budget}"
+    },
+    {
+      "name": "agent.status",
+      "domain": "agent",
+      "description": "List running agents + states"
+    },
+    {
+      "name": "agent.message",
+      "domain": "agent",
+      "description": "Send message to a named agent"
+    },
+    {
+      "name": "hooks.pre",
+      "domain": "hooks",
+      "description": "Unified pre-hook (task|edit|command) — returns routing + context"
+    },
+    {
+      "name": "hooks.post",
+      "domain": "hooks",
+      "description": "Unified post-hook with outcome — feeds SONA learning"
+    },
+    {
+      "name": "hooks.route",
+      "domain": "hooks",
+      "description": "Get model + archetype recommendation for a task"
+    },
+    {
+      "name": "intel.pattern_search",
+      "domain": "intel",
+      "description": "Find similar past trajectories (4-step retrieve phase)"
+    },
+    {
+      "name": "intel.pattern_store",
+      "domain": "intel",
+      "description": "Store outcome for the distill/consolidate phases"
+    },
+    {
+      "name": "plugin.list",
+      "domain": "plugin",
+      "description": "Installed plugins + skills (discovered from disk)"
+    },
+    {
+      "name": "plugin.invoke",
+      "domain": "plugin",
+      "description": "Run a plugin command (shell exec via tokio)"
+    },
+    {
+      "name": "gov.witness_verify",
+      "domain": "gov",
+      "description": "Verify .rvf signature chain"
+    },
+    {
+      "name": "gov.health",
+      "domain": "gov",
+      "description": "Doctor / status across substrate, hosts, MCP, daemon"
+    },
+    {
+      "name": "gov.events",
+      "domain": "gov",
+      "description": "Query the signed audit/event log (since / by agent / by type) from the store"
+    },
+    {
+      "name": "relay.announce",
+      "domain": "relay",
+      "description": "Register/refresh this instance's presence for cross-instance discovery"
+    },
+    {
+      "name": "relay.list",
+      "domain": "relay",
+      "description": "Discover other live instances (scope: machine|directory|repo) + drain own inbox"
+    },
+    {
+      "name": "relay.send",
+      "domain": "relay",
+      "description": "Deliver a message to another instance's file mailbox by id"
+    },
+    {
+      "name": "orchestrate.run",
+      "domain": "orchestrate",
+      "description": "Run a multi-agent pipeline. A GOAP (A*) planner computes the archetype sequence from a template (feature/bugfix/refactor/security/sparc) or a caller-supplied goal + capabilities; static templates are the fallback"
+    }
+  ],
+  "archetypes": [
+    {
+      "name": "coder",
+      "purpose": "Implementation"
+    },
+    {
+      "name": "reviewer",
+      "purpose": "Code review, quality, style"
+    },
+    {
+      "name": "tester",
+      "purpose": "Test design + execution"
+    },
+    {
+      "name": "researcher",
+      "purpose": "Investigation, codebase discovery"
+    },
+    {
+      "name": "architect",
+      "purpose": "System / API design"
+    },
+    {
+      "name": "planner",
+      "purpose": "Task decomposition, GOAP"
+    },
+    {
+      "name": "security",
+      "purpose": "Threat modeling, vuln review"
+    },
+    {
+      "name": "perf",
+      "purpose": "Benchmark, profiling, optimization"
+    },
+    {
+      "name": "devops",
+      "purpose": "CI/CD, infra, deployment"
+    },
+    {
+      "name": "data",
+      "purpose": "Schemas, migrations, queries"
+    },
+    {
+      "name": "docs",
+      "purpose": "Documentation, API specs"
+    },
+    {
+      "name": "coordinator",
+      "purpose": "Swarm queen / pipeline driver"
+    }
+  ],
+  "hooks": [
+    {
+      "name": "pre-task",
+      "kind": "task",
+      "fires_on": "Before any Claude Code task start"
+    },
+    {
+      "name": "post-task",
+      "kind": "task",
+      "fires_on": "After completion (success/fail outcome -> SONA)"
+    },
+    {
+      "name": "pre-edit",
+      "kind": "edit",
+      "fires_on": "Before file write/edit"
+    },
+    {
+      "name": "post-edit",
+      "kind": "edit",
+      "fires_on": "After file write/edit (codemod tier + learning signal)"
+    },
+    {
+      "name": "pre-command",
+      "kind": "command",
+      "fires_on": "Before shell exec (risk assessment)"
+    },
+    {
+      "name": "post-command",
+      "kind": "command",
+      "fires_on": "After shell exec (outcome capture)"
+    },
+    {
+      "name": "session-start",
+      "kind": "session",
+      "fires_on": "Boot - restore session, prime memory"
+    },
+    {
+      "name": "session-end",
+      "kind": "session",
+      "fires_on": "Persist .rvf snapshot, consolidate"
+    }
+  ],
+  "workflow_templates": [
+    "feature",
+    "bugfix",
+    "refactor",
+    "security",
+    "sparc"
+  ]
+}

@@ -7,6 +7,8 @@
 //! `tested`, `reviewed`. Each archetype declares the preconditions it needs and
 //! the effects it produces; the planner derives the minimum-cost ordering.
 
+use crate::runtime::{publish_event, RuntimeEvent};
+use ruvos_goap::planner::PlanningEvent;
 use ruvos_goap::{GoapAction, GoapGoal, GoapPlanner, StateValue, WorldState};
 
 fn t() -> StateValue {
@@ -94,7 +96,82 @@ pub fn plan_archetypes(template: &str, extra: &[GoapAction]) -> Option<(Vec<Stri
 pub fn plan_for_goal(goal: &GoapGoal, extra: &[GoapAction]) -> Option<(Vec<String>, f64)> {
     let mut actions = default_actions();
     actions.extend_from_slice(extra);
-    let plan = build_planner(&actions).plan(goal)?;
+    let planner = build_planner(&actions);
+    let mut observed_goal = false;
+    let plan = planner.plan_with_observer(goal, |event| {
+        observed_goal = true;
+        match event {
+            PlanningEvent::Started {
+                goal_name,
+                goal_size,
+            } => publish_event(RuntimeEvent {
+                kind: "goap.plan.started".to_string(),
+                payload: serde_json::json!({
+                    "goal_name": goal_name,
+                    "goal_size": goal_size,
+                }),
+                agent_id: None,
+                task_id: None,
+            }),
+            PlanningEvent::NodeExpanded {
+                iteration,
+                cost,
+                heuristic,
+                action,
+            } => publish_event(RuntimeEvent {
+                kind: "goap.plan.node_expanded".to_string(),
+                payload: serde_json::json!({
+                    "iteration": iteration,
+                    "cost": cost,
+                    "heuristic": heuristic,
+                    "action": action,
+                }),
+                agent_id: None,
+                task_id: None,
+            }),
+            PlanningEvent::GoalSatisfied {
+                goal_name,
+                actions,
+                total_cost,
+                iterations,
+            } => publish_event(RuntimeEvent {
+                kind: "goap.plan.completed".to_string(),
+                payload: serde_json::json!({
+                    "goal_name": goal_name,
+                    "actions": actions,
+                    "total_cost": total_cost,
+                    "iterations": iterations,
+                }),
+                agent_id: None,
+                task_id: None,
+            }),
+            PlanningEvent::GoalUnreachable {
+                goal_name,
+                iterations,
+            } => publish_event(RuntimeEvent {
+                kind: "goap.plan.failed".to_string(),
+                payload: serde_json::json!({
+                    "goal_name": goal_name,
+                    "iterations": iterations,
+                }),
+                agent_id: None,
+                task_id: None,
+            }),
+            PlanningEvent::AbortedMaxIterations {
+                goal_name,
+                max_iterations,
+            } => publish_event(RuntimeEvent {
+                kind: "goap.plan.aborted".to_string(),
+                payload: serde_json::json!({
+                    "goal_name": goal_name,
+                    "max_iterations": max_iterations,
+                }),
+                agent_id: None,
+                task_id: None,
+            }),
+        }
+    })?;
+    debug_assert!(observed_goal);
     if plan.actions.is_empty() {
         return None;
     }

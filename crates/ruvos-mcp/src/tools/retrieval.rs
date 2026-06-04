@@ -10,20 +10,81 @@
 //! here too; its persistence + wiring is applied in `memory.rs`.
 
 use super::embedding::tokenize;
+use crate::runtime::RuntimeEvent;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 const K1: f32 = 1.2;
 const B: f32 = 0.75;
 const RRF_K: f32 = 60.0;
 
+/// Build a normalized retrieval trace event payload.
+pub fn retrieval_trace_event(
+    kind: impl Into<String>,
+    algorithm: impl Into<String>,
+    stage: impl Into<String>,
+    payload: Value,
+) -> RuntimeEvent {
+    let mut object = match payload {
+        Value::Object(object) => object,
+        other => {
+            let mut object = Map::new();
+            object.insert("detail".to_string(), other);
+            object
+        }
+    };
+    object.insert("algorithm".to_string(), Value::String(algorithm.into()));
+    object.insert("stage".to_string(), Value::String(stage.into()));
+    RuntimeEvent::new(kind, Value::Object(object))
+}
+
+/// Lifecycle events emitted by the ranking primitives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RetrievalEvent {
+    Bm25Started {
+        query: String,
+        doc_count: usize,
+        limit: usize,
+    },
+    Bm25Scored {
+        query_term_count: usize,
+        doc_count: usize,
+    },
+    Bm25Completed {
+        result_count: usize,
+    },
+    RrfCompleted {
+        ranking_count: usize,
+        result_count: usize,
+    },
+}
+
 /// Rank `docs` (id, text) against `query` by Okapi BM25; returns up to `k` ids,
 /// best-first, dropping zero-score docs. Computed over the candidate set — no
 /// persistent index needed at current scale.
 pub fn bm25_rank(docs: &[(String, String)], query: &str, k: usize) -> Vec<String> {
+    bm25_rank_with_observer(docs, query, k, |_| {})
+}
+
+/// BM25 ranking with lifecycle observation.
+pub fn bm25_rank_with_observer<F>(
+    docs: &[(String, String)],
+    query: &str,
+    k: usize,
+    mut observer: F,
+) -> Vec<String>
+where
+    F: FnMut(&RetrievalEvent),
+{
     if docs.is_empty() || k == 0 {
         return Vec::new();
     }
+    observer(&RetrievalEvent::Bm25Started {
+        query: query.to_string(),
+        doc_count: docs.len(),
+        limit: k,
+    });
     let toks: Vec<Vec<String>> = docs.iter().map(|(_, t)| tokenize(t)).collect();
     let n = docs.len() as f32;
     let avgdl = (toks.iter().map(|t| t.len()).sum::<usize>() as f32 / n).max(1.0);
@@ -37,6 +98,10 @@ pub fn bm25_rank(docs: &[(String, String)], query: &str, k: usize) -> Vec<String
     }
 
     let q = tokenize(query);
+    observer(&RetrievalEvent::Bm25Scored {
+        query_term_count: q.len(),
+        doc_count: docs.len(),
+    });
     let mut scored: Vec<(usize, f32)> = toks
         .iter()
         .enumerate()
@@ -63,17 +128,29 @@ pub fn bm25_rank(docs: &[(String, String)], query: &str, k: usize) -> Vec<String
         .collect();
 
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    scored
+    let result: Vec<String> = scored
         .into_iter()
         .filter(|(_, s)| *s > 0.0)
         .take(k)
         .map(|(i, _)| docs[i].0.clone())
-        .collect()
+        .collect();
+    observer(&RetrievalEvent::Bm25Completed {
+        result_count: result.len(),
+    });
+    result
 }
 
 /// Reciprocal Rank Fusion of several rankings (each best-first). Scale-free:
 /// `score(d) = Σ 1/(RRF_K + rank_i(d))`. Returns up to `k` ids, best-first.
 pub fn rrf_fuse(rankings: &[&[String]], k: usize) -> Vec<String> {
+    rrf_fuse_with_observer(rankings, k, |_| {})
+}
+
+/// RRF fusion with lifecycle observation.
+pub fn rrf_fuse_with_observer<F>(rankings: &[&[String]], k: usize, mut observer: F) -> Vec<String>
+where
+    F: FnMut(&RetrievalEvent),
+{
     let mut score: HashMap<&str, f32> = HashMap::new();
     for ranking in rankings {
         for (rank, id) in ranking.iter().enumerate() {
@@ -87,10 +164,16 @@ pub fn rrf_fuse(rankings: &[&[String]], k: usize) -> Vec<String> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.0.cmp(b.0))
     });
-    v.into_iter()
+    let result: Vec<String> = v
+        .into_iter()
         .take(k)
         .map(|(id, _)| id.to_string())
-        .collect()
+        .collect();
+    observer(&RetrievalEvent::RrfCompleted {
+        ranking_count: rankings.len(),
+        result_count: result.len(),
+    });
+    result
 }
 
 /// Beta-Bernoulli bandit reward for a `(namespace, key)` memory entry.
@@ -154,6 +237,23 @@ mod tests {
     }
 
     #[test]
+    fn bm25_observer_emits_lifecycle_events() {
+        let mut events = Vec::new();
+        let ranked = bm25_rank_with_observer(&docs(), "E1042", 3, |event| {
+            events.push(event.clone());
+        });
+        assert_eq!(ranked[0], "err");
+        assert!(matches!(
+            events.first(),
+            Some(RetrievalEvent::Bm25Started { .. })
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            RetrievalEvent::Bm25Completed { result_count } if *result_count > 0
+        )));
+    }
+
+    #[test]
     fn bm25_query_term_absent_everywhere_scores_zero() {
         let ranked = bm25_rank(&docs(), "kubernetes", 3);
         assert!(ranked.is_empty(), "no doc contains the term");
@@ -185,6 +285,35 @@ mod tests {
             rrf_fuse(&[&r1, &r2], 10),
             vec!["x".to_string(), "y".to_string()]
         );
+    }
+
+    #[test]
+    fn rrf_observer_emits_completion_event() {
+        let mut events = Vec::new();
+        let first = vec!["a".to_string()];
+        let second = vec!["b".to_string()];
+        let fused = rrf_fuse_with_observer(&[&first, &second], 2, |event| {
+            events.push(event.clone());
+        });
+        assert_eq!(fused.len(), 2);
+        assert!(matches!(
+            events.last(),
+            Some(RetrievalEvent::RrfCompleted { .. })
+        ));
+    }
+
+    #[test]
+    fn retrieval_trace_event_uses_common_schema() {
+        let event = retrieval_trace_event(
+            "retrieval.bm25.completed",
+            "bm25",
+            "completed",
+            serde_json::json!({"result_count": 3}),
+        );
+        assert_eq!(event.kind, "retrieval.bm25.completed");
+        assert_eq!(event.payload["algorithm"], "bm25");
+        assert_eq!(event.payload["stage"], "completed");
+        assert_eq!(event.payload["result_count"], 3);
     }
 
     #[test]

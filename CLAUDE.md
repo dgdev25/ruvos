@@ -90,6 +90,11 @@ cargo tarpaulin --out Html
 
 # Run doc tests
 cargo test --doc
+
+# Canonical workflow shortcuts
+just doctor
+just contracts-check
+just contracts-generate
 ```
 
 ### Key Development Rules
@@ -135,6 +140,8 @@ Notes learned the hard way:
 
 6. **Atomic refactors across repos.** rUvOS + RuVector changes land in one PR. One CI, one release cadence.
 
+7. **Canonical contract manifest.** `docs/contracts/contract-manifest.json` is the machine-readable source of truth for tools, archetypes, hooks, and templates. `just contracts-check` must stay green.
+
 ### Architecture Decisions Already Made
 
 - **MCP server strategy:** Roll a thin JSON-RPC over `tokio::io::stdin/stdout` rather than wait on third-party crates. (Reason: MCP is small enough to own.)
@@ -162,6 +169,7 @@ Notes learned the hard way:
 1. **Understand the scope:** `docs/spec/scope-ledger-v1.md` (open questions, tool list, archetype list, hook list, phase timeline).
 2. **Understand the why:** `docs/rewrite-summary.md` (architecture rationale, decision tree, RuVector merge explanation, multi-CLI support model).
 3. **Once Phase 1 starts:** Look for `crates/*/CLAUDE.md` (per-crate dev notes) and `scripts/inventory.rs` (which generates the root CLAUDE.md at build time).
+4. **Agentic OS roadmap:** `docs/roadmaps/agentic-os-roadmap.md` plus `docs/spec/adr-010-runtime-spine-event-bus.md` onward.
 
 ## Common Workflows (Phase 1+)
 

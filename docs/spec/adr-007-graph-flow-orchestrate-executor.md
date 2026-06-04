@@ -48,6 +48,11 @@ per-task status). Its sibling crates pull PostgreSQL + the Rig LLM client, but t
 - **Zero-defect:** `ruvos-graphflow` is a workspace member; port graph-flow's core
   tests; add a conditional-retry orchestration test.
 
+## Validation
+
+- Covered by `substrate/ruvos-graphflow/src/lib.rs` tests for branching and bounded failure.
+- Exercised by `crates/ruvos-mcp/src/tools/orchestrate.rs` when `max_retries > 0`.
+
 ## Alternatives considered
 
 - **Depend on `rs-graph-llm` whole** — rejected: PostgreSQL + Rig deps violate the

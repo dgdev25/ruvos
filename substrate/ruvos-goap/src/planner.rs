@@ -55,6 +55,35 @@ pub struct GoapPlanner {
     stats: Arc<RwLock<PlanningStats>>,
 }
 
+/// Planning lifecycle events emitted by [`GoapPlanner::plan_with_observer`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlanningEvent {
+    Started {
+        goal_name: String,
+        goal_size: usize,
+    },
+    NodeExpanded {
+        iteration: usize,
+        cost: f64,
+        heuristic: f64,
+        action: Option<String>,
+    },
+    GoalSatisfied {
+        goal_name: String,
+        actions: usize,
+        total_cost: f64,
+        iterations: usize,
+    },
+    GoalUnreachable {
+        goal_name: String,
+        iterations: usize,
+    },
+    AbortedMaxIterations {
+        goal_name: String,
+        max_iterations: usize,
+    },
+}
+
 impl GoapPlanner {
     pub fn new() -> Self {
         Self {
@@ -124,11 +153,31 @@ impl GoapPlanner {
 
     /// Plan a minimum-cost action sequence reaching `goal` via A*.
     pub fn plan(&self, goal: &GoapGoal) -> Option<GoapPlan> {
+        self.plan_with_observer(goal, |_| {})
+    }
+
+    /// Plan a minimum-cost action sequence reaching `goal` via A* and emit
+    /// lifecycle events to `observer`.
+    pub fn plan_with_observer<F>(&self, goal: &GoapGoal, mut observer: F) -> Option<GoapPlan>
+    where
+        F: FnMut(&PlanningEvent),
+    {
         let mut stats = PlanningStats::default();
         let world_state = self.current_world_state.read().unwrap().clone();
 
+        observer(&PlanningEvent::Started {
+            goal_name: goal.name.clone(),
+            goal_size: goal.desired_state.len(),
+        });
+
         // Early exit if the goal is already satisfied.
         if goal.is_satisfied(&world_state) {
+            observer(&PlanningEvent::GoalSatisfied {
+                goal_name: goal.name.clone(),
+                actions: 0,
+                total_cost: 0.0,
+                iterations: 0,
+            });
             return Some(GoapPlan {
                 actions: Vec::new(),
                 total_cost: 0.0,
@@ -153,6 +202,10 @@ impl GoapPlanner {
             iterations += 1;
             stats.nodes_explored = iterations;
             if iterations > self.max_iterations {
+                observer(&PlanningEvent::AbortedMaxIterations {
+                    goal_name: goal.name.clone(),
+                    max_iterations: self.max_iterations,
+                });
                 break;
             }
 
@@ -161,6 +214,12 @@ impl GoapPlanner {
                 stats.plan_length = plan.actions.len();
                 stats.total_cost = plan.total_cost;
                 *self.stats.write().unwrap() = stats;
+                observer(&PlanningEvent::GoalSatisfied {
+                    goal_name: goal.name.clone(),
+                    actions: plan.actions.len(),
+                    total_cost: plan.total_cost,
+                    iterations,
+                });
                 return Some(plan);
             }
 
@@ -171,6 +230,12 @@ impl GoapPlanner {
 
             for action in &actions {
                 if action.is_valid(&current.world_state) {
+                    observer(&PlanningEvent::NodeExpanded {
+                        iteration: iterations,
+                        cost: current.cost + action.cost,
+                        heuristic: goal.heuristic(&action.apply(&current.world_state)),
+                        action: Some(action.name.clone()),
+                    });
                     let new_state = action.apply(&current.world_state);
                     let new_cost = current.cost + action.cost;
                     let new_heuristic = goal.heuristic(&new_state);
@@ -186,6 +251,10 @@ impl GoapPlanner {
         }
 
         *self.stats.write().unwrap() = stats;
+        observer(&PlanningEvent::GoalUnreachable {
+            goal_name: goal.name.clone(),
+            iterations,
+        });
         None
     }
 
@@ -254,6 +323,35 @@ mod tests {
         let plan = planner.plan(&goal).expect("should find plan");
         assert_eq!(plan.actions.len(), 1);
         assert_eq!(plan.actions[0].name, "pickup_weapon");
+    }
+
+    #[test]
+    fn plan_with_observer_emits_goal_and_expansion_events() {
+        let planner = GoapPlanner::new();
+        planner.add_action(
+            GoapAction::new("pickup_weapon")
+                .with_cost(1.0)
+                .with_effect("has_weapon", StateValue::Bool(true)),
+        );
+        let goal =
+            GoapGoal::new("be_armed", 1.0).with_condition("has_weapon", StateValue::Bool(true));
+
+        let mut events = Vec::new();
+        let plan = planner
+            .plan_with_observer(&goal, |event| events.push(event.clone()))
+            .expect("should find plan");
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(
+            events.first(),
+            Some(PlanningEvent::Started { .. })
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            PlanningEvent::NodeExpanded { action, .. } if action.as_deref() == Some("pickup_weapon")
+        )));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, PlanningEvent::GoalSatisfied { .. })));
     }
 
     #[test]

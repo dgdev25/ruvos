@@ -6,5 +6,5 @@
 pub mod commands;
 pub mod dispatch;
 
-pub use commands::{init, mcp};
+pub use commands::{contracts, doctor, init, mcp, skills};
 pub use dispatch::dispatch;

@@ -100,6 +100,7 @@ Everything else is `use ruvector_*;` or `use sona::*;` or `use rvf::*;`.
 - `default-members` scoped so Ruflo's CI only builds what it consumes from RuVector. Experimental crates (consciousness examples, quantum coherence, etc.) stay behind features.
 - Atomic refactors across both projects land in one PR.
 - One CI, one release cadence, one binary.
+- The live contract manifest is generated from the Rust workspace and stored at `docs/contracts/contract-manifest.json`; docs and CI should verify against it instead of hand-maintaining tool lists.
 
 ### 5.3 Distribution
 

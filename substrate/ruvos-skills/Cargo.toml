@@ -1,0 +1,21 @@
+[package]
+name = "ruvos-skills"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Portable redb-backed skills pack for rUvOS"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { workspace = true }
+flate2 = "1.0"
+hex = "0.4"
+redb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+

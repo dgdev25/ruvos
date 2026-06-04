@@ -49,6 +49,11 @@ Its QUIC/WASM crates are optional and **not** needed here.
 - **Zero-defect:** `ruvos-stream` ≤500-LOC files, workspace member; port
   midstream's DTW tests; deterministic drift-detector unit tests.
 
+## Validation
+
+- Covered by `substrate/ruvos-stream/src/lib.rs` tests for DTW and drift detection.
+- Exercised by `crates/ruvos-mcp/src/tools/agent.rs` runner-stream handling.
+
 ## Alternatives considered
 
 - **Depend on `midstream` whole** — rejected: optional QUIC/WASM crates and a

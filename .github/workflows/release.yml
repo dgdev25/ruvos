@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Release build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p ruvos-cli
+      - name: Package artifact
+        shell: bash
+        run: |
+          tar -C target/release -czf ruvos-linux-x86_64.tar.gz ruvos
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ruvos-linux-x86_64.tar.gz

@@ -58,6 +58,12 @@ exit code**.
   `#[cfg(unix)]` for the failing-runner case), orchestrate stop-on-failure, and
   the unchanged no-runner default.
 
+## Validation
+
+- Covered by `crates/ruvos-mcp/src/tools/agent.rs` tests for runner exit code success/failure.
+- Covered by `crates/ruvos-mcp/src/tools/orchestrate.rs` tests for stop-on-failure behavior.
+- Exercised end-to-end by `crates/ruvos-mcp/tests/integration_test.rs`.
+
 ## Alternatives considered
 
 - **Synthetic/heuristic success** (e.g. "artifact non-empty") — rejected: fake

@@ -12,6 +12,7 @@
 //! are merged (union by key, max score wins) before MMR.
 
 use super::handler::{ExecuteFuture, ToolHandler};
+use crate::runtime::{publish_event, RuntimeEvent};
 use crate::{paths, Result, RuvosError};
 use rulake::{LocalBackend, RuLake, SearchResult as LakeSearchResult};
 use ruvos_memory_graph::MemoryGraph;
@@ -209,8 +210,12 @@ fn save_rewards(rewards: &Rewards) -> Result<()> {
 // Real ranking primitives
 // ---------------------------------------------------------------------------
 
-use super::embedding::{acorn_rank, cosine_dense, embed, hnsw_rank};
-use super::retrieval::{bm25_rank, rrf_fuse, Reward};
+use super::embedding::{
+    acorn_rank_with_observer, cosine_dense, embed, hnsw_rank_with_observer, DenseRetrievalEvent,
+};
+use super::retrieval::{
+    bm25_rank_with_observer, retrieval_trace_event, rrf_fuse_with_observer, RetrievalEvent, Reward,
+};
 
 /// Recency weight in [0, 1]: newer entries score higher. Half-life ~30 days.
 fn recency_weight(created_at: &str) -> f64 {
@@ -321,6 +326,17 @@ impl ToolHandler for MemoryStoreHandler {
             let vec = embed(&entry_text(&entry));
             lake_append(&namespace, &key, vec);
 
+            publish_event(RuntimeEvent {
+                kind: "memory.store.completed".to_string(),
+                payload: json!({
+                    "key": key.clone(),
+                    "namespace": namespace.clone(),
+                    "tag_count": entry.tags.len(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             // Additive: ingest the value into the temporal knowledge graph
             // (entities + co-occurrence edges). Best-effort — never fails store.
             if let Some(g) = graph() {
@@ -370,15 +386,37 @@ impl ToolHandler for MemoryRetrieveHandler {
 
             let _guard = FILE_LOCK.lock().unwrap();
             let store = load_store();
-            match store.get(&namespace).and_then(|ns| ns.get(&key)) {
-                Some(e) => Ok(json!({
-                    "found": true,
-                    "key": e.key,
-                    "value": e.value,
-                    "namespace": e.namespace,
-                    "tags": e.tags,
-                    "created_at": e.created_at
-                })),
+            let found = store.get(&namespace).and_then(|ns| ns.get(&key)).cloned();
+            publish_event(RuntimeEvent {
+                kind: "memory.retrieve.queried".to_string(),
+                payload: json!({
+                    "key": key.clone(),
+                    "namespace": namespace.clone(),
+                    "found": found.is_some(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+            match found {
+                Some(e) => {
+                    publish_event(RuntimeEvent {
+                        kind: "memory.retrieve.completed".to_string(),
+                        payload: json!({
+                            "key": e.key,
+                            "namespace": e.namespace,
+                        }),
+                        agent_id: None,
+                        task_id: None,
+                    });
+                    Ok(json!({
+                        "found": true,
+                        "key": e.key,
+                        "value": e.value,
+                        "namespace": e.namespace,
+                        "tags": e.tags,
+                        "created_at": e.created_at
+                    }))
+                }
                 None => Ok(json!({
                     "found": false,
                     "key": key,
@@ -430,6 +468,16 @@ impl ToolHandler for MemoryListHandler {
                         .collect()
                 })
                 .unwrap_or_default();
+
+            publish_event(RuntimeEvent {
+                kind: "memory.list.completed".to_string(),
+                payload: json!({
+                    "namespace": namespace.clone(),
+                    "count": entries.len(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
 
             Ok(json!({
                 "namespace": namespace,
@@ -490,6 +538,19 @@ impl ToolHandler for MemorySearchHandler {
                 })
                 .unwrap_or_default();
 
+            publish_event(RuntimeEvent {
+                kind: "memory.search.started".to_string(),
+                payload: json!({
+                    "query": query.clone(),
+                    "namespace": namespace.clone(),
+                    "top_k": top_k,
+                    "filter_tag_count": filter_tags.len(),
+                    "has_feedback": params.get("feedback").and_then(|v| v.as_array()).is_some(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             let _guard = FILE_LOCK.lock().unwrap();
             let store = load_store();
 
@@ -511,6 +572,15 @@ impl ToolHandler for MemorySearchHandler {
                 }
                 if changed {
                     save_rewards(&rewards)?;
+                    publish_event(RuntimeEvent {
+                        kind: "memory.search.feedback_applied".to_string(),
+                        payload: json!({
+                            "namespace": namespace.clone(),
+                            "feedback_count": fb.len(),
+                        }),
+                        agent_id: None,
+                        task_id: None,
+                    });
                 }
             }
 
@@ -539,12 +609,70 @@ impl ToolHandler for MemorySearchHandler {
             // post-filtering plain-HNSW candidates would return too few hits.
             // Without a filter, the plain HNSW path is unchanged.
             let dense_ids = if filter_tags.is_empty() {
-                hnsw_rank(&items, &query, candidate_k)
-                    .map_err(|e| RuvosError::InternalError(format!("hnsw search: {}", e)))?
+                hnsw_rank_with_observer(&items, &query, candidate_k, |event| match event {
+                    DenseRetrievalEvent::HnswStarted {
+                        item_count,
+                        query,
+                        limit,
+                    } => publish_event(retrieval_trace_event(
+                        "retrieval.hnsw.started",
+                        "hnsw",
+                        "started",
+                        json!({
+                            "item_count": item_count,
+                            "query": query,
+                            "limit": limit,
+                        }),
+                    )),
+                    DenseRetrievalEvent::HnswCompleted { result_count } => {
+                        publish_event(retrieval_trace_event(
+                            "retrieval.hnsw.completed",
+                            "hnsw",
+                            "completed",
+                            json!({
+                                "result_count": result_count,
+                            }),
+                        ))
+                    }
+                    DenseRetrievalEvent::AcornStarted { .. }
+                    | DenseRetrievalEvent::AcornCompleted { .. }
+                    | DenseRetrievalEvent::RabitqStarted { .. }
+                    | DenseRetrievalEvent::RabitqCompleted { .. } => {}
+                })
+                .map_err(|e| RuvosError::InternalError(format!("hnsw search: {}", e)))?
             } else {
                 let keep = |pos: usize| entries.get(pos).map(&passes_filter).unwrap_or(false);
-                acorn_rank(&items, &query, candidate_k, &keep)
-                    .map_err(|e| RuvosError::InternalError(format!("acorn search: {}", e)))?
+                acorn_rank_with_observer(&items, &query, candidate_k, &keep, |event| match event {
+                    DenseRetrievalEvent::AcornStarted {
+                        item_count,
+                        query,
+                        limit,
+                    } => publish_event(retrieval_trace_event(
+                        "retrieval.acorn.started",
+                        "acorn",
+                        "started",
+                        json!({
+                            "item_count": item_count,
+                            "query": query,
+                            "limit": limit,
+                        }),
+                    )),
+                    DenseRetrievalEvent::AcornCompleted { result_count } => {
+                        publish_event(retrieval_trace_event(
+                            "retrieval.acorn.completed",
+                            "acorn",
+                            "completed",
+                            json!({
+                                "result_count": result_count,
+                            }),
+                        ))
+                    }
+                    DenseRetrievalEvent::HnswStarted { .. }
+                    | DenseRetrievalEvent::HnswCompleted { .. }
+                    | DenseRetrievalEvent::RabitqStarted { .. }
+                    | DenseRetrievalEvent::RabitqCompleted { .. } => {}
+                })
+                .map_err(|e| RuvosError::InternalError(format!("acorn search: {}", e)))?
             };
 
             // Hybrid: fuse the dense ranking with a sparse BM25 ranking (ADR-005).
@@ -559,8 +687,64 @@ impl ToolHandler for MemorySearchHandler {
                     .map(|e| (e.key.clone(), entry_text(e)))
                     .collect()
             };
-            let bm25_ids = bm25_rank(&bm25_items, &query, candidate_k);
-            let ranked_ids = rrf_fuse(&[&dense_ids, &bm25_ids], candidate_k);
+            let bm25_ids =
+                bm25_rank_with_observer(&bm25_items, &query, candidate_k, |event| match event {
+                    RetrievalEvent::Bm25Started {
+                        query,
+                        doc_count,
+                        limit,
+                    } => publish_event(retrieval_trace_event(
+                        "retrieval.bm25.started",
+                        "bm25",
+                        "started",
+                        json!({
+                            "query": query,
+                            "doc_count": doc_count,
+                            "limit": limit,
+                        }),
+                    )),
+                    RetrievalEvent::Bm25Scored {
+                        query_term_count,
+                        doc_count,
+                    } => publish_event(retrieval_trace_event(
+                        "retrieval.bm25.scored",
+                        "bm25",
+                        "scored",
+                        json!({
+                            "query_term_count": query_term_count,
+                            "doc_count": doc_count,
+                        }),
+                    )),
+                    RetrievalEvent::Bm25Completed { result_count } => {
+                        publish_event(retrieval_trace_event(
+                            "retrieval.bm25.completed",
+                            "bm25",
+                            "completed",
+                            json!({
+                                "result_count": result_count,
+                            }),
+                        ))
+                    }
+                    RetrievalEvent::RrfCompleted { .. } => {}
+                });
+            let ranked_ids =
+                rrf_fuse_with_observer(&[&dense_ids, &bm25_ids], candidate_k, |event| {
+                    if let RetrievalEvent::RrfCompleted {
+                        ranking_count,
+                        result_count,
+                    } = event
+                    {
+                        publish_event(retrieval_trace_event(
+                            "retrieval.rrf.completed",
+                            "rrf",
+                            "completed",
+                            json!({
+                                "ranking_count": ranking_count,
+                                "result_count": result_count,
+                            }),
+                        ));
+                    }
+                });
 
             // Blend the (dense cosine) relevance with a recency boost, then MMR.
             let query_vec = embed(&query);
@@ -639,6 +823,19 @@ impl ToolHandler for MemorySearchHandler {
                 })
                 .collect();
 
+            publish_event(RuntimeEvent {
+                kind: "memory.search.completed".to_string(),
+                payload: json!({
+                    "query": query.clone(),
+                    "namespace": namespace.clone(),
+                    "result_count": results.len(),
+                    "candidate_count": candidate_k,
+                    "filter_tag_count": filter_tags.len(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             // Additive: surface related entities from the temporal knowledge
             // graph. Best-effort — an empty array when the graph is unavailable.
             let related_entities: Vec<Value> = graph()
@@ -658,6 +855,17 @@ impl ToolHandler for MemorySearchHandler {
                 })
                 .unwrap_or_default();
 
+            publish_event(RuntimeEvent {
+                kind: "memory.search.related_entities".to_string(),
+                payload: json!({
+                    "query": query.clone(),
+                    "namespace": namespace.clone(),
+                    "related_count": related_entities.len(),
+                }),
+                agent_id: None,
+                task_id: None,
+            });
+
             Ok(json!({
                 "query": query,
                 "namespace": namespace,
@@ -672,6 +880,7 @@ impl ToolHandler for MemorySearchHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::gov::GovEventsHandler;
 
     fn isolate() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
@@ -684,6 +893,13 @@ mod tests {
             .execute(json!({"key": key, "value": value, "namespace": ns}))
             .await
             .unwrap();
+    }
+
+    async fn events(event_type: &str) -> Value {
+        GovEventsHandler
+            .execute(json!({"event_type": event_type, "limit": 10}))
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -727,6 +943,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn store_publishes_runtime_event() {
+        let _g = isolate();
+        store("trace", "value", "events").await;
+        let r = events("memory.store.completed").await;
+        assert!(r["count"].as_u64().unwrap() >= 1);
+        assert_eq!(r["events"][0]["payload"]["key"], "trace");
+    }
+
+    #[tokio::test]
     async fn retrieve_returns_stored_value() {
         let _g = isolate();
         store("greeting", "hello there", "ns1").await;
@@ -736,6 +961,19 @@ mod tests {
             .unwrap();
         assert_eq!(r["found"], true);
         assert_eq!(r["value"], "hello there");
+    }
+
+    #[tokio::test]
+    async fn retrieve_publishes_runtime_event() {
+        let _g = isolate();
+        store("seen", "hello", "ns").await;
+        let _ = MemoryRetrieveHandler
+            .execute(json!({"key": "seen", "namespace": "ns"}))
+            .await
+            .unwrap();
+        let r = events("memory.retrieve.completed").await;
+        assert!(r["count"].as_u64().unwrap() >= 1);
+        assert_eq!(r["events"][0]["payload"]["key"], "seen");
     }
 
     #[tokio::test]
@@ -758,6 +996,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r["count"], 2);
+        let events = events("memory.list.completed").await;
+        assert!(events["count"].as_u64().unwrap() >= 1);
+        assert_eq!(events["events"][0]["payload"]["namespace"], "box");
     }
 
     #[tokio::test]
@@ -827,6 +1068,9 @@ mod tests {
             "search must surface related graph entities: {:?}",
             r
         );
+        let events = events("memory.search.completed").await;
+        assert!(events["count"].as_u64().unwrap() >= 1);
+        assert_eq!(events["events"][0]["payload"]["namespace"], "default");
     }
 
     #[tokio::test]
@@ -854,5 +1098,89 @@ mod tests {
             "MMR should surface the distinct entry, not two duplicates: {:?}",
             keys
         );
+        let events = events("memory.search.completed").await;
+        assert!(events["count"].as_u64().unwrap() >= 1);
+        assert_eq!(events["events"][0]["payload"]["filter_tag_count"], 0);
+    }
+
+    #[tokio::test]
+    async fn search_emits_retrieval_level_events() {
+        let _g = isolate();
+        store("db", "postgres database connection pooling", "default").await;
+        store("ui", "react frontend button styling", "default").await;
+
+        let _ = MemorySearchHandler
+            .execute(json!({"query": "database", "namespace": "default", "top_k": 2}))
+            .await
+            .unwrap();
+
+        let bm25_started = events("retrieval.bm25.started").await;
+        assert!(bm25_started["count"].as_u64().unwrap() >= 1);
+        assert_eq!(bm25_started["events"][0]["payload"]["algorithm"], "bm25");
+        assert_eq!(bm25_started["events"][0]["payload"]["stage"], "started");
+        assert_eq!(bm25_started["events"][0]["payload"]["doc_count"], 2);
+
+        let rrf_completed = events("retrieval.rrf.completed").await;
+        assert!(rrf_completed["count"].as_u64().unwrap() >= 1);
+        assert_eq!(rrf_completed["events"][0]["payload"]["algorithm"], "rrf");
+        assert_eq!(rrf_completed["events"][0]["payload"]["stage"], "completed");
+        assert_eq!(rrf_completed["events"][0]["payload"]["ranking_count"], 2);
+    }
+
+    #[tokio::test]
+    async fn search_emits_dense_retrieval_events() {
+        let _g = isolate();
+        store("db1", "postgres database connection pooling", "default").await;
+        store("db2", "mysql indexing query planner", "default").await;
+
+        let acorn_query = "dense-acorn-probe-7f4c";
+        let _ = MemorySearchHandler
+            .execute(json!({
+                "query": acorn_query,
+                "namespace": "default",
+                "top_k": 2,
+                "filter_tags": ["db"]
+            }))
+            .await
+            .unwrap();
+
+        let acorn_started = events("retrieval.acorn.started").await;
+        assert!(acorn_started["count"].as_u64().unwrap() >= 1);
+        assert_eq!(acorn_started["events"][0]["payload"]["algorithm"], "acorn");
+        assert_eq!(acorn_started["events"][0]["payload"]["stage"], "started");
+        assert!(
+            acorn_started["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["payload"]["query"] == acorn_query),
+            "expected an ACORN event for the probe query: {:?}",
+            acorn_started
+        );
+        // The filter excludes both entries, so ACORN should see an empty subset.
+        let acorn_completed = events("retrieval.acorn.completed").await;
+        assert!(acorn_completed["count"].as_u64().unwrap() >= 1);
+
+        // A plain search should still emit HNSW events.
+        let hnsw_query = "dense-hnsw-probe-7f4c";
+        let _ = MemorySearchHandler
+            .execute(json!({"query": hnsw_query, "namespace": "default", "top_k": 2}))
+            .await
+            .unwrap();
+        let hnsw_started = events("retrieval.hnsw.started").await;
+        assert!(hnsw_started["count"].as_u64().unwrap() >= 1);
+        assert_eq!(hnsw_started["events"][0]["payload"]["algorithm"], "hnsw");
+        assert_eq!(hnsw_started["events"][0]["payload"]["stage"], "started");
+        assert!(
+            hnsw_started["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["payload"]["query"] == hnsw_query),
+            "expected an HNSW event for the probe query: {:?}",
+            hnsw_started
+        );
+        let hnsw_completed = events("retrieval.hnsw.completed").await;
+        assert!(hnsw_completed["count"].as_u64().unwrap() >= 1);
     }
 }

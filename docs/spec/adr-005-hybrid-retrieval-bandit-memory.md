@@ -59,6 +59,12 @@ HNSW/RaBitQ/ACORN → MMR → recency). Two well-established improvements are mi
   RRF fusion ordering, and bandit convergence; cross-process persistence test for
   the reward table.
 
+## Validation
+
+- Covered by `substrate/sona/src/trajectory.rs` tests for learning-loop state.
+- Covered by `substrate/ruvector-core/src/agenticdb.rs` tests for semantic search and policy memory.
+- Exercised indirectly by `crates/ruvos-mcp/src/tools/memory.rs` and `intel.rs` tests.
+
 ## Alternatives considered
 
 - **Import agentdb** — impossible cleanly: it's TS/NAPI; we already own the Rust

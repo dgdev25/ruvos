@@ -60,6 +60,12 @@ minimum-cost action sequence reaching the goal. The module depends only on `std`
 - **Zero-defect:** `ruvos-goap` joins the workspace as a member (built, clippy,
   fmt, tested in CI). ARCADIA's own GOAP unit tests are ported.
 
+## Validation
+
+- Covered by `substrate/ruvos-goap/src/lib.rs` tests.
+- Covered by `crates/ruvos-mcp/src/tools/orchestrate_plan.rs` planning tests.
+- Exercised by `crates/ruvos-mcp/src/tools/orchestrate.rs` and the MCP integration test.
+
 ## Alternatives considered
 
 - **Depend on the ARCADIA crate** — rejected: pulls axum/sqlx/qdrant/reqwest/wasm,

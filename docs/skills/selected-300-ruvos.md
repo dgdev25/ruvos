@@ -1,0 +1,327 @@
+# Selected 300 Skills for rUvOS
+
+This is the curated public pack: 300 deduped skills selected to cover rUvOS runtime needs.
+Selection rule: category-balanced from the corpus audit, then highest-scoring candidates within each category.
+
+## Summary
+
+- Total selected: `300`
+- Unique skill ids: `300`
+
+- runtime: `60`
+- coding: `50`
+- testing: `25`
+- docs: `20`
+- security: `20`
+- data: `20`
+- devops: `25`
+- product: `10`
+- design: `10`
+- research: `20`
+- integration: `15`
+- performance: `10`
+- workflow: `15`
+- misc: `0`
+
+## Skills
+
+1. `nuxt` — nuxt — `runtime` — tier `domain` — score `4344`
+2. `youtube-clipper` — youtube-clipper — `runtime` — tier `domain` — score `3537`
+3. `unocss` — unocss — `runtime` — tier `domain` — score `5134`
+4. `create-web-form` — create-web-form — `runtime` — tier `domain` — score `5122`
+5. `manimce-best-practices` — manimce-best-practices — `runtime` — tier `domain` — score `6047`
+6. `mcp-apps-builder` — mcp-apps-builder — `runtime` — tier `domain` — score `4250`
+7. `notebooklm` — notebooklm — `runtime` — tier `domain` — score `2989`
+8. `playwright-best-practices` — playwright-best-practices — `runtime` — tier `domain` — score `11676`
+9. `tsdown` — tsdown — `runtime` — tier `domain` — score `7056`
+10. `manimgl-best-practices` — manimgl-best-practices — `runtime` — tier `domain` — score `13927`
+11. `turborepo` — turborepo — `runtime` — tier `domain` — score `5605`
+12. `slidev` — slidev — `runtime` — tier `domain` — score `10644`
+13. `marp-slide` — marp-slide — `runtime` — tier `domain` — score `3862`
+14. `vue-debug-guides` — vue-debug-guides — `runtime` — tier `domain` — score `25759`
+15. `vitepress` — vitepress — `runtime` — tier `domain` — score `3524`
+16. `maestro` — maestro — `runtime` — tier `domain` — score `6928`
+17. `markdown-to-html` — markdown-to-html — `runtime` — tier `domain` — score `3514`
+18. `loki-mode` — loki-mode — `runtime` — tier `domain` — score `50297`
+19. `openclaw-self-healing` — openclaw-self-healing — `runtime` — tier `domain` — score `4857`
+20. `systematic-literature-review` — systematic-literature-review — `runtime` — tier `domain` — score `8394`
+21. `web-haptics` — web-haptics — `runtime` — tier `domain` — score `10282`
+22. `claw-control` — claw-control — `runtime` — tier `domain` — score `13100`
+23. `nsfc-justification-writer` — nsfc-justification-writer — `runtime` — tier `domain` — score `9020`
+24. `sf-lwc` — sf-lwc — `runtime` — tier `domain` — score `6480`
+25. `mini-wiki` — mini-wiki — `runtime` — tier `domain` — score `6260`
+26. `odoo-upgrade` — odoo-upgrade — `runtime` — tier `domain` — score `3700`
+27. `octocode-research` — octocode-research — `runtime` — tier `domain` — score `8138`
+28. `sf-ai-agentforce-testing` — sf-ai-agentforce-testing — `runtime` — tier `domain` — score `7878`
+29. `transcript-fixer` — transcript-fixer — `runtime` — tier `domain` — score `8747`
+30. `sf-ai-agentforce-observability` — sf-ai-agentforce-observability — `runtime` — tier `domain` — score `5237`
+31. `claude-reflect` — claude-reflect — `runtime` — tier `domain` — score `5007`
+32. `four-meme-ai` — four-meme-ai — `runtime` — tier `domain` — score `4107`
+33. `sf-ai-agentforce-conversationdesign` — sf-ai-agentforce-conversationdesign — `runtime` — tier `domain` — score `5236`
+34. `babysit` — babysit — `runtime` — tier `domain` — score `1223255`
+35. `make_latex_model` — make_latex_model — `runtime` — tier `domain` — score `9735`
+36. `documents` — documents — `runtime` — tier `domain` — score `5185`
+37. `apify-scrapers` — apify-scrapers — `runtime` — tier `domain` — score `4565`
+38. `seo-audit` — seo-audit — `runtime` — tier `domain` — score `46684`
+39. `testing-patterns` — testing-patterns — `runtime` — tier `domain` — score `15524`
+40. `jianying-editor` — jianying-editor — `runtime` — tier `domain` — score `14854`
+41. `webassessment` — webassessment — `runtime` — tier `domain` — score `6994`
+42. `evals` — evals — `runtime` — tier `domain` — score `5044`
+43. `chroma` — chroma — `runtime` — tier `domain` — score `3774`
+44. `core` — core — `runtime` — tier `domain` — score `73473`
+45. `tool-openclaw` — tool-openclaw — `runtime` — tier `domain` — score `50983`
+46. `agentchat` — agentchat — `runtime` — tier `domain` — score `24103`
+47. `requirement-workflow` — requirement-workflow — `runtime` — tier `domain` — score `7113`
+48. `postman` — postman — `runtime` — tier `domain` — score `5653`
+49. `thesys-generative-ui` — thesys-generative-ui — `runtime` — tier `domain` — score `3753`
+50. `cloudflare-agents` — cloudflare-agents — `runtime` — tier `domain` — score `3323`
+51. `daft-worktree-workflow` — daft-worktree-workflow — `runtime` — tier `domain` — score `61382`
+52. `abs-journal` — abs-journal — `runtime` — tier `domain` — score `28442`
+53. `network-ai` — network-ai — `runtime` — tier `domain` — score `16932`
+54. `sensei` — sensei — `runtime` — tier `domain` — score `16852`
+55. `pai` — pai — `runtime` — tier `domain` — score `13772`
+56. `command-center` — command-center — `runtime` — tier `domain` — score `9962`
+57. `postgres` — postgres — `runtime` — tier `domain` — score `6862`
+58. `linear` — linear — `runtime` — tier `domain` — score `6732`
+59. `softcopyright` — softcopyright — `runtime` — tier `domain` — score `6342`
+60. `kaggle` — kaggle — `runtime` — tier `domain` — score `5692`
+61. `docs-management` — docs-management — `coding` — tier `domain` — score `168331`
+62. `ha-integration-dev` — ha-integration-dev — `coding` — tier `domain` — score `12911`
+63. `generate-video` — generate-video — `coding` — tier `domain` — score `9491`
+64. `web-scraping` — web-scraping — `coding` — tier `domain` — score `8541`
+65. `blueprintkit` — blueprintkit — `coding` — tier `domain` — score `8251`
+66. `codex-cli` — codex-cli — `coding` — tier `domain` — score `7321`
+67. `powershell-windows` — powershell-windows — `coding` — tier `domain` — score `6891`
+68. `python-patterns` — python-patterns — `coding` — tier `domain` — score `6891`
+69. `typst-paper` — typst-paper — `coding` — tier `domain` — score `6581`
+70. `es-fetch-api` — es-fetch-api — `coding` — tier `domain` — score `4541`
+71. `duende-docs` — duende-docs — `coding` — tier `domain` — score `62230`
+72. `gemini-cli-docs` — gemini-cli-docs — `coding` — tier `domain` — score `31340`
+73. `vibe-coder` — vibe-coder — `coding` — tier `domain` — score `29590`
+74. `oh-my-opencode-update` — oh-my-opencode-update — `coding` — tier `domain` — score `28440`
+75. `cursor-docs` — cursor-docs — `coding` — tier `domain` — score `27130`
+76. `data-pro-max` — data-pro-max — `coding` — tier `domain` — score `25250`
+77. `dev-km` — dev-km — `coding` — tier `domain` — score `22520`
+78. `codex-cli-docs` — codex-cli-docs — `coding` — tier `domain` — score `17670`
+79. `edge-tts-api` — edge-tts-api — `coding` — tier `domain` — score `10030`
+80. `docmost` — docmost — `coding` — tier `domain` — score `7400`
+81. `architecture` — architecture — `coding` — tier `domain` — score `6890`
+82. `code-review-checklist` — code-review-checklist — `coding` — tier `domain` — score `6890`
+83. `game-development` — game-development — `coding` — tier `domain` — score `6890`
+84. `i18n-localization` — i18n-localization — `coding` — tier `domain` — score `6890`
+85. `performance-profiling` — performance-profiling — `coding` — tier `domain` — score `6890`
+86. `react-patterns` — react-patterns — `coding` — tier `domain` — score `6890`
+87. `seo-fundamentals` — seo-fundamentals — `coding` — tier `domain` — score `6890`
+88. `api-patterns` — api-patterns — `coding` — tier `domain` — score `6890`
+89. `app-builder` — app-builder — `coding` — tier `domain` — score `6890`
+90. `bash-linux` — bash-linux — `coding` — tier `domain` — score `6890`
+91. `behavioral-modes` — behavioral-modes — `coding` — tier `domain` — score `6890`
+92. `deployment-procedures` — deployment-procedures — `coding` — tier `domain` — score `6890`
+93. `documentation-templates` — documentation-templates — `coding` — tier `domain` — score `6890`
+94. `geo-fundamentals` — geo-fundamentals — `coding` — tier `domain` — score `6890`
+95. `nextjs-best-practices` — nextjs-best-practices — `coding` — tier `domain` — score `6890`
+96. `nodejs-best-practices` — nodejs-best-practices — `coding` — tier `domain` — score `6890`
+97. `parallel-agents` — parallel-agents — `coding` — tier `domain` — score `6890`
+98. `plan-writing` — plan-writing — `coding` — tier `domain` — score `6890`
+99. `server-management` — server-management — `coding` — tier `domain` — score `6890`
+100. `systematic-debugging` — systematic-debugging — `coding` — tier `domain` — score `6890`
+101. `tailwind-patterns` — tailwind-patterns — `coding` — tier `domain` — score `6890`
+102. `tdd-workflow` — tdd-workflow — `coding` — tier `domain` — score `6890`
+103. `vulnerability-scanner` — vulnerability-scanner — `coding` — tier `domain` — score `6890`
+104. `webapp-testing` — webapp-testing — `coding` — tier `domain` — score `6890`
+105. `red-team-tactics` — red-team-tactics — `coding` — tier `domain` — score `6890`
+106. `code-quality-audit` — code-quality-audit — `coding` — tier `domain` — score `6810`
+107. `admin-devops` — admin-devops — `coding` — tier `domain` — score `6170`
+108. `tgcli` — tgcli — `coding` — tier `domain` — score `5600`
+109. `claude-code-mastery` — claude-code-mastery — `coding` — tier `domain` — score `5430`
+110. `milan-jovanovic-blog` — milan-jovanovic-blog — `coding` — tier `domain` — score `5420`
+111. `senior-qa-engineer` — senior-qa-engineer — `testing` — tier `domain` — score `6091`
+112. `media-writer` — media-writer — `testing` — tier `domain` — score `7030`
+113. `direction-technique` — direction-technique — `testing` — tier `domain` — score `12760`
+114. `design-system-foundations` — design-system-foundations — `testing` — tier `domain` — score `7010`
+115. `content-management` — content-management — `testing` — tier `domain` — score `5640`
+116. `task-orchestrator` — task-orchestrator — `testing` — tier `domain` — score `4810`
+117. `code-quality` — code-quality — `testing` — tier `domain` — score `3430`
+118. `typescript-e2e-testing` — typescript-e2e-testing — `testing` — tier `domain` — score `18814`
+119. `vue-testing-best-practices` — vue-testing-best-practices — `testing` — tier `domain` — score `3063`
+120. `argocdreview` — argocdreview — `testing` — tier `domain` — score `3903`
+121. `honest-review` — honest-review — `testing` — tier `domain` — score `4642`
+122. `nextjs-expert` — nextjs-expert — `testing` — tier `domain` — score `7520`
+123. `lead-dev` — lead-dev — `testing` — tier `domain` — score `6080`
+124. `direction-marketing` — direction-marketing — `testing` — tier `domain` — score `5910`
+125. `direction-commerciale` — direction-commerciale — `testing` — tier `domain` — score `5980`
+126. `quality-gates` — quality-gates — `testing` — tier `domain` — score `3596`
+127. `code-review-playbook` — code-review-playbook — `testing` — tier `domain` — score `3346`
+128. `seo-expert` — seo-expert — `testing` — tier `domain` — score `9470`
+129. `marketing-analytics` — marketing-analytics — `testing` — tier `domain` — score `6230`
+130. `customer-success` — customer-success — `testing` — tier `domain` — score `5330`
+131. `marketing-ops` — marketing-ops — `testing` — tier `domain` — score `3890`
+132. `langgraph-testing-evaluation` — langgraph-testing-evaluation — `testing` — tier `domain` — score `2600`
+133. `code-review-excellence` — code-review-excellence — `testing` — tier `domain` — score `4264`
+134. `nsfc-reviewers` — nsfc-reviewers — `testing` — tier `domain` — score `2664`
+135. `vitest` — vitest — `testing` — tier `domain` — score `9335`
+136. `building-forms` — building-forms — `docs` — tier `domain` — score `4872`
+137. `botchan-net` — botchan-net — `docs` — tier `domain` — score `60301`
+138. `dotlottie-web` — dotlottie-web — `docs` — tier `domain` — score `34111`
+139. `cloversec-ctf-build-dockerizer` — cloversec-ctf-build-dockerizer — `docs` — tier `domain` — score `19271`
+140. `neta` — neta — `docs` — tier `domain` — score `12771`
+141. `afk-claude-telegram-bridge` — afk-claude-telegram-bridge — `docs` — tier `domain` — score `12191`
+142. `sasatech-next-architecture` — sasatech-next-architecture — `docs` — tier `domain` — score `11941`
+143. `claw-beacon` — claw-beacon — `docs` — tier `domain` — score `11581`
+144. `xint` — xint — `docs` — tier `domain` — score `11311`
+145. `debrief` — debrief — `docs` — tier `domain` — score `10201`
+146. `skills-skills` — skills-skills — `docs` — tier `domain` — score `8371`
+147. `savethetokens` — savethetokens — `docs` — tier `domain` — score `5871`
+148. `adventure` — adventure — `docs` — tier `domain` — score `5791`
+149. `seo-geo-optimizer` — seo-geo-optimizer — `docs` — tier `domain` — score `5721`
+150. `forge` — forge — `docs` — tier `domain` — score `5311`
+151. `skill-builder` — skill-builder — `docs` — tier `domain` — score `5231`
+152. `util-youtube-analyzer` — util-youtube-analyzer — `docs` — tier `domain` — score `5231`
+153. `ui-extractor` — ui-extractor — `docs` — tier `domain` — score `4771`
+154. `remembering` — remembering — `docs` — tier `domain` — score `4261`
+155. `ai-data-engineering` — ai-data-engineering — `docs` — tier `domain` — score `3861`
+156. `skill-authoring` — skill-authoring — `security` — tier `domain` — score `20890`
+157. `token-optimizer` — token-optimizer — `security` — tier `domain` — score `6220`
+158. `node-aws-security-audit` — node-aws-security-audit — `security` — tier `domain` — score `3760`
+159. `lucia-auth` — lucia-auth — `security` — tier `domain` — score `4931`
+160. `security-patterns` — security-patterns — `security` — tier `domain` — score `8847`
+161. `spring-boot-security-jwt` — spring-boot-security-jwt — `security` — tier `domain` — score `3740`
+162. `security-audit` — security-audit — `security` — tier `domain` — score `4311`
+163. `workos-authkit-nextjs` — workos-authkit-nextjs — `security` — tier `domain` — score `4386`
+164. `owasp-security-check` — owasp-security-check — `security` — tier `domain` — score `4059`
+165. `workos-authkit-base` — workos-authkit-base — `security` — tier `domain` — score `4383`
+166. `workos-authkit-react` — workos-authkit-react — `security` — tier `domain` — score `4383`
+167. `workos-authkit-react-router` — workos-authkit-react-router — `security` — tier `domain` — score `4382`
+168. `workos-authkit-tanstack-start` — workos-authkit-tanstack-start — `security` — tier `domain` — score `4382`
+169. `workos-authkit-vanilla-js` — workos-authkit-vanilla-js — `security` — tier `domain` — score `4382`
+170. `architecting-security` — architecting-security — `security` — tier `domain` — score `4021`
+171. `implementing-compliance` — implementing-compliance — `security` — tier `domain` — score `3161`
+172. `better-auth` — better-auth — `security` — tier `domain` — score `31680`
+173. `workos-api-authkit` — workos-api-authkit — `security` — tier `domain` — score `4380`
+174. `workos-migrate-auth0` — workos-migrate-auth0 — `security` — tier `domain` — score `4380`
+175. `workos-migrate-better-auth` — workos-migrate-better-auth — `security` — tier `domain` — score `4380`
+176. `csv-data-summarizer` — csv-data-summarizer — `data` — tier `domain` — score `4580`
+177. `transcript-pipeline` — transcript-pipeline — `data` — tier `domain` — score `6460`
+178. `data-analysis` — data-analysis — `data` — tier `domain` — score `3445`
+179. `visualizing-data` — visualizing-data — `data` — tier `domain` — score `4882`
+180. `using-vector-databases` — using-vector-databases — `data` — tier `domain` — score `3381`
+181. `tufte-data-viz` — tufte-data-viz — `data` — tier `domain` — score `3200`
+182. `sf-metadata` — sf-metadata — `data` — tier `domain` — score `3459`
+183. `good-mp-post` — good-mp-post — `data` — tier `domain` — score `3520`
+184. `sf-data` — sf-data — `data` — tier `domain` — score `3709`
+185. `using-document-databases` — using-document-databases — `data` — tier `domain` — score `3281`
+186. `database-patterns` — database-patterns — `data` — tier `domain` — score `6175`
+187. `transforming-data` — transforming-data — `data` — tier `domain` — score `2651`
+188. `golden-dataset` — golden-dataset — `data` — tier `domain` — score `4804`
+189. `testing-handbook-skills` — testing-handbook-skills — `data` — tier `domain` — score `5160`
+190. `mysql` — mysql — `data` — tier `domain` — score `3720`
+191. `cosmosdb-best-practices` — cosmosdb-best-practices — `data` — tier `domain` — score `14366`
+192. `autonomous-claude-sandbox` — autonomous-claude-sandbox — `data` — tier `domain` — score `2590`
+193. `cloudflare-sandbox` — cloudflare-sandbox — `data` — tier `domain` — score `2590`
+194. `dbos-python` — dbos-python — `data` — tier `domain` — score `6737`
+195. `dbos-typescript` — dbos-typescript — `data` — tier `domain` — score `6557`
+196. `utilities` — utilities — `devops` — tier `domain` — score `82340`
+197. `auditing-wcag` — auditing-wcag — `devops` — tier `domain` — score `6380`
+198. `alicloud-compute-ecs` — alicloud-compute-ecs — `devops` — tier `domain` — score `4012`
+199. `agent-council` — agent-council — `devops` — tier `domain` — score `3580`
+200. `recon` — recon — `devops` — tier `domain` — score `3144`
+201. `media` — media — `devops` — tier `domain` — score `11330`
+202. `thealgorithm` — thealgorithm — `devops` — tier `domain` — score `3124`
+203. `scraping` — scraping — `devops` — tier `domain` — score `4180`
+204. `jupyter-notebooks` — jupyter-notebooks — `devops` — tier `domain` — score `2920`
+205. `monitoring-observability` — monitoring-observability — `devops` — tier `domain` — score `9015`
+206. `art` — art — `devops` — tier `domain` — score `4335`
+207. `argocdcommand` — argocdcommand — `devops` — tier `domain` — score `3902`
+208. `parser` — parser — `devops` — tier `domain` — score `4462`
+209. `telos` — telos — `devops` — tier `domain` — score `5013`
+210. `alicloud-network-alb` — alicloud-network-alb — `devops` — tier `domain` — score `4470`
+211. `tscircuit` — tscircuit — `devops` — tier `domain` — score `16792`
+212. `agents` — agents — `devops` — tier `domain` — score `3765`
+213. `operating-kubernetes` — operating-kubernetes — `devops` — tier `domain` — score `2951`
+214. `ultracite` — ultracite — `devops` — tier `domain` — score `3895`
+215. `remotion` — remotion — `devops` — tier `domain` — score `6532`
+216. `devops` — devops — `devops` — tier `domain` — score `2972`
+217. `managing-incidents` — managing-incidents — `devops` — tier `domain` — score `3091`
+218. `specdev` — specdev — `devops` — tier `domain` — score `4710`
+219. `venue-templates` — venue-templates — `devops` — tier `domain` — score `3460`
+220. `timesfm-forecasting` — timesfm-forecasting — `devops` — tier `domain` — score `2550`
+221. `beads-ccpm` — beads-ccpm — `product` — tier `domain` — score `13780`
+222. `medusajs-developer` — medusajs-developer — `product` — tier `domain` — score `4182`
+223. `skill-development` — skill-development — `product` — tier `domain` — score `4170`
+224. `vchart-development-assistant` — vchart-development-assistant — `product` — tier `domain` — score `25783`
+225. `vtable-development-assistant` — vtable development assistant — `product` — tier `domain` — score `6534`
+226. `nsfc-roadmap` — nsfc-roadmap — `product` — tier `domain` — score `3363`
+227. `trustworthy-experiments` — trustworthy-experiments — `product` — tier `domain` — score `3711`
+228. `frappe-app-development` — frappe-app-development — `product` — tier `domain` — score `3401`
+229. `4d-v21` — 4d-v21 — `product` — tier `domain` — score `361730`
+230. `redis-development` — redis-development — `product` — tier `domain` — score `7545`
+231. `mcp-builder` — mcp-builder — `design` — tier `domain` — score `6910`
+232. `fastmcp-builder` — fastmcp-builder — `design` — tier `domain` — score `5530`
+233. `ui-ux-design-pro` — ui-ux-design-pro — `design` — tier `domain` — score `5522`
+234. `planning-disaster-recovery` — planning-disaster-recovery — `design` — tier `domain` — score `3241`
+235. `nuxt-ui-v4` — nuxt-ui-v4 — `design` — tier `domain` — score `7214`
+236. `designing-distributed-systems` — designing-distributed-systems — `design` — tier `domain` — score `3192`
+237. `displaying-timelines` — displaying-timelines — `design` — tier `domain` — score `4571`
+238. `using-message-queues` — using-message-queues — `design` — tier `domain` — score `3311`
+239. `implementing-search-filter` — implementing-search-filter — `design` — tier `domain` — score `3011`
+240. `track-equity-cumulative-return` — track-equity-cumulative-return — `design` — tier `domain` — score `2950`
+241. `web-search` — web-search — `research` — tier `domain` — score `12860`
+242. `search-tcp` — search-tcp — `research` — tier `domain` — score `12770`
+243. `research` — research — `research` — tier `domain` — score `7320`
+244. `route-researcher` — route-researcher — `research` — tier `domain` — score `2980`
+245. `neuropixels-analysis` — neuropixels-analysis — `research` — tier `domain` — score `3071`
+246. `deep-research` — deep-research — `research` — tier `domain` — score `4513`
+247. `deep-article-research` — deep-article-research — `research` — tier `domain` — score `3070`
+248. `nsfc-research-content-writer` — nsfc-research-content-writer — `research` — tier `domain` — score `3929`
+249. `arxiv-researcher` — arxiv-researcher — `research` — tier `domain` — score `5320`
+250. `nsfc-schematic` — nsfc-schematic — `research` — tier `domain` — score `3993`
+251. `depresearch` — depresearch — `research` — tier `domain` — score `3240`
+252. `jira-communication` — jira-communication — `research` — tier `domain` — score `2951`
+253. `deep-dive-analysis` — deep-dive-analysis — `research` — tier `domain` — score `2501`
+254. `web-search-pro` — web-search-pro — `research` — tier `domain` — score `6434`
+255. `pgvector-search` — pgvector-search — `research` — tier `domain` — score `5411`
+256. `blockscout-analysis` — blockscout-analysis — `research` — tier `domain` — score `4451`
+257. `vulnerability-analysis` — vulnerability-analysis — `research` — tier `domain` — score `6370`
+258. `root-cause-analysis` — root-cause-analysis — `research` — tier `domain` — score `5410`
+259. `business-case-analysis` — business-case-analysis — `research` — tier `domain` — score `5410`
+260. `market-analysis-patterns` — market-analysis-patterns — `research` — tier `domain` — score `5410`
+261. `fabric` — fabric — `integration` — tier `domain` — score `85970`
+262. `inbound-cli` — inbound-cli — `integration` — tier `domain` — score `72700`
+263. `openrouter-integration` — openrouter-integration — `integration` — tier `domain` — score `5440`
+264. `markdown-to-epub-converter` — markdown-to-epub-converter — `integration` — tier `domain` — score `4580`
+265. `algorithmic-art-generation` — algorithmic art generation — `integration` — tier `domain` — score `4580`
+266. `ffuf-web-fuzzing` — ffuf-web-fuzzing — `integration` — tier `domain` — score `4580`
+267. `pymc-bayesian-modeling` — pymc-bayesian-modeling — `integration` — tier `domain` — score `4580`
+268. `when-stuck---problem-solving-dispatch` — when stuck - problem-solving dispatch — `integration` — tier `domain` — score `4580`
+269. `claude-agent-sdk` — claude-agent-sdk — `integration` — tier `domain` — score `3800`
+270. `clinical-reports` — clinical-reports — `integration` — tier `domain` — score `5287`
+271. `resend-cli` — resend-cli — `integration` — tier `domain` — score `10160`
+272. `python-refactor` — python-refactor — `integration` — tier `domain` — score `3604`
+273. `se-dev-plugin` — se-dev-plugin — `integration` — tier `domain` — score `4742`
+274. `concept-dev` — concept-dev — `integration` — tier `domain` — score `6601`
+275. `cycling-training` — cycling-training — `integration` — tier `domain` — score `5040`
+276. `analyze-and-recommend-third-party-optimizations` — analyze-and-recommend-third-party-optimizations — `performance` — tier `domain` — score `8300`
+277. `performance` — performance — `performance` — tier `domain` — score `10445`
+278. `wordpress-performance-best-practices` — wordpress-performance-best-practices — `performance` — tier `domain` — score `8206`
+279. `career-market-optimization-engine` — career-market-optimization-engine — `performance` — tier `domain` — score `6750`
+280. `app-store-optimization` — app-store-optimization — `performance` — tier `domain` — score `2527`
+281. `expo-react-native-performance` — expo-react-native-performance — `performance` — tier `domain` — score `8784`
+282. `fastapi` — fastapi — `performance` — tier `domain` — score `5114`
+283. `fastmcp-server` — fastmcp-server — `performance` — tier `domain` — score `5833`
+284. `nginx-c-module-perf` — nginx-c-module-perf — `performance` — tier `domain` — score `8592`
+285. `supabase` — supabase — `performance` — tier `domain` — score `7512`
+286. `prd-taskmaster` — prd-taskmaster — `workflow` — tier `domain` — score `3701`
+287. `media-processing` — media-processing — `workflow` — tier `domain` — score `3341`
+288. `legacy-to-ai-ready` — legacy-to-ai-ready — `workflow` — tier `domain` — score `4090`
+289. `project-understanding` — project-understanding — `workflow` — tier `domain` — score `7291`
+290. `x-founder-operations` — x-founder-operations — `workflow` — tier `domain` — score `4630`
+291. `git-advanced-workflows` — git-advanced-workflows — `workflow` — tier `domain` — score `3902`
+292. `playwright-browser-automation` — playwright browser automation — `workflow` — tier `domain` — score `3902`
+293. `n8n-v2` — n8n-v2 — `workflow` — tier `domain` — score `3140`
+294. `implementing-mlops` — implementing-mlops — `workflow` — tier `domain` — score `3201`
+295. `interview-master` — interview-master — `workflow` — tier `domain` — score `3330`
+296. `projectmanagement` — projectmanagement — `workflow` — tier `domain` — score `5503`
+297. `agently-task-dev` — agently-task-dev — `workflow` — tier `domain` — score `3950`
+298. `start-specification` — start-specification — `workflow` — tier `domain` — score `5041`
+299. `qa-manual-istqb` — qa-manual-istqb — `workflow` — tier `domain` — score `4320`
+300. `implementing-gitops` — implementing-gitops — `workflow` — tier `domain` — score `3031`

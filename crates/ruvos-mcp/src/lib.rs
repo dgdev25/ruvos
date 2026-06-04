@@ -15,9 +15,13 @@ pub mod error;
 pub mod paths;
 pub mod protocol;
 pub mod relay;
+pub mod runtime;
 pub mod safety;
+pub mod sandbox;
 pub mod server;
+pub mod skills;
 pub mod store;
+pub mod swarm;
 pub mod tools;
 
 pub use error::{Result, RuvosError};
