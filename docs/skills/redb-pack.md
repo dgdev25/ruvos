@@ -7,6 +7,7 @@ live swarm state store.
 
 - `store.redb` — live runtime state
 - `skills.redb` — normalized skills pack
+- `docs/skills/public/skills.redb` — bundled public pack shipped with the repo
 
 ## Tables
 
@@ -35,18 +36,20 @@ live swarm state store.
 2. Use the generated audit manifest as the deterministic input for the pack builder.
 3. Use the curated public selection manifest at `docs/skills/selected-300-ruvos.json` for the default shipped pack.
 4. Run `ruvos skills pack build` with the audit manifest, curated selection manifest, and source SQLite DB.
-5. Normalize each selected skill into canonical metadata and chunked text.
-6. Hash each chunk by content.
-7. Store each unique chunk once in `chunks`.
-8. Store the ordered chunk list in `skill_chunks`.
-9. Update tag, alias, term, and source indexes.
-10. Record build metadata in `pack_meta`.
+5. Run `ruvos skills pack install` to copy a bundled public pack into the runtime data directory.
+6. Normalize each selected skill into canonical metadata and its primary markdown skill body.
+7. Hash each chunk by content.
+8. Store each unique chunk once in `chunks`.
+9. Store the ordered chunk list in `skill_chunks`.
+10. Update tag, alias, term, and source indexes.
+11. Record build metadata in `pack_meta`.
 
 ## Selection policy
 
 - The public default pack is the curated 300-skill selection in `docs/skills/selected-300-ruvos.json`.
 - `core`, `domain`, and `archive` candidates remain available for alternate pack builds.
 - `exclude` candidates are skipped from pack generation entirely.
+- `skills pack install` copies the bundled `docs/skills/public/skills.redb` into `$RUVOS_HOME/skills.redb` (or `./.ruvos/skills.redb` when unset).
 
 ## Default pack
 
@@ -62,4 +65,5 @@ the curated selection manifest.
 - `agent.spawn` uses a provided bundle when present; otherwise it auto-selects up to 3 relevant skills from `skills.redb`.
 - Each orchestration writes the chosen bundle to `generated/<orchestration_id>/selected-skills.json`.
 - Each completed run records success/failure feedback back into `skills.redb`.
+- Public users install the pack with `ruvos skills pack install`; the installer copies `docs/skills/public/skills.redb` into the runtime data directory.
 - Use feedback to rank the best skills over time.

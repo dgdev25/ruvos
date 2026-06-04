@@ -125,6 +125,13 @@ pub struct SkillsPackReport {
     pub corpus_bytes: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SkillsInstallReport {
+    pub source: PathBuf,
+    pub destination: PathBuf,
+    pub bytes_copied: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackBuildConfig {
     pub manifest_path: PathBuf,
@@ -262,6 +269,28 @@ pub fn build_pack(config: PackBuildConfig) -> anyhow::Result<SkillsPackReport> {
         selected_chunks,
         stored_bytes,
         corpus_bytes: manifest.summary.total_bytes,
+    })
+}
+
+pub fn install_pack(
+    source: impl AsRef<Path>,
+    destination: impl AsRef<Path>,
+) -> anyhow::Result<SkillsInstallReport> {
+    let source = source.as_ref().to_path_buf();
+    let destination = destination.as_ref().to_path_buf();
+    if !source.exists() {
+        anyhow::bail!("bundled skills pack {} does not exist", source.display());
+    }
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let bytes_copied = std::fs::copy(&source, &destination)
+        .with_context(|| format!("copying {} to {}", source.display(), destination.display()))?;
+    Ok(SkillsInstallReport {
+        source,
+        destination,
+        bytes_copied,
     })
 }
 
@@ -819,29 +848,44 @@ fn load_skill_chunks(
         SELECT
             COALESCE(f.path, ''),
             COALESCE(f.content, ''),
-            COALESCE(f.is_markdown, 0),
-            COALESCE(f.is_script, 0)
+            COALESCE(f.is_markdown, 0)
         FROM skill_files f
         WHERE f.skill_id = ?1
+          AND COALESCE(f.is_markdown, 0) != 0
         ORDER BY CASE WHEN f.path = 'SKILL.md' THEN 0 ELSE 1 END, f.path
+        LIMIT 1
         "#,
     )?;
     let mut rows = stmt.query(params![skill.db_id])?;
     let mut out = Vec::new();
-    while let Some(row) = rows.next()? {
-        let path: String = row.get(0)?;
+    let mut primary = None;
+    if let Some(row) = rows.next()? {
         let content: String = row.get(1)?;
-        let is_markdown: i64 = row.get(2)?;
-        let is_script: i64 = row.get(3)?;
-        if content.trim().is_empty() {
-            continue;
+        if !content.trim().is_empty() {
+            primary = Some(content);
         }
-        if is_markdown == 0 && is_script == 0 {
-            continue;
+    }
+
+    if primary.is_none() {
+        let mut fallback_stmt = conn.prepare(
+            r#"
+            SELECT COALESCE(f.content, '')
+            FROM skill_files f
+            WHERE f.skill_id = ?1
+            ORDER BY CASE WHEN f.path = 'SKILL.md' THEN 0 ELSE 1 END, f.path
+            LIMIT 1
+            "#,
+        )?;
+        let mut fallback_rows = fallback_stmt.query(params![skill.db_id])?;
+        if let Some(row) = fallback_rows.next()? {
+            let content: String = row.get(0)?;
+            if !content.trim().is_empty() {
+                primary = Some(content);
+            }
         }
-        if path != "SKILL.md" && is_markdown == 0 {
-            continue;
-        }
+    }
+
+    if let Some(content) = primary {
         for chunk in chunk_text(&content) {
             let bytes = chunk.into_bytes();
             let hash = hash_bytes(&bytes);
@@ -944,6 +988,13 @@ pub fn print_pack_summary(report: &SkillsPackReport) {
     println!("selected chunks: {}", report.selected_chunks);
     println!("stored bytes: {}", report.stored_bytes);
     println!("corpus bytes: {}", report.corpus_bytes);
+}
+
+pub fn print_install_summary(report: &SkillsInstallReport) {
+    println!("skills pack install complete");
+    println!("source: {}", report.source.display());
+    println!("destination: {}", report.destination.display());
+    println!("bytes copied: {}", report.bytes_copied);
 }
 
 #[cfg(test)]
@@ -1080,5 +1131,20 @@ mod tests {
         assert_eq!(build.selection_manifest.as_ref(), Some(&curated_path));
         let store = SkillStore::open(&output).unwrap();
         assert_eq!(store.list_skills().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn install_pack_copies_bundled_pack_to_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("skills.redb");
+        let destination = dir.path().join("nested").join("skills.redb");
+        std::fs::write(&source, b"pack-bytes").unwrap();
+
+        let report = install_pack(&source, &destination).unwrap();
+
+        assert_eq!(report.source, source);
+        assert_eq!(report.destination, destination);
+        assert_eq!(report.bytes_copied, 10);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"pack-bytes");
     }
 }

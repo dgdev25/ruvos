@@ -124,6 +124,15 @@ enum SkillsPackCommand {
         #[arg(long, value_enum)]
         extra_tier: Vec<ruvos_cli::commands::skills::SkillsPackTier>,
     },
+    /// Install a bundled `skills.redb` into the runtime data directory.
+    Install {
+        /// Source path for the bundled pack.
+        #[arg(long, default_value = "docs/skills/public/skills.redb")]
+        source: PathBuf,
+        /// Destination path for the runtime pack.
+        #[arg(long)]
+        destination: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -177,6 +186,15 @@ async fn main() -> anyhow::Result<()> {
                         },
                     )?;
                     ruvos_cli::commands::skills::print_pack_summary(&report);
+                }
+                SkillsPackCommand::Install {
+                    source,
+                    destination,
+                } => {
+                    let destination =
+                        destination.unwrap_or_else(ruvos_mcp::paths::skills_pack_file);
+                    let report = ruvos_cli::commands::skills::install_pack(source, destination)?;
+                    ruvos_cli::commands::skills::print_install_summary(&report);
                 }
             },
         },

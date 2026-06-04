@@ -31,6 +31,14 @@ Then build the pack:
 ruvos skills pack build --manifest generated/skills-audit.json --selection-manifest docs/skills/selected-300-ruvos.json --output generated/skills.redb
 ```
 
+Then install the bundled pack into the runtime data directory:
+
+```bash
+ruvos skills pack install --source docs/skills/public/skills.redb
+```
+
+The bundled pack lives at `docs/skills/public/skills.redb` in the repository.
+
 ## Selection tiers
 
 - `core` — optional inclusion for alternate pack builds
