@@ -124,6 +124,12 @@ fn swarm_metrics(
     })
 }
 
+struct TopologyDecision {
+    topology: String,
+    reason: String,
+    source: String,
+}
+
 fn swarm_text(params: &Value) -> String {
     [
         params.get("objective").and_then(|v| v.as_str()),
@@ -140,9 +146,25 @@ fn swarm_text(params: &Value) -> String {
     .to_lowercase()
 }
 
-fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> (String, String) {
+fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> TopologyDecision {
     if let Some(topology) = params.get("topology").and_then(|v| v.as_str()) {
-        return (topology.to_string(), "explicit".to_string());
+        return TopologyDecision {
+            topology: topology.to_string(),
+            reason: "explicit".to_string(),
+            source: "explicit".to_string(),
+        };
+    }
+
+    let objective = params
+        .get("objective")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    if let Some((topology, reason)) = swarm::learned_topology(objective, member_count, max_agents) {
+        return TopologyDecision {
+            topology,
+            reason,
+            source: "learned".to_string(),
+        };
     }
 
     let text = swarm_text(params);
@@ -159,18 +181,20 @@ fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> (Stri
         "swarm",
     ];
     if mesh_keywords.iter().any(|needle| text.contains(needle)) {
-        return (
-            "mesh".to_string(),
-            "inferred from collaboration keywords".to_string(),
-        );
+        return TopologyDecision {
+            topology: "mesh".to_string(),
+            reason: "inferred from collaboration keywords".to_string(),
+            source: "inferred".to_string(),
+        };
     }
 
     let adaptive_keywords = ["adaptive", "self-organ", "self organiz", "dynamic"];
     if adaptive_keywords.iter().any(|needle| text.contains(needle)) {
-        return (
-            "adaptive".to_string(),
-            "inferred from adaptive keywords".to_string(),
-        );
+        return TopologyDecision {
+            topology: "adaptive".to_string(),
+            reason: "inferred from adaptive keywords".to_string(),
+            source: "inferred".to_string(),
+        };
     }
 
     let hybrid_keywords = [
@@ -188,16 +212,18 @@ fn infer_topology(params: &Value, member_count: usize, max_agents: u32) -> (Stri
         || member_count > 6
         || max_agents > 8
     {
-        return (
-            "hybrid".to_string(),
-            "inferred from task size or recovery keywords".to_string(),
-        );
+        return TopologyDecision {
+            topology: "hybrid".to_string(),
+            reason: "inferred from task size or recovery keywords".to_string(),
+            source: "inferred".to_string(),
+        };
     }
 
-    (
-        "hierarchical".to_string(),
-        "defaulted to hierarchical".to_string(),
-    )
+    TopologyDecision {
+        topology: "hierarchical".to_string(),
+        reason: "defaulted to hierarchical".to_string(),
+        source: "inferred".to_string(),
+    }
 }
 
 fn member_exists(state: &swarm::SwarmState, agent_id: &str) -> bool {
@@ -247,6 +273,7 @@ fn finalize_swarm(
     requested_swarm_id: Option<&str>,
     status: &str,
     event_kind: &str,
+    learning_detail: &str,
     mut payload: Value,
 ) -> Result<swarm::SwarmState> {
     let mut state = load_active_swarm(requested_swarm_id)?;
@@ -264,6 +291,14 @@ fn finalize_swarm(
         agent_id: None,
         task_id: None,
     });
+
+    if let Err(error) = swarm::record_swarm_learning(&stored, status, learning_detail) {
+        tracing::debug!(
+            "swarm learning record failed for {}: {:?}",
+            stored.id,
+            error
+        );
+    }
 
     Ok(stored)
 }
@@ -429,7 +464,9 @@ impl ToolHandler for SwarmCreateHandler {
                 .map(String::from)
                 .unwrap_or_else(|| relay::instance_id().to_string());
             let mut members = parse_members(&params);
-            let (topology, topology_reason) = infer_topology(&params, members.len(), max_agents);
+            let topology_decision = infer_topology(&params, members.len(), max_agents);
+            let topology = topology_decision.topology.clone();
+            let topology_reason = topology_decision.reason.clone();
             if !members.iter().any(|member| member.agent_id == coordinator) {
                 members.insert(
                     0,
@@ -474,12 +511,8 @@ impl ToolHandler for SwarmCreateHandler {
             });
 
             Ok(json!({
-                "status": "created",
-                "topology_source": if params.get("topology").and_then(|v| v.as_str()).is_some() {
-                    "explicit"
-                } else {
-                    "inferred"
-                },
+            "status": "created",
+                "topology_source": topology_decision.source,
                 "topology_reason": topology_reason,
                 "swarm": stored
             }))
@@ -805,6 +838,7 @@ impl ToolHandler for SwarmCompleteHandler {
                 requested_swarm_id,
                 "completed",
                 "swarm.completed",
+                &summary,
                 json!({
                     "swarm_id": requested_swarm_id,
                     "summary": summary,
@@ -854,6 +888,7 @@ impl ToolHandler for SwarmFailHandler {
                 requested_swarm_id,
                 "failed",
                 "swarm.failed",
+                &reason,
                 json!({
                     "swarm_id": requested_swarm_id,
                     "reason": reason,

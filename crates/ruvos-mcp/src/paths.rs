@@ -87,6 +87,16 @@ pub fn swarm_file() -> PathBuf {
     data_root().join("swarm.json")
 }
 
+/// Path to the JSON-backed swarm learning policy store.
+pub fn swarm_policy_file() -> PathBuf {
+    data_root().join("swarm-policy.json")
+}
+
+/// Path to the JSON-backed swarm learning trajectory store.
+pub fn swarm_learning_file() -> PathBuf {
+    data_root().join("swarm-learning.json")
+}
+
 /// Path to the portable skills pack.
 pub fn skills_pack_file() -> PathBuf {
     data_root().join("skills.redb")
