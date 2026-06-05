@@ -10,14 +10,11 @@
 //! here too; its persistence + wiring is applied in `memory.rs`.
 
 use super::embedding::tokenize;
+use crate::constants::{RETRIEVAL_B, RETRIEVAL_K1, RETRIEVAL_RRF_K};
 use crate::runtime::RuntimeEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
-
-const K1: f32 = 1.2;
-const B: f32 = 0.75;
-const RRF_K: f32 = 60.0;
 
 /// Build a normalized retrieval trace event payload.
 pub fn retrieval_trace_event(
@@ -120,7 +117,8 @@ where
                     }
                     let n_qi = *df.get(qt.as_str()).unwrap_or(&0.0);
                     let idf = (((n - n_qi + 0.5) / (n_qi + 0.5)) + 1.0).ln();
-                    idf * (f * (K1 + 1.0)) / (f + K1 * (1.0 - B + B * dl / avgdl))
+                    idf * (f * (RETRIEVAL_K1 + 1.0))
+                        / (f + RETRIEVAL_K1 * (1.0 - RETRIEVAL_B + RETRIEVAL_B * dl / avgdl))
                 })
                 .sum();
             (i, score)
@@ -154,7 +152,7 @@ where
     let mut score: HashMap<&str, f32> = HashMap::new();
     for ranking in rankings {
         for (rank, id) in ranking.iter().enumerate() {
-            *score.entry(id.as_str()).or_insert(0.0) += 1.0 / (RRF_K + rank as f32 + 1.0);
+            *score.entry(id.as_str()).or_insert(0.0) += 1.0 / (RETRIEVAL_RRF_K + rank as f32 + 1.0);
         }
     }
     let mut v: Vec<(&str, f32)> = score.into_iter().collect();

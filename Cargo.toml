@@ -6,6 +6,7 @@ resolver = "2"
 # LLM serving runtime (ruvllm — pulls candle/hf-hub; deferred to v2 per the v1
 # no-local-inference decision), and rvf-adapters (a folder of external-system adapters).
 members = [
+    "crates/ruvos-compress",
     "crates/ruvos-cli",
     "crates/ruvos-mcp",
     "crates/ruvos-host",
@@ -57,6 +58,7 @@ members = [
     "substrate/ruvos-stream",
 ]
 default-members = [
+    "crates/ruvos-compress",
     "crates/ruvos-cli",
     "crates/ruvos-mcp",
     "crates/ruvos-host",

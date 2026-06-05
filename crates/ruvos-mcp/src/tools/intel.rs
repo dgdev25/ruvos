@@ -13,7 +13,14 @@
 //! survive process restarts (clusters re-form from stored trajectories).
 
 use super::handler::{ExecuteFuture, ToolHandler};
-use crate::{paths, Result, RuvosError};
+use crate::{
+    constants::{
+        DEFAULT_INTEL_TOP_K, DEFAULT_INTENT_TOP_K, INTEL_KIND_BOOST, INTEL_SONA_BOOST,
+        INTEL_SONA_K_CLUSTERS, INTEL_SONA_MIN_CLUSTER_SIZE, INTEL_SONA_QUALITY_THRESHOLD,
+        INTENT_CONFIDENCE_SCALE, INTENT_TAG_OVERLAP_BOOST, SWARM_TRAJECTORY_FINALIZE_SCORE,
+    },
+    paths, Result, RuvosError,
+};
 use ruvector_sona::{PatternConfig, QueryTrajectory, ReasoningBank};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -48,9 +55,9 @@ lazy_static::lazy_static! {
     /// Protected by the same FILE_LOCK so store + bank updates are atomic.
     static ref SONA_BANK: Mutex<ReasoningBank> = Mutex::new(ReasoningBank::new(PatternConfig {
         embedding_dim: super::embedding::EMBED_DIM,
-        k_clusters: 8,
-        min_cluster_size: 1,
-        quality_threshold: 0.05,
+        k_clusters: INTEL_SONA_K_CLUSTERS,
+        min_cluster_size: INTEL_SONA_MIN_CLUSTER_SIZE,
+        quality_threshold: INTEL_SONA_QUALITY_THRESHOLD,
         ..PatternConfig::default()
     }));
 }
@@ -93,6 +100,29 @@ fn save_intents(intents: &[IntentRecord]) -> Result<()> {
     fs::rename(&tmp, &path)
         .map_err(|e| RuvosError::InternalError(format!("commit intents: {}", e)))?;
     Ok(())
+}
+
+/// Record a best-effort intent signal in the same store used for stable
+/// runtime preferences and patterns.
+pub fn record_intent_signal(
+    kind: &str,
+    text: &str,
+    tags: &[String],
+    source: &str,
+    confidence: f64,
+) -> Result<()> {
+    let _guard = FILE_LOCK.lock().unwrap();
+    let mut intents = load_intents();
+    intents.push(IntentRecord {
+        id: Uuid::new_v4().to_string(),
+        kind: kind.to_string(),
+        text: text.to_string(),
+        tags: tags.to_vec(),
+        source: source.to_string(),
+        confidence: confidence.clamp(0.0, 1.0),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    });
+    save_intents(&intents)
 }
 
 fn tokenize(text: &str) -> Vec<String> {
@@ -243,7 +273,7 @@ fn pattern_to_trajectory(p: &Pattern, idx: u64) -> QueryTrajectory {
     let text = format!("{} {}", p.trajectory.join(" "), p.outcome);
     let embedding = super::embedding::embed(&text);
     let mut traj = QueryTrajectory::new(idx, embedding);
-    traj.finalize(0.8, 0);
+    traj.finalize(SWARM_TRAJECTORY_FINALIZE_SCORE, 0);
     traj
 }
 
@@ -350,7 +380,10 @@ impl ToolHandler for IntelPatternSearchHandler {
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
             let query = params["query"].as_str().unwrap_or_default().to_string();
-            let top_k = params.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+            let top_k = params
+                .get("top_k")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_INTEL_TOP_K as u64) as usize;
             let query_vec = tf(&tokenize(&query));
 
             let _guard = FILE_LOCK.lock().unwrap();
@@ -411,13 +444,17 @@ impl ToolHandler for IntelPatternSearchHandler {
                     std::collections::HashSet::new()
                 };
 
-            // Merge: patterns that appear in SONA results get a +0.1 boost.
+            // Merge: patterns that appear in SONA results get a small boost.
             let mut merged: Vec<(f64, &Pattern)> = patterns
                 .iter()
                 .map(|p| {
                     let text = format!("{} {}", p.trajectory.join(" "), p.outcome);
                     let tf_score = cosine(&query_vec, &tf(&tokenize(&text)));
-                    let sona_boost = if sona_hits.contains(&p.id) { 0.1 } else { 0.0 };
+                    let sona_boost = if sona_hits.contains(&p.id) {
+                        INTEL_SONA_BOOST
+                    } else {
+                        0.0
+                    };
                     (tf_score + sona_boost, p)
                 })
                 .filter(|(s, _)| *s > 0.0)
@@ -428,7 +465,7 @@ impl ToolHandler for IntelPatternSearchHandler {
                 merged = patterns
                     .iter()
                     .filter(|p| sona_hits.contains(&p.id))
-                    .map(|p| (0.1, p))
+                    .map(|p| (INTEL_SONA_BOOST, p))
                     .collect();
             } else if merged.is_empty() {
                 // Fall back to pure TF results (may be empty).
@@ -561,7 +598,10 @@ impl ToolHandler for IntelIntentSearchHandler {
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
             let query = params["query"].as_str().unwrap_or_default().to_string();
-            let top_k = params.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+            let top_k = params
+                .get("top_k")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_INTENT_TOP_K as u64) as usize;
             let kind_filter = params
                 .get("kind")
                 .and_then(|v| v.as_str())
@@ -591,12 +631,15 @@ impl ToolHandler for IntelIntentSearchHandler {
                         .filter(|tag| query_token_set.contains(&tag.to_lowercase()))
                         .count() as f64;
                     let kind_boost = if query_tokens.iter().any(|token| token == &intent.kind) {
-                        0.2
+                        INTEL_KIND_BOOST
                     } else {
                         0.0
                     };
                     (
-                        text_score + (tag_overlap * 0.1) + kind_boost + intent.confidence * 0.01,
+                        text_score
+                            + (tag_overlap * INTENT_TAG_OVERLAP_BOOST)
+                            + kind_boost
+                            + intent.confidence * INTENT_CONFIDENCE_SCALE,
                         intent,
                     )
                 })

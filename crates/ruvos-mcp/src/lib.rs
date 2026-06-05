@@ -1,4 +1,4 @@
-//! ruvos-mcp: JSON-RPC MCP server with 24 core tools.
+//! ruvos-mcp: JSON-RPC MCP server.
 //!
 //! The tool registry includes:
 //! - **memory** (4): search, store, retrieve, list
@@ -10,7 +10,10 @@
 //! - **gov** (3): witness_verify, health, events
 //! - **relay** (3): announce, list, send
 //! - **orchestrate** (1): run
+//! - **compress** (1): run
 
+mod compress_learning;
+pub mod constants;
 pub mod error;
 pub mod paths;
 pub mod protocol;

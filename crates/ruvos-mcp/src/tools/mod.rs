@@ -1,7 +1,8 @@
-//! Tool registry for all 50 MCP tools.
+//! Tool registry for all public MCP tools.
 
 pub mod agent;
 pub mod agent_store;
+pub mod compress;
 pub mod echo;
 pub mod embedding;
 pub mod gov;
@@ -30,12 +31,15 @@ pub struct ToolMetadata {
     pub domain: String,
 }
 
-/// Create a new registry with all 50 tools + test tools registered.
+/// Create a new registry with all core tools + test tools registered.
 pub fn create_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
     // Register test tool
     registry.register(Box::new(echo::EchoHandler));
+
+    // Register compression tools
+    registry.register(Box::new(compress::CompressRunHandler));
 
     // Register memory tools
     registry.register(Box::new(memory::MemorySearchHandler));
@@ -110,10 +114,17 @@ pub fn create_registry() -> ToolRegistry {
     registry
 }
 
-/// Return the registry of all 50 tools (metadata only).
+/// Return the registry of all tools (metadata only).
 pub fn tool_registry() -> Vec<ToolMetadata> {
-    vec![
+    let mut tools = vec![
         // Memory (4)
+        ToolMetadata {
+            name: "compress.run".to_string(),
+            description:
+                "Compress large text, JSON, code, or logs and return a retrieval reference"
+                    .to_string(),
+            domain: "compress".to_string(),
+        },
         ToolMetadata {
             name: "memory.search".to_string(),
             description: "Hybrid search — fuses dense vectors (HNSW/RaBitQ/ACORN) with BM25 \
@@ -392,7 +403,14 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Return numeric swarm health and throughput metrics".to_string(),
             domain: "swarm".to_string(),
         },
-    ]
+    ];
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+    tools
+}
+
+/// Return the number of public MCP tools currently advertised.
+pub fn public_tool_count() -> usize {
+    tool_registry().len()
 }
 
 #[cfg(test)]
@@ -403,8 +421,8 @@ mod integration_tests {
     #[test]
     fn test_full_registry_creation() {
         let registry = create_registry();
-        // All 50 tools + 1 test echo tool = 51
-        assert_eq!(registry.tool_count(), 51);
+        // All public tools plus the registry's test echo tool.
+        assert_eq!(registry.tool_count(), public_tool_count() + 1);
     }
 
     #[test]

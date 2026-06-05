@@ -3,6 +3,7 @@
 //! Single static binary entry point. Dispatches to subcommands (init, mcp serve, agent spawn, etc.).
 
 use clap::{Parser, Subcommand};
+use compress::defaults::{KEEP_HEAD_LINES, KEEP_TAIL_LINES, MAX_ARRAY_ITEMS, MIN_BYTES};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -36,6 +37,38 @@ enum Commands {
     Skills {
         #[command(subcommand)]
         command: SkillsCommand,
+    },
+    /// Run evaluation and regression reports.
+    Eval {
+        #[command(subcommand)]
+        command: EvalCommand,
+    },
+    /// Compress content from stdin or a file for the frozen baseline path used by Claude Code, Codex CLI, and Gemini CLI.
+    Compress {
+        /// Input file. If omitted, stdin is read.
+        #[arg(short, long)]
+        file: Option<PathBuf>,
+        /// Force a content kind; otherwise auto-detect.
+        #[arg(long, value_parser = ["auto", "json", "code", "log", "text"])]
+        kind: Option<String>,
+        /// Minimum input size before compression runs.
+        #[arg(long, default_value_t = MIN_BYTES)]
+        min_bytes: usize,
+        /// Number of lines to preserve from the start of text/log content.
+        #[arg(long, default_value_t = KEEP_HEAD_LINES)]
+        keep_head_lines: usize,
+        /// Number of lines to preserve from the end of text/log content.
+        #[arg(long, default_value_t = KEEP_TAIL_LINES)]
+        keep_tail_lines: usize,
+        /// Maximum items to keep when compressing JSON arrays.
+        #[arg(long, default_value_t = MAX_ARRAY_ITEMS)]
+        max_array_items: usize,
+        /// Optional session id. If set, originals are persisted into the .rvf session.
+        #[arg(long)]
+        session_id: Option<String>,
+        /// Print only the compressed payload.
+        #[arg(long)]
+        raw: bool,
     },
     /// Generate or verify the canonical contract manifest.
     Contracts {
@@ -135,6 +168,19 @@ enum SkillsPackCommand {
     },
 }
 
+#[derive(Subcommand)]
+enum EvalCommand {
+    /// Run the compression regression suite and print a JSON report.
+    Compress {
+        /// Write the JSON report to a file instead of only stdout.
+        #[arg(long)]
+        write: Option<PathBuf>,
+        /// Compare the current run against a saved baseline report.
+        #[arg(long)]
+        compare_to: Option<PathBuf>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize tracing
@@ -198,6 +244,35 @@ async fn main() -> anyhow::Result<()> {
                 }
             },
         },
+        Commands::Eval { command } => match command {
+            EvalCommand::Compress { write, compare_to } => {
+                ruvos_cli::commands::eval::run_compress(
+                    ruvos_cli::commands::eval::CompressEvalCommand { write, compare_to },
+                )?;
+            }
+        },
+        Commands::Compress {
+            file,
+            kind,
+            min_bytes,
+            keep_head_lines,
+            keep_tail_lines,
+            max_array_items,
+            session_id,
+            raw,
+        } => {
+            ruvos_cli::commands::compress::run(ruvos_cli::commands::compress::CompressCommand {
+                file,
+                kind,
+                min_bytes,
+                keep_head_lines,
+                keep_tail_lines,
+                max_array_items,
+                session_id,
+                raw,
+            })
+            .await?;
+        }
         Commands::Contracts { command } => match command {
             ContractsCommand::Generate { format, write } => {
                 ruvos_cli::commands::contracts::generate(format, write)?;

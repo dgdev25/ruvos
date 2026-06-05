@@ -12,6 +12,7 @@
 //! are merged (union by key, max score wins) before MMR.
 
 use super::handler::{ExecuteFuture, ToolHandler};
+use crate::constants::DEFAULT_MEMORY_TOP_K;
 use crate::runtime::{publish_event, RuntimeEvent};
 use crate::{paths, Result, RuvosError};
 use rulake::{LocalBackend, RuLake, SearchResult as LakeSearchResult};
@@ -170,6 +171,31 @@ fn save_store(store: &Store) -> Result<()> {
     std::fs::rename(&tmp, &path)
         .map_err(|e| RuvosError::InternalError(format!("commit memory: {}", e)))?;
     Ok(())
+}
+
+/// Record a best-effort signal in the same memory store used for regular
+/// retrieval so compression outcomes can be searched like any other runtime
+/// event.
+pub fn record_memory_signal(
+    namespace: &str,
+    key: &str,
+    value: &str,
+    tags: &[String],
+) -> Result<()> {
+    let _guard = FILE_LOCK.lock().unwrap();
+    let mut store = load_store();
+    let entry = MemoryEntry {
+        key: key.to_string(),
+        value: value.to_string(),
+        namespace: namespace.to_string(),
+        tags: tags.to_vec(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    store
+        .entry(namespace.to_string())
+        .or_default()
+        .insert(key.to_string(), entry);
+    save_store(&store)
 }
 
 // ── Bandit reward store ─────────────────────────────────────────────────────
@@ -526,7 +552,7 @@ impl ToolHandler for MemorySearchHandler {
                 .get("top_k")
                 .or_else(|| params.get("limit"))
                 .and_then(|v| v.as_u64())
-                .unwrap_or(5) as usize;
+                .unwrap_or(DEFAULT_MEMORY_TOP_K as u64) as usize;
             // Optional predicate: only return entries carrying ALL of these tags.
             let filter_tags: Vec<String> = params
                 .get("filter_tags")

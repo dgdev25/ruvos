@@ -17,7 +17,7 @@ Out of the box, an AI coding assistant forgets everything between sessions, work
 alone, and leaves no trace of *why* it did what it did. **rUvOS fixes that.**
 
 It's a single small program you run once. After that, your assistant (Claude Code,
-and also Codex) can **remember** decisions across days, **resume** exactly where it
+Codex CLI, and Gemini CLI) can **remember** decisions across days, **resume** exactly where it
 left off, **spin up a team of specialist agents**, **coordinate across terminals**,
 and keep a **signed, tamper-evident log** of everything that happened — all stored on
 your own disk.
@@ -57,6 +57,8 @@ external database, no cloud account.
 - 👥 **A team of agents** — spawn 12 specialist archetypes (coder, tester, security, …); a planner *computes* the pipeline for your goal, and failed steps retry or stop.
 - 🛡️ **Safety + provenance built in** — risky actions are risk-checked before they run, and every action lands in a signed audit log you can verify.
 - 📡 **Multi-terminal coordination** — independent Claude Code instances discover and message each other through plain files; no daemon, no port, no database.
+- 🗜️ **Context compression** — `compress` trims large JSON, log, code, and text payloads, keeps originals in signed session files when needed, and ships a replayable regression suite.
+- 🔁 **Compression learning signals** — successful compressions and runtime outcomes feed the existing `memory` and `intent` stores so future routing can improve without adding a second memory system.
 
 ---
 
@@ -260,6 +262,20 @@ even though the mailbox files are ephemeral.
 {"name":"relay.send","arguments":{"to":"A-uuid","body":"confirm the login shape?"}}
 ```
 
+### `compress` — context compression + regression
+```jsonc
+{"name":"compress.run","arguments":{"content":"...","kind":"auto","session_id":"6305…"}}
+```
+`compress.run` trims large payloads before they re-enter context, and when a
+`session_id` is supplied it stores the original in the signed `.rvf` session for
+later recovery. For a baseline replay report, use the CLI:
+
+```bash
+ruvos eval compress
+ruvos eval compress --write reports/compress-baseline.json
+ruvos eval compress --compare-to reports/compress-baseline.json
+```
+
 ### `orchestrate` — planned multi-agent pipelines
 A GOAP (A\*) planner computes the archetype sequence from a template
 (`feature`/`bugfix`/`refactor`/`security`/`sparc`) or a caller `goal` + `capabilities`.
@@ -307,6 +323,7 @@ $RUVOS_HOME/
 ├── memory-rewards.json   # bandit feedback rewards
 ├── memory-graph.json     # temporal knowledge graph
 ├── intel.json            # SONA trajectory patterns
+├── intent.json           # intent memory (stable preferences / signals)
 ├── safety/safety.json    # safety constraints + violation log
 ├── agents/<id>/output.md # real agent work artifacts
 └── .rvf-key              # per-install signing key (0600; gitignored — never commit)

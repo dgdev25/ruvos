@@ -7,10 +7,13 @@
 //! - `tools/list` -> tool definitions with JSON Schema
 //! - `tools/call` -> dispatch to a tool handler by name
 
+use crate::compress_learning::{record_compression_learning, CompressionLearningSignal};
 use crate::{paths, JsonRpcRequest, JsonRpcResponse, Result, RuvosError, ToolRegistry};
+use compress::defaults::{KEEP_HEAD_LINES, KEEP_TAIL_LINES, MAX_ARRAY_ITEMS, MIN_BYTES};
+use compress::{compress_content, CompressionConfig};
 use tokio::io::{stdin as tokio_stdin, stdout as tokio_stdout};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tracing::info;
+use tracing::{info, warn};
 
 /// MCP protocol version this server speaks.
 const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -174,14 +177,58 @@ impl JsonRpcServer {
         match self.registry.execute(&name, arguments).await {
             Ok(result) => {
                 // MCP wraps tool output as content blocks.
-                let text =
+                let raw_text =
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
+                let compression = if name.starts_with("compress.") {
+                    None
+                } else {
+                    let compressed = compress_content(
+                        &raw_text,
+                        None,
+                        CompressionConfig {
+                            min_bytes: MIN_BYTES,
+                            keep_head_lines: KEEP_HEAD_LINES,
+                            keep_tail_lines: KEEP_TAIL_LINES,
+                            max_array_items: MAX_ARRAY_ITEMS,
+                        },
+                    );
+                    if compressed.changed {
+                        Some(compressed)
+                    } else {
+                        None
+                    }
+                };
+                let text = compression
+                    .as_ref()
+                    .map(|compressed| compressed.compressed.clone())
+                    .unwrap_or(raw_text);
+                if let Some(compressed) = compression.as_ref() {
+                    if let Err(error) =
+                        record_compression_learning(&CompressionLearningSignal::from_result(
+                            "mcp.tools.call",
+                            &name,
+                            compressed,
+                        ))
+                    {
+                        warn!("compression learning recording failed for {name}: {error:?}");
+                    }
+                }
                 JsonRpcResponse::success(
                     id,
                     serde_json::json!({
                         "content": [{ "type": "text", "text": text }],
                         "isError": false,
-                        "structuredContent": result
+                        "structuredContent": result,
+                        "compression": compression.map(|compressed| serde_json::json!({
+                            "changed": compressed.changed,
+                            "original_bytes": compressed.original_bytes,
+                            "compressed_bytes": compressed.compressed_bytes,
+                            "bytes_saved": compressed.bytes_saved,
+                            "compression_ratio": compressed.compression_ratio,
+                            "tokens_before": compressed.tokens_before,
+                            "tokens_after": compressed.tokens_after,
+                            "original_ref": compressed.original_ref,
+                        }))
                     }),
                 )
             }
@@ -193,7 +240,10 @@ impl JsonRpcServer {
 /// Serve the MCP server on stdin/stdout.
 pub async fn serve() -> anyhow::Result<()> {
     paths::ensure_root().map_err(|e| anyhow::anyhow!("initializing data root: {e}"))?;
-    info!("MCP server initialized with 50 tool registry");
+    info!(
+        "MCP server initialized with {} tools",
+        crate::tools::tool_registry().len()
+    );
 
     let registry = crate::tools::create_registry();
     let server = JsonRpcServer::new(registry);

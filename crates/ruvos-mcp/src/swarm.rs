@@ -7,6 +7,10 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
 
+use crate::constants::{
+    SWARM_LEARNER_CLUSTERS, SWARM_TOPOLOGY_ADAPTIVE_SCORE, SWARM_TOPOLOGY_DEFAULT_SCORE,
+    SWARM_TOPOLOGY_HYBRID_SCORE, SWARM_TOPOLOGY_MESH_SCORE,
+};
 use crate::paths;
 use crate::tools::embedding::hnsw_rank;
 use crate::tools::retrieval::bm25_rank;
@@ -151,7 +155,7 @@ fn load_learning_state(engine: &SonaEngine) {
 fn swarm_learner() -> &'static Mutex<SonaEngine> {
     static LEARNER: OnceLock<Mutex<SonaEngine>> = OnceLock::new();
     LEARNER.get_or_init(|| {
-        let engine = SonaEngine::new(8);
+        let engine = SonaEngine::new(SWARM_LEARNER_CLUSTERS);
         load_learning_state(&engine);
         Mutex::new(engine)
     })
@@ -176,10 +180,10 @@ fn swarm_embedding(state: &SwarmState, status: &str, detail: &str) -> Vec<f32> {
         .sum::<f32>();
     let objective_len = state.objective.len() as f32;
     let topology_score = match state.topology.as_str() {
-        "mesh" => 0.8,
-        "hybrid" => 0.6,
-        "adaptive" => 0.9,
-        _ => 0.3,
+        "mesh" => SWARM_TOPOLOGY_MESH_SCORE,
+        "hybrid" => SWARM_TOPOLOGY_HYBRID_SCORE,
+        "adaptive" => SWARM_TOPOLOGY_ADAPTIVE_SCORE,
+        _ => SWARM_TOPOLOGY_DEFAULT_SCORE,
     };
     let status_score = match status {
         "completed" => 1.0,
@@ -378,7 +382,7 @@ pub fn learned_topology(
             entry.1 += 1;
         }
     }
-    let Some((topology, (success_count, evidence_count))) = topology_counts.into_iter().max_by(
+    let (topology, (success_count, evidence_count)) = topology_counts.into_iter().max_by(
         |(left_topology, left_counts), (right_topology, right_counts)| {
             left_counts
                 .0
@@ -386,9 +390,7 @@ pub fn learned_topology(
                 .then_with(|| left_counts.1.cmp(&right_counts.1))
                 .then_with(|| left_topology.cmp(right_topology))
         },
-    ) else {
-        return None;
-    };
+    )?;
 
     if success_count == 0 || !allowed_topology(&topology) || max_agents == 0 {
         return None;

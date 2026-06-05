@@ -98,7 +98,11 @@ fn test_mcp_protocol_handshake() {
     );
     let list = read_response(&mut reader);
     let tools = list["result"]["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 50, "expected all 50 rUvOS tools");
+    assert_eq!(
+        tools.len(),
+        ruvos_mcp::tools::public_tool_count(),
+        "expected all public rUvOS tools"
+    );
     assert!(tools.iter().any(|t| t["name"] == "session.create"));
     assert!(
         tools.iter().all(|t| t["inputSchema"].is_object()),
@@ -125,6 +129,57 @@ fn test_mcp_protocol_handshake() {
     assert!(
         call["result"]["structuredContent"]["session_id"].is_string(),
         "session.create must return a session_id"
+    );
+
+    // 5. Seed a deterministic large payload in memory, then list it back and
+    // verify the MCP response includes a compression envelope.
+    let namespace = uuid::Uuid::new_v4().to_string();
+    for i in 0..30 {
+        let key = format!("key-{i}");
+        let value = format!("payload-{i}-{}", "x".repeat(256));
+        send(
+            &mut stdin,
+            &json!({
+                "jsonrpc": "2.0", "id": 100 + i, "method": "tools/call",
+                "params": {
+                    "name": "memory.store",
+                    "arguments": {
+                        "namespace": namespace.clone(),
+                        "key": key,
+                        "value": value,
+                    }
+                }
+            }),
+        );
+        let stored = read_response(&mut reader);
+        assert!(
+            stored["error"].is_null(),
+            "memory.store errored: {}",
+            stored["error"]
+        );
+    }
+    send(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {
+                "name": "memory.list",
+                "arguments": { "namespace": namespace }
+            }
+        }),
+    );
+    let compressed = read_response(&mut reader);
+    assert!(
+        compressed["error"].is_null(),
+        "memory.list errored: {}",
+        compressed["error"]
+    );
+    assert_eq!(compressed["result"]["isError"], false);
+    assert!(
+        compressed["result"]["compression"]["changed"]
+            .as_bool()
+            .unwrap_or(false),
+        "large MCP tool outputs should be compressed"
     );
 
     drop(stdin);

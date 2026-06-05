@@ -5,6 +5,10 @@
 //! coordinate agent pools, roles, and topology explicitly.
 
 use super::handler::{ExecuteFuture, ToolHandler};
+use crate::constants::{
+    SWARM_CREATE_DEFAULT_MAX_AGENTS, SWARM_HYBRID_MAX_AGENTS_THRESHOLD,
+    SWARM_HYBRID_MEMBER_THRESHOLD,
+};
 use crate::runtime::{publish_event, RuntimeEvent};
 use crate::tools::agent_store;
 use crate::{relay, swarm, Result, RuvosError};
@@ -213,8 +217,8 @@ pub fn recommend_topology(
         "scale",
     ];
     if hybrid_keywords.iter().any(|needle| text.contains(needle))
-        || member_count > 6
-        || max_agents > 8
+        || member_count > SWARM_HYBRID_MEMBER_THRESHOLD
+        || max_agents > SWARM_HYBRID_MAX_AGENTS_THRESHOLD
     {
         return TopologyDecision {
             topology: "hybrid".to_string(),
@@ -465,7 +469,8 @@ impl ToolHandler for SwarmCreateHandler {
             let max_agents = params
                 .get("max_agents")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(6) as u32;
+                .unwrap_or(SWARM_CREATE_DEFAULT_MAX_AGENTS as u64)
+                as u32;
             let coordinator = params
                 .get("coordinator")
                 .and_then(|v| v.as_str())
@@ -1141,10 +1146,9 @@ impl ToolHandler for SwarmRebalanceHandler {
                 );
             }
 
-            let mut live_cursor = 0usize;
-            for (from_agent_id, task_id) in tasks_to_reassign {
+            for (live_cursor, (from_agent_id, task_id)) in tasks_to_reassign.into_iter().enumerate()
+            {
                 let target_index = task_target_indices[live_cursor % task_target_indices.len()];
-                live_cursor += 1;
                 let target = &mut state.members[target_index];
                 if !target
                     .assigned_tasks
@@ -1675,7 +1679,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rebalance["status"], "rebalanced");
-        assert!(rebalance["reassigned"].as_array().unwrap().len() >= 1);
+        assert!(!rebalance["reassigned"].as_array().unwrap().is_empty());
         assert_eq!(rebalance["swarm"]["status"], "active");
         let members = rebalance["swarm"]["members"].as_array().unwrap();
         assert!(

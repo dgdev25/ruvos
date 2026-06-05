@@ -11,18 +11,13 @@ pub(crate) fn now_secs() -> i64 {
 }
 
 /// Compression codec used to store a chunk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum CompressionCodec {
     /// No compression.
     None,
     /// Gzip-compressed payload.
+    #[default]
     Gzip,
-}
-
-impl Default for CompressionCodec {
-    fn default() -> Self {
-        Self::Gzip
-    }
 }
 
 /// Provenance for a skill corpus entry.

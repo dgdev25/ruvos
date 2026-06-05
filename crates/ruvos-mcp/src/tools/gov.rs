@@ -6,7 +6,10 @@
 //! `events` queries the signed audit/event log persisted by `ruvos-store`.
 
 use super::handler::{ExecuteFuture, ToolHandler};
-use crate::{paths, swarm, Result, RuvosError};
+use crate::{
+    constants::{DEFAULT_EVENT_LIMIT, GOV_REPLAY_LIMIT, GOV_SWARM_HISTORY_LIMIT},
+    paths, swarm, Result, RuvosError,
+};
 use serde_json::{json, Value};
 
 fn read_json<T: serde::de::DeserializeOwned + Default>(path: std::path::PathBuf) -> T {
@@ -157,7 +160,7 @@ impl ToolHandler for GovHealthHandler {
                 "pid": std::process::id(),
                 "data_root": root.to_string_lossy(),
                 "data_root_exists": root_exists,
-                "tool_count": crate::tools::tool_registry().len(),
+                "tool_count": crate::tools::public_tool_count(),
                 "persisted": {
                     "sessions": sessions,
                     "memory_entries": memory_entries,
@@ -206,7 +209,10 @@ impl ToolHandler for GovEventsHandler {
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
             let since = params.get("since").and_then(|v| v.as_i64()).unwrap_or(0);
-            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_EVENT_LIMIT as u64) as usize;
             let agent_id = params.get("agent_id").and_then(|v| v.as_str());
             let event_type = params.get("event_type").and_then(|v| v.as_str());
 
@@ -273,7 +279,10 @@ impl ToolHandler for GovReplayHandler {
         Box::pin(async move {
             let session_id = params.get("session_id").and_then(|v| v.as_str());
             let task_id = params.get("task_id").and_then(|v| v.as_str());
-            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(200) as usize;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(GOV_REPLAY_LIMIT as u64) as usize;
 
             let Some(store) = crate::store::try_store() else {
                 return Ok(json!({ "count": 0, "events": [], "store_busy": true }));
@@ -445,7 +454,7 @@ impl ToolHandler for GovReportHandler {
                     "relay_contracts": relay_contracts,
                     "replayable_sessions": replayable_sessions,
                     "swarm": swarm_snapshot,
-                    "tool_count": crate::tools::tool_registry().len(),
+                    "tool_count": crate::tools::public_tool_count(),
                 }
             }))
         })
@@ -694,7 +703,10 @@ impl ToolHandler for GovSwarmHistoryHandler {
     }
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
-            let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(25) as usize;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(GOV_SWARM_HISTORY_LIMIT as u64) as usize;
             let signature = params.get("signature").and_then(|v| v.as_str());
             let status = params.get("status").and_then(|v| v.as_str());
             let mut history: swarm::SwarmRunHistory = read_json(paths::swarm_history_file());
@@ -787,7 +799,7 @@ mod tests {
         let _g = isolate();
         let r = GovHealthHandler.execute(json!({})).await.unwrap();
         assert_eq!(r["status"], "ok");
-        assert_eq!(r["tool_count"], 50);
+        assert_eq!(r["tool_count"], crate::tools::public_tool_count());
         assert!(r["pid"].as_u64().unwrap() > 0, "real process id");
         assert_eq!(r["persisted"]["sessions"], 0);
     }
@@ -879,7 +891,10 @@ mod tests {
 
         let report = GovReportHandler.execute(json!({})).await.unwrap();
         assert!(report["report"]["event_count"].as_u64().unwrap() >= 1);
-        assert_eq!(report["report"]["tool_count"], 50);
+        assert_eq!(
+            report["report"]["tool_count"],
+            crate::tools::public_tool_count()
+        );
         assert!(report["report"]["success_rate"].as_f64().unwrap() >= 0.0);
         assert!(report["report"]["swarm"]["current"].is_object());
         assert!(report["report"]["swarm"]["policy"].is_object());

@@ -762,10 +762,8 @@ fn load_skill_record(
                 keywords.insert(token);
             }
         }
-        if is_markdown != 0 {
-            if path == "SKILL.md" {
-                source_path = path.clone();
-            }
+        if is_markdown != 0 && path == "SKILL.md" {
+            source_path = path.clone();
         }
     }
 

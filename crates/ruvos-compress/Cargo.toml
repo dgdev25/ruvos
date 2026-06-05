@@ -1,0 +1,26 @@
+[package]
+name = "compress"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"
+once_cell = { workspace = true }
+hex = "0.4"
+ruvos-session = { path = "../ruvos-session" }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt"] }
+criterion = { workspace = true }
+
+[[bench]]
+name = "compress_baseline"
+harness = false

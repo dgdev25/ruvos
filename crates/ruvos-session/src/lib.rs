@@ -19,10 +19,15 @@ use sha2::Sha256;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+pub mod compress;
 pub mod fork;
 pub mod rvf;
 pub mod verify;
 
+pub use compress::{
+    list_compression_artifacts_in_session, load_compression_artifact_from_session,
+    load_original_from_session, CompressionArtifact,
+};
 pub use fork::fork_session;
 pub use rvf::{read_container, read_session, write_container, write_session, RvfContainer};
 pub use verify::{verify_container, verify_signature, witness_type_provenance};

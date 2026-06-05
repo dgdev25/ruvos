@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use ruvos_store::Store;
 
+use crate::constants::{STORE_BASE_DELAY_MS, STORE_MAX_TRIES};
 use crate::paths;
 
 /// Path to the redb database file under the current data root.
@@ -44,13 +45,11 @@ pub fn try_store() -> Option<Store> {
     let _ = paths::ensure_root();
     let path = db_path().to_string_lossy().into_owned();
 
-    const MAX_TRIES: u32 = 12;
-    const BASE_DELAY_MS: u64 = 20;
-    for attempt in 0..MAX_TRIES {
+    for attempt in 0..STORE_MAX_TRIES {
         match Store::open(&path) {
             Ok(s) => return Some(s),
-            Err(e) if is_lock_conflict(&e) && attempt + 1 < MAX_TRIES => {
-                std::thread::sleep(Duration::from_millis(BASE_DELAY_MS));
+            Err(e) if is_lock_conflict(&e) && attempt + 1 < STORE_MAX_TRIES => {
+                std::thread::sleep(Duration::from_millis(STORE_BASE_DELAY_MS));
                 continue;
             }
             Err(e) => {

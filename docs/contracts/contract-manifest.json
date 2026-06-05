@@ -1,7 +1,12 @@
 {
   "version": "4.0.0-rc.1",
-  "tool_count": 24,
+  "tool_count": 51,
   "tools": [
+    {
+      "name": "compress.run",
+      "domain": "compress",
+      "description": "Compress large text, JSON, code, or logs and return a retrieval reference"
+    },
     {
       "name": "memory.search",
       "domain": "memory",
@@ -78,6 +83,21 @@
       "description": "Store outcome for the distill/consolidate phases"
     },
     {
+      "name": "intel.intent_search",
+      "domain": "intel",
+      "description": "Search durable goals, preferences, and recurring workflows"
+    },
+    {
+      "name": "intel.intent_store",
+      "domain": "intel",
+      "description": "Persist a stable goal or preference into intent memory"
+    },
+    {
+      "name": "intel.repo_inspect",
+      "domain": "intel",
+      "description": "Snapshot repo health: hotspots, test gaps, and domain counts"
+    },
+    {
       "name": "plugin.list",
       "domain": "plugin",
       "description": "Installed plugins + skills (discovered from disk)"
@@ -103,6 +123,41 @@
       "description": "Query the signed audit/event log (since / by agent / by type) from the store"
     },
     {
+      "name": "gov.replay",
+      "domain": "gov",
+      "description": "Replay a session or task trace from events and artifacts"
+    },
+    {
+      "name": "gov.report",
+      "domain": "gov",
+      "description": "Generate a governance report with quality and benchmark signals"
+    },
+    {
+      "name": "gov.swarm_recommendation",
+      "domain": "gov",
+      "description": "Recommend swarm topology and assignment hints for a proposed task"
+    },
+    {
+      "name": "gov.swarm_plan",
+      "domain": "gov",
+      "description": "Return a concrete swarm role/phase plan for a proposed task"
+    },
+    {
+      "name": "gov.swarm_status",
+      "domain": "gov",
+      "description": "Summarize the active swarm with a suggested plan overlay"
+    },
+    {
+      "name": "gov.swarm_policy",
+      "domain": "gov",
+      "description": "Inspect learned swarm policy entries and topology preferences"
+    },
+    {
+      "name": "gov.swarm_history",
+      "domain": "gov",
+      "description": "Inspect recent swarm run history and learning outcomes"
+    },
+    {
       "name": "relay.announce",
       "domain": "relay",
       "description": "Register/refresh this instance's presence for cross-instance discovery"
@@ -118,9 +173,89 @@
       "description": "Deliver a message to another instance's file mailbox by id"
     },
     {
+      "name": "relay.contract_store",
+      "domain": "relay",
+      "description": "Persist a durable ownership / handoff contract"
+    },
+    {
+      "name": "relay.contracts",
+      "domain": "relay",
+      "description": "List stored collaboration contracts"
+    },
+    {
+      "name": "relay.contract_resolve",
+      "domain": "relay",
+      "description": "Resolve a contract with a decision and handoff"
+    },
+    {
       "name": "orchestrate.run",
       "domain": "orchestrate",
       "description": "Run a multi-agent pipeline. A GOAP (A*) planner computes the archetype sequence from a template (feature/bugfix/refactor/security/sparc) or a caller-supplied goal + capabilities; static templates are the fallback"
+    },
+    {
+      "name": "swarm.create",
+      "domain": "swarm",
+      "description": "Create a durable swarm with topology, roles, and objective"
+    },
+    {
+      "name": "swarm.status",
+      "domain": "swarm",
+      "description": "Inspect the active swarm membership and progress"
+    },
+    {
+      "name": "swarm.assign",
+      "domain": "swarm",
+      "description": "Assign a task to a swarm member and persist the handoff"
+    },
+    {
+      "name": "swarm.heartbeat",
+      "domain": "swarm",
+      "description": "Refresh a swarm member heartbeat and liveness state"
+    },
+    {
+      "name": "swarm.message",
+      "domain": "swarm",
+      "description": "Send a message between swarm members or broadcast to the swarm"
+    },
+    {
+      "name": "swarm.complete",
+      "domain": "swarm",
+      "description": "Mark a swarm as completed and persist its final summary"
+    },
+    {
+      "name": "swarm.fail",
+      "domain": "swarm",
+      "description": "Mark a swarm as failed with a recorded reason"
+    },
+    {
+      "name": "swarm.health",
+      "domain": "swarm",
+      "description": "Report swarm liveness, utilization, and freshness"
+    },
+    {
+      "name": "swarm.rebalance",
+      "domain": "swarm",
+      "description": "Move tasks off stale swarm members onto live members"
+    },
+    {
+      "name": "swarm.join",
+      "domain": "swarm",
+      "description": "Add or reactivate a swarm member"
+    },
+    {
+      "name": "swarm.leave",
+      "domain": "swarm",
+      "description": "Mark a swarm member as left"
+    },
+    {
+      "name": "swarm.report",
+      "domain": "swarm",
+      "description": "Generate a swarm summary with recent activity"
+    },
+    {
+      "name": "swarm.metrics",
+      "domain": "swarm",
+      "description": "Return numeric swarm health and throughput metrics"
     }
   ],
   "archetypes": [

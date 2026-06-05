@@ -106,16 +106,28 @@ fn build_graph(pipeline: &[String]) -> FlowGraph {
 }
 
 /// Spawn one archetype step; return `(success, step-json)`.
-async fn run_step(
-    label: &str,
-    task: &str,
-    model: &str,
-    archetype: &str,
-    swarm_role: Option<&str>,
-    runner: Option<&str>,
-    context: Option<&str>,
-    skill_bundle: Option<&SkillBundle>,
-) -> Result<(bool, Value)> {
+struct StepContext<'a> {
+    label: &'a str,
+    task: &'a str,
+    model: &'a str,
+    archetype: &'a str,
+    swarm_role: Option<&'a str>,
+    runner: Option<&'a str>,
+    context: Option<&'a str>,
+    skill_bundle: Option<&'a SkillBundle>,
+}
+
+async fn run_step(ctx: StepContext<'_>) -> Result<(bool, Value)> {
+    let StepContext {
+        label,
+        task,
+        model,
+        archetype,
+        swarm_role,
+        runner,
+        context,
+        skill_bundle,
+    } = ctx;
     let role_prefix = swarm_role
         .map(|role| format!("[{} orchestration as {}] {}", label, role, task))
         .unwrap_or_else(|| format!("[{} orchestration] {}", label, task));
@@ -436,16 +448,16 @@ impl ToolHandler for OrchestrateRunHandler {
                 // Linear: run each archetype in order; stop at the first failure
                 // (ADR-009) — a failed `tester` does not proceed to `reviewer`.
                 for (step_index, archetype) in pipeline.iter().enumerate() {
-                    let (success, step) = run_step(
-                        &label,
-                        &task,
-                        &model,
+                    let (success, step) = run_step(StepContext {
+                        label: &label,
+                        task: &task,
+                        model: &model,
                         archetype,
-                        swarm_step_roles.get(step_index).map(String::as_str),
+                        swarm_role: swarm_step_roles.get(step_index).map(String::as_str),
                         runner,
-                        previous_artifact.as_deref(),
-                        task_skill_bundle.as_ref(),
-                    )
+                        context: previous_artifact.as_deref(),
+                        skill_bundle: task_skill_bundle.as_ref(),
+                    })
                     .await?;
                     publish_event(RuntimeEvent {
                         kind: "orchestrate.step.completed".to_string(),
@@ -513,16 +525,16 @@ impl ToolHandler for OrchestrateRunHandler {
                 });
                 for _ in 0..max_steps {
                     *visits.entry(current.clone()).or_insert(0) += 1;
-                    let (success, step) = run_step(
-                        &label,
-                        &task,
-                        &model,
-                        &current,
-                        swarm_step_roles.get(step_index).map(String::as_str),
+                    let (success, step) = run_step(StepContext {
+                        label: &label,
+                        task: &task,
+                        model: &model,
+                        archetype: &current,
+                        swarm_role: swarm_step_roles.get(step_index).map(String::as_str),
                         runner,
-                        previous_artifact.as_deref(),
-                        task_skill_bundle.as_ref(),
-                    )
+                        context: previous_artifact.as_deref(),
+                        skill_bundle: task_skill_bundle.as_ref(),
+                    })
                     .await?;
                     let next = graph.next(&current, success).map(|node| node.to_string());
                     publish_event(RuntimeEvent {
