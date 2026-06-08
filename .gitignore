@@ -29,6 +29,9 @@ Cargo.lock
 # rUvOS runtime data + per-install signing key (never commit)
 .ruvos/
 
+# rUvOS generated agent artifacts (per-run skill selections + scaffolds) — never commit
+crates/ruvos-mcp/generated/
+
 # Superpowers process/planning docs — internal artifacts, not part of the repo
 docs/superpowers/
 README.old.md

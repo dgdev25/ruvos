@@ -623,12 +623,10 @@ impl<'a> ParsedSeed<'a> {
                             Some(u32::from_le_bytes([value[0], value[1], value[2], value[3]]));
                     }
                 }
-                DL_TAG_CERT_PIN => {
-                    if length >= 32 {
-                        let mut pin = [0u8; 32];
-                        pin.copy_from_slice(&value[..32]);
-                        manifest.cert_pin = Some(pin);
-                    }
+                DL_TAG_CERT_PIN if length >= 32 => {
+                    let mut pin = [0u8; 32];
+                    pin.copy_from_slice(&value[..32]);
+                    manifest.cert_pin = Some(pin);
                 }
                 _ => {
                     // Unknown tags are ignored (forward-compatibility).

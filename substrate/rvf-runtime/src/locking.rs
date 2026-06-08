@@ -162,17 +162,15 @@ fn try_break_stale_lock(lock_path: &Path) -> io::Result<bool> {
     let current_hostname = get_hostname();
     let same_host = lock_hostname == current_hostname;
 
-    // Check if PID is alive (same host only).
-    let pid_alive = if same_host {
-        is_pid_alive(lock_pid)
-    } else {
-        // Cannot check remote PID; rely on age only.
-        true
-    };
+    // Determine whether the holding process is alive. On Unix same-host we can
+    // probe the PID directly. On non-Unix platforms (and cross-host) PID
+    // liveness is undeterminable, so we treat it as not-alive and fall back to
+    // age-based staleness alone.
+    let pid_alive = pid_liveness(lock_pid, same_host);
 
     // Stale conditions:
-    // - PID is dead AND age > threshold (same host)
-    // - Age > extended threshold (cross-host)
+    // - PID is verified dead AND age > threshold (Unix same-host)
+    // - PID is unverifiable AND age > threshold (non-Unix same-host, cross-host)
     let threshold = if same_host {
         STALE_AGE_NS
     } else {
@@ -180,11 +178,6 @@ fn try_break_stale_lock(lock_path: &Path) -> io::Result<bool> {
     };
 
     if !pid_alive && age > threshold {
-        let _ = fs::remove_file(lock_path);
-        return Ok(true);
-    }
-
-    if !same_host && age > threshold {
         let _ = fs::remove_file(lock_path);
         return Ok(true);
     }
@@ -268,30 +261,35 @@ fn random_uuid() -> [u8; 16] {
     buf
 }
 
-fn is_pid_alive(pid: u32) -> bool {
-    // On Unix, kill(pid, 0) checks process existence without sending a signal.
-    // A return of 0 means the process exists and we have permission to signal it.
-    // EPERM (errno = 1) means the process exists but belongs to a different user
-    // -- still alive. Any other error (ESRCH = no such process) means dead.
-    #[cfg(unix)]
-    {
-        let ret = libc_kill(pid as i32, 0);
-        if ret == 0 {
-            return true;
-        }
-        // Check errno for EPERM -- process exists but we lack permission
-        let err = unsafe { *libc_errno() };
-        err == EPERM
+/// Determine whether the lock-holding process is alive.
+///
+/// Returns `true` only when liveness can be positively confirmed. When it
+/// cannot be determined (cross-host, or platforms without a PID-probe), this
+/// returns `false` so that `try_break_stale_lock` falls back to age-based
+/// staleness rather than letting an unverifiable PID hold the lock forever.
+#[cfg(unix)]
+fn pid_liveness(pid: u32, same_host: bool) -> bool {
+    if !same_host {
+        // Cannot probe a PID on a remote host.
+        return false;
     }
-    #[cfg(not(unix))]
-    {
-        // On non-Unix platforms, we cannot determine PID liveness.
-        // Conservatively assume alive to avoid breaking stale locks
-        // that might still be held. The age-based fallback in
-        // try_break_stale_lock will handle truly stale locks.
-        let _ = pid;
-        true
+    // kill(pid, 0) checks process existence without sending a signal.
+    // A return of 0 means the process exists and we have permission to signal
+    // it. EPERM (errno = 1) means the process exists but belongs to a different
+    // user -- still alive. Any other error (ESRCH = no such process) means dead.
+    let ret = libc_kill(pid as i32, 0);
+    if ret == 0 {
+        return true;
     }
+    let err = unsafe { *libc_errno() };
+    err == EPERM
+}
+
+/// Non-Unix platforms cannot probe PID liveness, so liveness is never
+/// confirmed and staleness is decided by age alone.
+#[cfg(not(unix))]
+fn pid_liveness(_pid: u32, _same_host: bool) -> bool {
+    false
 }
 
 #[cfg(unix)]

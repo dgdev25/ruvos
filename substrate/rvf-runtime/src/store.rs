@@ -1504,10 +1504,9 @@ impl RvfStore {
         // Compute cluster geometry from the vector data
         let dim = self.options.dimension as u32;
         let bytes_per_vec = dim * 4; // f32
-        let vectors_per_cluster = if bytes_per_vec > 0 {
-            (4096 / bytes_per_vec).max(1)
-        } else {
-            64
+        let vectors_per_cluster = match 4096u32.checked_div(bytes_per_vec) {
+            Some(v) => v.max(1),
+            None => 64,
         };
         let cluster_size = vectors_per_cluster * bytes_per_vec;
         let total_vecs = self.vectors.len() as u64;
