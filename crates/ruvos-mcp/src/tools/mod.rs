@@ -3,6 +3,7 @@
 pub mod agent;
 pub mod agent_store;
 pub mod compress;
+pub mod cve;
 pub mod echo;
 pub mod embedding;
 pub mod gov;
@@ -84,6 +85,9 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(gov::GovSwarmStatusHandler));
     registry.register(Box::new(gov::GovSwarmPolicyHandler));
     registry.register(Box::new(gov::GovSwarmHistoryHandler));
+
+    // Register CVE lookup tool
+    registry.register(Box::new(cve::GovCveLookupHandler));
 
     // Register relay tools
     registry.register(Box::new(relay::RelayAnnounceHandler));
@@ -290,6 +294,12 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         ToolMetadata {
             name: "gov.swarm_history".to_string(),
             description: "Inspect recent swarm run history and learning outcomes".to_string(),
+            domain: "gov".to_string(),
+        },
+        ToolMetadata {
+            name: "gov.cve_lookup".to_string(),
+            description: "Scan a project directory for vulnerable dependencies via OSV/CVE"
+                .to_string(),
             domain: "gov".to_string(),
         },
         // Relay (6)

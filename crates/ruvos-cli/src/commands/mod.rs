@@ -2,6 +2,7 @@
 
 pub mod compress;
 pub mod contracts;
+pub mod cve;
 pub mod doctor;
 pub mod eval;
 pub mod init;

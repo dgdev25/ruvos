@@ -34,6 +34,7 @@ ruv-swarm-transport = { path = "../../substrate/ruv-swarm-transport" }
 ruvos-store = { path = "../../substrate/ruvos-store" }
 ruvos-memory-graph = { path = "../../substrate/ruvos-memory-graph" }
 ruvos-skills = { path = "../../substrate/ruvos-skills" }
+ruvos-cve-lite = { path = "../ruvos-cve-lite" }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }

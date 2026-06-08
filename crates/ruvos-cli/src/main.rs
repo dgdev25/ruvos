@@ -80,12 +80,51 @@ enum Commands {
         #[command(subcommand)]
         command: McpCommand,
     },
+    /// Scan a project directory for vulnerable dependencies (CVE/OSV).
+    Cve {
+        #[command(subcommand)]
+        command: CveCommand,
+    },
 }
 
 #[derive(Subcommand)]
 enum McpCommand {
     /// Serve the MCP server
     Serve,
+}
+
+#[derive(Subcommand)]
+enum CveCommand {
+    /// Scan a project directory for vulnerable dependencies.
+    Scan {
+        /// Project directory containing a lockfile.
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Output raw JSON.
+        #[arg(long)]
+        json: bool,
+        /// Output SARIF 2.1.0 (GitHub Code Scanning).
+        #[arg(long)]
+        sarif: bool,
+        /// Only scan production dependencies.
+        #[arg(long)]
+        prod_only: bool,
+        /// Use offline advisory DB instead of OSV API.
+        #[arg(long)]
+        offline: bool,
+        /// Path to offline advisory DB (SQLite).
+        #[arg(long)]
+        offline_db: Option<PathBuf>,
+        /// Only report findings at or above this severity (low/medium/high/critical).
+        #[arg(long)]
+        min_severity: Option<String>,
+        /// Exit non-zero if any finding meets this severity threshold.
+        #[arg(long)]
+        fail_on: Option<String>,
+        /// Skip reading and writing the OSV query cache.
+        #[arg(long)]
+        no_cache: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -334,6 +373,36 @@ async fn main() -> anyhow::Result<()> {
             McpCommand::Serve => {
                 info!("Starting MCP server");
                 ruvos_cli::commands::mcp::serve().await?;
+            }
+        },
+        Commands::Cve { command } => match command {
+            CveCommand::Scan {
+                path,
+                json,
+                sarif,
+                prod_only,
+                offline,
+                offline_db,
+                min_severity,
+                fail_on,
+                no_cache,
+            } => {
+                let cache_path = ruvos_mcp::paths::data_root()
+                    .join("cve")
+                    .join("osv-cache.json");
+                ruvos_cli::commands::cve::run_cve_scan(ruvos_cli::commands::cve::CveScanCommand {
+                    path,
+                    json,
+                    sarif,
+                    prod_only,
+                    offline,
+                    offline_db,
+                    min_severity,
+                    fail_on,
+                    no_cache,
+                    cache_path: if no_cache { None } else { Some(cache_path) },
+                })
+                .await?;
             }
         },
     }
