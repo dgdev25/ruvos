@@ -153,7 +153,7 @@ pub fn record_skill_bundle_feedback(
     Ok(())
 }
 
-fn build_query(archetype: &str, prompt: &str) -> String {
+pub(crate) fn build_query(archetype: &str, prompt: &str) -> String {
     let hints = match archetype {
         "coder" => "implementation rust code tests api",
         "tester" => "validation tests failure cases coverage",

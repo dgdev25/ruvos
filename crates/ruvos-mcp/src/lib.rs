@@ -14,6 +14,7 @@
 
 mod compress_learning;
 pub mod constants;
+pub mod eval;
 pub mod error;
 pub mod paths;
 pub mod protocol;

@@ -26,6 +26,13 @@ pub fn set_test_root(path: PathBuf) {
     ROOT_OVERRIDE.with(|c| *c.borrow_mut() = Some(path));
 }
 
+/// Test-only: clear the thread-local override so `data_root()` falls back to
+/// `RUVOS_HOME` / default. Call after each isolated scenario.
+#[cfg(test)]
+pub fn clear_test_root() {
+    ROOT_OVERRIDE.with(|c| *c.borrow_mut() = None);
+}
+
 /// Root rUvOS data directory.
 pub fn data_root() -> PathBuf {
     #[cfg(test)]

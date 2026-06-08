@@ -179,6 +179,34 @@ enum EvalCommand {
         #[arg(long)]
         compare_to: Option<PathBuf>,
     },
+    /// Verify GOAP pipeline generation and conditional-edge graph routing.
+    OrchestrateHandoff {
+        #[arg(long)]
+        write: Option<PathBuf>,
+        #[arg(long)]
+        compare_to: Option<PathBuf>,
+    },
+    /// Verify swarm stale detection, policy updates, and topology convergence.
+    SwarmRecovery {
+        #[arg(long)]
+        write: Option<PathBuf>,
+        #[arg(long)]
+        compare_to: Option<PathBuf>,
+    },
+    /// Verify skill query construction and bundle selection per archetype.
+    SkillRouting {
+        #[arg(long)]
+        write: Option<PathBuf>,
+        #[arg(long)]
+        compare_to: Option<PathBuf>,
+    },
+    /// Verify the swarm learning loop converges on the correct topology.
+    SwarmLearning {
+        #[arg(long)]
+        write: Option<PathBuf>,
+        #[arg(long)]
+        compare_to: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -186,6 +214,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
+        .with_writer(std::io::stderr)
         .init();
 
     let cli = Cli::parse();
@@ -248,6 +277,26 @@ async fn main() -> anyhow::Result<()> {
             EvalCommand::Compress { write, compare_to } => {
                 ruvos_cli::commands::eval::run_compress(
                     ruvos_cli::commands::eval::CompressEvalCommand { write, compare_to },
+                )?;
+            }
+            EvalCommand::OrchestrateHandoff { write, compare_to } => {
+                ruvos_cli::commands::eval::run_orchestrate_handoff(
+                    ruvos_cli::commands::eval::OrchestrateHandoffEvalCommand { write, compare_to },
+                )?;
+            }
+            EvalCommand::SwarmRecovery { write, compare_to } => {
+                ruvos_cli::commands::eval::run_swarm_recovery(
+                    ruvos_cli::commands::eval::SwarmRecoveryEvalCommand { write, compare_to },
+                )?;
+            }
+            EvalCommand::SkillRouting { write, compare_to } => {
+                ruvos_cli::commands::eval::run_skill_routing(
+                    ruvos_cli::commands::eval::SkillRoutingEvalCommand { write, compare_to },
+                )?;
+            }
+            EvalCommand::SwarmLearning { write, compare_to } => {
+                ruvos_cli::commands::eval::run_swarm_learning(
+                    ruvos_cli::commands::eval::SwarmLearningEvalCommand { write, compare_to },
                 )?;
             }
         },
