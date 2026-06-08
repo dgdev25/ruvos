@@ -57,11 +57,20 @@ fn member(id: &str, state: &str) -> SwarmMember {
     }
 }
 
-fn swarm_for(id: &str, objective: &str, topology: &str, member_count: usize, max: u32) -> SwarmState {
+fn swarm_for(
+    id: &str,
+    objective: &str,
+    topology: &str,
+    member_count: usize,
+    max: u32,
+) -> SwarmState {
     let members: Vec<_> = (0..member_count)
         .map(|i| member(&format!("agent-{i}"), "active"))
         .collect();
-    let coord = members.first().map(|m| m.agent_id.clone()).unwrap_or_default();
+    let coord = members
+        .first()
+        .map(|m| m.agent_id.clone())
+        .unwrap_or_default();
     SwarmState {
         id: id.to_string(),
         objective: objective.to_string(),
@@ -97,7 +106,9 @@ where
     let result = {
         let old_home = std::env::var("RUVOS_HOME").ok();
         // SAFETY: eval runs single-threaded in production.
-        unsafe { std::env::set_var("RUVOS_HOME", &dir); }
+        unsafe {
+            std::env::set_var("RUVOS_HOME", &dir);
+        }
         let r = f();
         unsafe {
             match &old_home {
@@ -137,7 +148,13 @@ fn run_mesh_converges() -> SwarmLearningCaseResult {
 
 fn run_hierarchical_converges() -> SwarmLearningCaseResult {
     with_isolated_root(|| {
-        let s = swarm_for("l2", "plan and ship a feature sequentially", "hierarchical", 1, 4);
+        let s = swarm_for(
+            "l2",
+            "plan and ship a feature sequentially",
+            "hierarchical",
+            1,
+            4,
+        );
         store(s.clone()).unwrap();
 
         record_swarm_learning(&s, "completed", "hierarchical run 1").unwrap();
@@ -283,7 +300,8 @@ pub fn compare_swarm_learning_reports(
     SwarmLearningComparison {
         suite_matches: current.suite == baseline.suite,
         case_count_matches: current.summary.case_count == baseline.summary.case_count,
-        convergence_rate_delta: current.summary.convergence_rate - baseline.summary.convergence_rate,
+        convergence_rate_delta: current.summary.convergence_rate
+            - baseline.summary.convergence_rate,
         all_converged_baseline: baseline.summary.converged_count == baseline.summary.case_count,
         all_converged_current: current.summary.converged_count == current.summary.case_count,
     }

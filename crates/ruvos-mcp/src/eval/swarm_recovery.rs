@@ -54,8 +54,17 @@ fn member(id: &str, role: &str, state: &str) -> SwarmMember {
     }
 }
 
-fn swarm(id: &str, objective: &str, topology: &str, max_agents: u32, members: Vec<SwarmMember>) -> SwarmState {
-    let coordinator = members.first().map(|m| m.agent_id.clone()).unwrap_or_default();
+fn swarm(
+    id: &str,
+    objective: &str,
+    topology: &str,
+    max_agents: u32,
+    members: Vec<SwarmMember>,
+) -> SwarmState {
+    let coordinator = members
+        .first()
+        .map(|m| m.agent_id.clone())
+        .unwrap_or_default();
     SwarmState {
         id: id.to_string(),
         objective: objective.to_string(),
@@ -91,7 +100,9 @@ where
     let result = {
         let old_home = std::env::var("RUVOS_HOME").ok();
         // SAFETY: eval runs single-threaded in production.
-        unsafe { std::env::set_var("RUVOS_HOME", &dir); }
+        unsafe {
+            std::env::set_var("RUVOS_HOME", &dir);
+        }
         let r = f();
         unsafe {
             match &old_home {
@@ -114,7 +125,11 @@ fn run_single_stale_detected() -> SwarmRecoveryCaseResult {
         let s = swarm("s1", "ship a feature", "hierarchical", 4, members);
         store(s.clone()).unwrap();
 
-        let active = s.members.iter().filter(|m| m.state == "active" || m.state == "assigned").count();
+        let active = s
+            .members
+            .iter()
+            .filter(|m| m.state == "active" || m.state == "assigned")
+            .count();
         let stale = s.members.iter().filter(|m| m.state == "left").count();
 
         SwarmRecoveryCaseResult {
@@ -131,7 +146,13 @@ fn run_single_stale_detected() -> SwarmRecoveryCaseResult {
 fn run_failure_updates_policy() -> SwarmRecoveryCaseResult {
     with_isolated_root(|| {
         let members = vec![member("coord-1", "coordinator", "active")];
-        let s = swarm("s2", "broadcast updates across peer workers", "mesh", 4, members);
+        let s = swarm(
+            "s2",
+            "broadcast updates across peer workers",
+            "mesh",
+            4,
+            members,
+        );
         store(s.clone()).unwrap();
 
         record_swarm_outcome(&s, "failed", "worker timed out").unwrap();
@@ -161,7 +182,13 @@ fn run_success_topology_learned() -> SwarmRecoveryCaseResult {
             member("coord-1", "coordinator", "active"),
             member("worker-1", "coder", "active"),
         ];
-        let s = swarm("s3", "broadcast updates across peer workers", "mesh", 4, members);
+        let s = swarm(
+            "s3",
+            "broadcast updates across peer workers",
+            "mesh",
+            4,
+            members,
+        );
         store(s.clone()).unwrap();
 
         record_swarm_learning(&s, "completed", "first mesh run").unwrap();
@@ -203,8 +230,10 @@ fn run_large_swarm_topology() -> SwarmRecoveryCaseResult {
         let learned = learned_topology(&s.objective, members.len(), s.max_agents);
         let topology = learned.as_ref().map(|(t, _)| t.clone());
         // Any of hybrid/mesh/adaptive is acceptable for a large parallel swarm.
-        let passed =
-            matches!(topology.as_deref(), Some("hybrid") | Some("mesh") | Some("adaptive"));
+        let passed = matches!(
+            topology.as_deref(),
+            Some("hybrid") | Some("mesh") | Some("adaptive")
+        );
 
         SwarmRecoveryCaseResult {
             name: "large_swarm_topology".to_string(),

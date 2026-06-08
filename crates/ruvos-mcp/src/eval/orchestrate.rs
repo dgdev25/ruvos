@@ -67,9 +67,18 @@ fn pipeline_matches(template: &str, pipeline: &[String]) -> bool {
     if template == "sparc" {
         // Check ordering constraints rather than exact equality.
         let pos = |n: &str| pipeline.iter().position(|x| x == n);
-        let coder = match pos("coder") { Some(p) => p, None => return false };
-        let tester = match pos("tester") { Some(p) => p, None => return false };
-        let reviewer = match pos("reviewer") { Some(p) => p, None => return false };
+        let coder = match pos("coder") {
+            Some(p) => p,
+            None => return false,
+        };
+        let tester = match pos("tester") {
+            Some(p) => p,
+            None => return false,
+        };
+        let reviewer = match pos("reviewer") {
+            Some(p) => p,
+            None => return false,
+        };
         let has_design = pos("researcher").is_some() || pos("architect").is_some();
         has_design && coder < tester && tester < reviewer
     } else {
@@ -111,13 +120,13 @@ fn check_graph_routing() -> GraphRoutingResult {
         && g.next("reviewer", true).is_none();
 
     // tester and reviewer both loop back to the nearest prior coder step.
-    let failure_loops_to_coder = g.next("tester", false) == Some("coder")
-        && g.next("reviewer", false) == Some("coder");
+    let failure_loops_to_coder =
+        g.next("tester", false) == Some("coder") && g.next("reviewer", false) == Some("coder");
 
     // planner has no prior coder, so failure → self. coder's only prior is planner,
     // so coder failure also loops to itself.
-    let self_loop = g.next("planner", false) == Some("planner")
-        && g.next("coder", false) == Some("coder");
+    let self_loop =
+        g.next("planner", false) == Some("planner") && g.next("coder", false) == Some("coder");
 
     GraphRoutingResult {
         success_routing_correct: success_correct,

@@ -4,9 +4,7 @@
 //! archetype and that `select_skill_bundle` / `select_orchestration_skill_bundle`
 //! can select from a real pack when one is installed.
 
-use crate::skills::{
-    build_query, select_orchestration_skill_bundle, select_skill_bundle,
-};
+use crate::skills::{build_query, select_orchestration_skill_bundle, select_skill_bundle};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -115,7 +113,12 @@ pub fn run_skill_routing_suite() -> SkillRoutingReport {
                 Ok(Some(bundle)) => {
                     any_pack = true;
                     let top = bundle.selections.first();
-                    (true, true, top.map(|s| s.skill_id.clone()), top.map(|s| s.score))
+                    (
+                        true,
+                        true,
+                        top.map(|s| s.skill_id.clone()),
+                        top.map(|s| s.score),
+                    )
                 }
                 Ok(None) => (false, false, None, None),
                 Err(_) => (false, false, None, None),
@@ -136,7 +139,10 @@ pub fn run_skill_routing_suite() -> SkillRoutingReport {
     }
 
     // One orchestration-bundle case.
-    let orch_query_built = build_query("coordinator", "feature ship a secure api planner coder tester reviewer");
+    let orch_query_built = build_query(
+        "coordinator",
+        "feature ship a secure api planner coder tester reviewer",
+    );
     let orch_pack_available;
     let orch_skill_selected;
     let orch_top_id;
@@ -144,7 +150,12 @@ pub fn run_skill_routing_suite() -> SkillRoutingReport {
     match select_orchestration_skill_bundle(
         "feature",
         "ship a secure api",
-        &["planner".into(), "coder".into(), "tester".into(), "reviewer".into()],
+        &[
+            "planner".into(),
+            "coder".into(),
+            "tester".into(),
+            "reviewer".into(),
+        ],
         &["security".into()],
         3,
     ) {
