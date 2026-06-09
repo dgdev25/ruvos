@@ -54,7 +54,7 @@ async fn test_plugin_list_integration() {
     let request = json!({
         "jsonrpc": "2.0",
         "method": "tools/call",
-        "params": { "name": "plugin.list", "arguments": {} },
+        "params": { "name": "ruvos_plugin_list", "arguments": {} },
         "id": "plugin-list-1"
     });
 
@@ -158,7 +158,7 @@ async fn test_plugin_invoke_integration() {
         "jsonrpc": "2.0",
         "method": "tools/call",
         "params": {
-            "name": "plugin.invoke",
+            "name": "ruvos_plugin_invoke",
             "arguments": {
                 "plugin_name": "test-plugin",
                 "command": "echo",

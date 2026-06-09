@@ -46,7 +46,7 @@ pub trait ToolHandler: Send + Sync {
     }
 }
 
-/// Registry of all tool handlers, keyed by "domain.name"
+/// Registry of all tool handlers, keyed by "ruvos_{domain}_{name}"
 pub struct ToolRegistry {
     handlers: HashMap<String, Box<dyn ToolHandler>>,
     policy: Option<RuntimePolicy>,
@@ -91,7 +91,7 @@ impl ToolRegistry {
 
     /// Register a tool handler
     pub fn register(&mut self, handler: Box<dyn ToolHandler>) {
-        let key = format!("{}.{}", handler.domain(), handler.name());
+        let key = format!("ruvos_{}_{}", handler.domain(), handler.name());
         self.handlers.insert(key, handler);
     }
 
@@ -113,12 +113,13 @@ impl ToolRegistry {
         self.policy = Some(policy);
     }
 
-    /// Execute a tool by method name (e.g., "memory.search")
+    /// Execute a tool by method name (e.g., "ruvos_memory_search")
     pub async fn execute(&self, method: &str, params: Value) -> Result<Value> {
         let started_at = Instant::now();
         let (domain, tool) = method
-            .split_once('.')
-            .map(|(domain, tool)| (domain.to_string(), tool.to_string()))
+            .strip_prefix("ruvos_")
+            .and_then(|s| s.split_once('_'))
+            .map(|(d, t)| (d.to_string(), t.to_string()))
             .unwrap_or_else(|| ("unknown".to_string(), method.to_string()));
         let param_keys: Vec<String> = params
             .as_object()
@@ -325,7 +326,7 @@ mod tests {
         assert_eq!(registry.tool_count(), 1);
 
         let tools = registry.list_tools();
-        assert!(tools.contains(&"echo.test".to_string()));
+        assert!(tools.contains(&"ruvos_echo_test".to_string()));
     }
 
     #[tokio::test]
@@ -336,7 +337,7 @@ mod tests {
         registry.register(Box::new(EchoHandler));
 
         let input = json!({"message": "hello world"});
-        let result = registry.execute("echo.test", input.clone()).await;
+        let result = registry.execute("ruvos_echo_test", input.clone()).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -367,7 +368,7 @@ mod tests {
         registry.register(Box::new(EchoHandler));
 
         let response = registry
-            .execute("echo.test", json!({"message": "hello"}))
+            .execute("ruvos_echo_test", json!({"message": "hello"}))
             .await
             .expect("echo call must succeed");
         assert_eq!(response["echo"], "hello");
@@ -381,7 +382,7 @@ mod tests {
             "tool execution must publish a completion event"
         );
         let payload = &events["events"][0]["payload"];
-        assert_eq!(payload["method"], "echo.test");
+        assert_eq!(payload["method"], "ruvos_echo_test");
         assert_eq!(payload["tool"], "test");
     }
 
@@ -395,7 +396,7 @@ mod tests {
         ));
         registry.register(Box::new(EchoHandler));
         let result = registry
-            .execute("echo.test", json!({"message": "hello"}))
+            .execute("ruvos_echo_test", json!({"message": "hello"}))
             .await;
         assert!(matches!(
             result,
@@ -411,7 +412,7 @@ mod tests {
         let mut registry = ToolRegistry::with_autonomy_mode(AutonomyMode::Autopilot);
         registry.register(Box::new(EchoHandler));
         let result = registry
-            .execute("echo.test", json!({"message": "hello"}))
+            .execute("ruvos_echo_test", json!({"message": "hello"}))
             .await;
         assert!(result.is_ok());
     }
@@ -424,11 +425,11 @@ mod tests {
         let mut registry = ToolRegistry::with_resource_tracker(ResourceTracker::restrictive(1));
         registry.register(Box::new(EchoHandler));
         assert!(registry
-            .execute("echo.test", json!({"message": "hello"}))
+            .execute("ruvos_echo_test", json!({"message": "hello"}))
             .await
             .is_ok());
         let second = registry
-            .execute("echo.test", json!({"message": "hello"}))
+            .execute("ruvos_echo_test", json!({"message": "hello"}))
             .await;
         assert!(matches!(second, Err(crate::RuvosError::ValidationError(_))));
     }

@@ -103,7 +103,7 @@ fn test_mcp_protocol_handshake() {
         ruvos_mcp::tools::public_tool_count(),
         "expected all public rUvOS tools"
     );
-    assert!(tools.iter().any(|t| t["name"] == "session.create"));
+    assert!(tools.iter().any(|t| t["name"] == "ruvos_session_create"));
     assert!(
         tools.iter().all(|t| t["inputSchema"].is_object()),
         "every tool must expose an inputSchema"
@@ -114,7 +114,7 @@ fn test_mcp_protocol_handshake() {
         &mut stdin,
         &json!({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {"name": "session.create", "arguments": {"name": "itest"}}
+            "params": {"name": "ruvos_session_create", "arguments": {"name": "itest"}}
         }),
     );
     let call = read_response(&mut reader);
@@ -128,7 +128,7 @@ fn test_mcp_protocol_handshake() {
     assert_eq!(call["result"]["structuredContent"]["status"], "created");
     assert!(
         call["result"]["structuredContent"]["session_id"].is_string(),
-        "session.create must return a session_id"
+        "ruvos_session_create must return a session_id"
     );
 
     // 5. Seed a deterministic large payload in memory, then list it back and
@@ -142,7 +142,7 @@ fn test_mcp_protocol_handshake() {
             &json!({
                 "jsonrpc": "2.0", "id": 100 + i, "method": "tools/call",
                 "params": {
-                    "name": "memory.store",
+                    "name": "ruvos_memory_store",
                     "arguments": {
                         "namespace": namespace.clone(),
                         "key": key,
@@ -154,7 +154,7 @@ fn test_mcp_protocol_handshake() {
         let stored = read_response(&mut reader);
         assert!(
             stored["error"].is_null(),
-            "memory.store errored: {}",
+            "ruvos_memory_store errored: {}",
             stored["error"]
         );
     }
@@ -163,7 +163,7 @@ fn test_mcp_protocol_handshake() {
         &json!({
             "jsonrpc": "2.0", "id": 3, "method": "tools/call",
             "params": {
-                "name": "memory.list",
+                "name": "ruvos_memory_list",
                 "arguments": { "namespace": namespace }
             }
         }),
