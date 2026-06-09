@@ -254,14 +254,14 @@ mod tests {
         assert!(manifest
             .tools
             .iter()
-            .any(|tool| tool.name == "orchestrate.run"));
-        assert!(manifest.tools.iter().any(|tool| tool.name == "relay.send"));
+            .any(|tool| tool.name == "ruvos_orchestrate_run"));
+        assert!(manifest.tools.iter().any(|tool| tool.name == "ruvos_relay_send"));
     }
 
     #[test]
     fn markdown_mentions_tool_count() {
         let rendered = render_markdown(&manifest());
         assert!(rendered.contains("Tool count"));
-        assert!(rendered.contains("orchestrate.run"));
+        assert!(rendered.contains("ruvos_orchestrate_run"));
     }
 }

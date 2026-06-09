@@ -259,7 +259,7 @@ impl Store {
             .into_iter()
             .filter(|e| e.agent_id.as_deref() == Some(agent_id))
             .collect();
-        events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        events.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
         events.truncate(limit);
         Ok(events)
     }
@@ -271,7 +271,7 @@ impl Store {
             .into_iter()
             .filter(|e| e.event_type == event_type)
             .collect();
-        events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        events.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
         events.truncate(limit);
         Ok(events)
     }
@@ -293,7 +293,7 @@ impl Store {
                 (m.from_agent == a && m.to_agent == b) || (m.from_agent == b && m.to_agent == a)
             })
             .collect();
-        msgs.sort_by(|x, y| x.created_at.cmp(&y.created_at));
+        msgs.sort_by_key(|x| x.created_at);
         msgs.truncate(limit);
         Ok(msgs)
     }
@@ -305,7 +305,7 @@ impl Store {
             .into_iter()
             .filter(|m| m.to_agent == agent_id && !m.read)
             .collect();
-        msgs.sort_by(|x, y| x.created_at.cmp(&y.created_at));
+        msgs.sort_by_key(|x| x.created_at);
         Ok(msgs)
     }
 
