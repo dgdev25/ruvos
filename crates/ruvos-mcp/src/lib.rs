@@ -24,6 +24,7 @@ pub mod runtime;
 pub mod safety;
 pub mod sandbox;
 pub mod server;
+pub mod server_rmcp;
 pub mod skills;
 pub mod store;
 pub mod llm;
@@ -32,5 +33,6 @@ pub mod tools;
 
 pub use error::{Result, RuvosError};
 pub use protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
-pub use server::{serve, JsonRpcServer};
+pub use server::JsonRpcServer;
+pub use server_rmcp::serve;
 pub use tools::{create_registry, tool_registry, ToolRegistry};
