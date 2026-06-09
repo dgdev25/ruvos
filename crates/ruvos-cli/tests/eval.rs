@@ -167,10 +167,21 @@ fn eval_swarm_recovery_write_and_compare() {
 
 // ── skill-routing ─────────────────────────────────────────────────────────────
 
+// The redb database used by skill_routing is not concurrent-safe. Give each
+// test its own temp directory so parallel `cargo test --jobs 4` runs don't
+// corrupt each other's storage (redb panics on truncated pages).
+fn routing_env(dir: &tempfile::TempDir) -> Vec<(String, String)> {
+    let home = dir.path().join("ruvos");
+    std::fs::create_dir_all(&home).expect("create RUVOS_HOME");
+    vec![("RUVOS_HOME".to_string(), home.to_str().unwrap().to_string())]
+}
+
 #[test]
 fn eval_skill_routing_emits_json_report() {
+    let dir = tempfile::tempdir().expect("tempdir");
     let output = Command::new(env!("CARGO_BIN_EXE_ruvos"))
         .args(["eval", "skill-routing"])
+        .envs(routing_env(&dir))
         .output()
         .expect("run ruvos eval skill-routing");
 
@@ -198,6 +209,7 @@ fn eval_skill_routing_write_and_compare() {
             "--write",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(routing_env(&dir))
         .output()
         .expect("write baseline");
     assert!(write_out.status.success(), "write failed");
@@ -210,6 +222,7 @@ fn eval_skill_routing_write_and_compare() {
             "--compare-to",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(routing_env(&dir))
         .output()
         .expect("compare");
     assert!(cmp_out.status.success(), "compare failed");
