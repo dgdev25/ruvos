@@ -314,6 +314,14 @@ impl ToolHandler for OrchestrateRunHandler {
                 "model": {
                     "type": "string",
                     "description": "Optional model override for all pipeline agents"
+                },
+                "execute": {
+                    "type": "boolean",
+                    "description": "When false (default) return the coordinator plan only; when true spawn agents and run the pipeline"
+                },
+                "continue_on_error": {
+                    "type": "boolean",
+                    "description": "When true keep running remaining steps even after a failure (linear pipeline only)"
                 }
             },
             "required": ["task"]
@@ -361,6 +369,8 @@ impl ToolHandler for OrchestrateRunHandler {
                 .unwrap_or("claude-haiku-4-5")
                 .to_string();
             let runner = params.get("runner").and_then(|v| v.as_str());
+            let execute = params.get("execute").and_then(|v| v.as_bool()).unwrap_or(false);
+            let continue_on_error = params.get("continue_on_error").and_then(|v| v.as_bool()).unwrap_or(false);
             let label = params
                 .get("template")
                 .and_then(|v| v.as_str())
@@ -521,6 +531,26 @@ impl ToolHandler for OrchestrateRunHandler {
                 })
                 .collect();
 
+            // ADR-018: plan-only mode — return the coordinator steps without
+            // spawning any agents.  The MCP host reads the steps and decides
+            // whether / how to execute them.
+            if !execute {
+                return Ok(json!({
+                    "orchestration_id": orchestration_id,
+                    "template": label,
+                    "task": task,
+                    "status": "plan_only",
+                    "planned": planned,
+                    "plan_cost": plan_cost,
+                    "pipeline": pipeline,
+                    "coordinator_steps": coordinator_steps,
+                    "swarm_plan": swarm_plan,
+                    "swarm_roles": swarm_step_roles,
+                    "selected_skills": &task_skill_bundle,
+                    "selected_skill_bundle_path": &selected_skill_bundle_path,
+                }));
+            }
+
             publish_event(RuntimeEvent {
                 kind: "orchestrate.run.started".to_string(),
                 payload: json!({
@@ -589,11 +619,36 @@ impl ToolHandler for OrchestrateRunHandler {
                         .last()
                         .and_then(|step| step["artifact_path"].as_str())
                         .and_then(|path| std::fs::read_to_string(path).ok());
+                    // ADR-018 + ADR-017: write artifact into the swarm scratch
+                    // slot so the next step can read_slot it by archetype name.
+                    if let Some(artifact_content) = previous_artifact.as_deref() {
+                        let slot_path = crate::paths::data_root()
+                            .join("swarms")
+                            .join(&orchestration_id)
+                            .join("slots")
+                            .join(archetype);
+                        if let Some(parent) = slot_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::write(
+                            &slot_path,
+                            json!({
+                                "agent_id": steps.last().and_then(|s| s["agent_id"].as_str()),
+                                "archetype": archetype,
+                                "artifact_path": steps.last().and_then(|s| s["artifact_path"].as_str()),
+                                "step_index": step_index,
+                                "content": artifact_content,
+                            })
+                            .to_string(),
+                        );
+                    }
                     if !success {
                         all_ok = false;
                         let detail = failure_detail(success, steps.last().unwrap());
                         emit_repair_events(&orchestration_id, step_index, archetype, &detail, 0);
-                        break;
+                        if !continue_on_error {
+                            break;
+                        }
                     }
                 }
             } else {
@@ -860,7 +915,7 @@ mod tests {
     async fn feature_orchestration_runs_full_pipeline() {
         let _g = isolate();
         let r = OrchestrateRunHandler
-            .execute(json!({"template": "feature", "task": "add POST /users"}))
+            .execute(json!({"template": "feature", "task": "add POST /users", "execute": true}))
             .await
             .unwrap();
 
@@ -956,7 +1011,8 @@ mod tests {
         let r = OrchestrateRunHandler
             .execute(json!({
                 "template": "feature",
-                "task": "write a safe rust module with checked arithmetic"
+                "task": "write a safe rust module with checked arithmetic",
+                "execute": true
             }))
             .await
             .unwrap();
@@ -976,7 +1032,8 @@ mod tests {
         let r = OrchestrateRunHandler
             .execute(json!({
                 "template": "feature",
-                "task": "write a safe rust module with checked arithmetic"
+                "task": "write a safe rust module with checked arithmetic",
+                "execute": true
             }))
             .await
             .unwrap();
@@ -1003,7 +1060,8 @@ mod tests {
             .execute(json!({
                 "template": "feature",
                 "task": "Write a small Rust module that defines a safe add function and unit tests",
-                "max_retries": 1
+                "max_retries": 1,
+                "execute": true
             }))
             .await
             .unwrap();
@@ -1028,7 +1086,7 @@ mod tests {
     async fn bugfix_orchestration_has_three_steps() {
         let _g = isolate();
         let r = OrchestrateRunHandler
-            .execute(json!({"template": "bugfix", "task": "fix null deref"}))
+            .execute(json!({"template": "bugfix", "task": "fix null deref", "execute": true}))
             .await
             .unwrap();
         assert_eq!(r["step_count"], 3);
@@ -1040,7 +1098,7 @@ mod tests {
         // every step succeeds, so it follows OnSuccess edges to the terminal node.
         let _g = isolate();
         let r = OrchestrateRunHandler
-            .execute(json!({"template": "feature", "task": "x", "max_retries": 2}))
+            .execute(json!({"template": "feature", "task": "x", "max_retries": 2, "execute": true}))
             .await
             .unwrap();
         assert_eq!(r["status"], "completed");
@@ -1067,7 +1125,7 @@ mod tests {
     async fn orchestration_publishes_task_events() {
         let _g = isolate();
         let r = OrchestrateRunHandler
-            .execute(json!({"template": "bugfix", "task": "publish task trace"}))
+            .execute(json!({"template": "bugfix", "task": "publish task trace", "execute": true}))
             .await
             .unwrap();
         let orchestration_id = r["orchestration_id"].as_str().unwrap().to_string();
@@ -1092,7 +1150,8 @@ mod tests {
             .execute(json!({
                 "template": "bugfix",
                 "task": "force a repair path",
-                "runner": "false"
+                "runner": "false",
+                "execute": true
             }))
             .await
             .unwrap();
@@ -1122,7 +1181,7 @@ mod tests {
     async fn sparc_orchestration_runs_all_phases() {
         let _g = isolate();
         let r = OrchestrateRunHandler
-            .execute(json!({"template": "sparc", "task": "build module"}))
+            .execute(json!({"template": "sparc", "task": "build module", "execute": true}))
             .await
             .unwrap();
         assert_eq!(r["status"], "completed");
@@ -1140,7 +1199,7 @@ mod tests {
     async fn custom_goal_computes_pipeline_without_template() {
         let _g = isolate();
         let r = OrchestrateRunHandler
-            .execute(json!({"task": "harden auth", "goal": {"secured": true, "tested": true}}))
+            .execute(json!({"task": "harden auth", "goal": {"secured": true, "tested": true}, "execute": true}))
             .await
             .unwrap();
         assert_eq!(r["planned"], true);
