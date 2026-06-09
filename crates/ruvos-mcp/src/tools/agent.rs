@@ -197,7 +197,6 @@ async fn run_task(
     agent_id: &str,
     archetype: &str,
     prompt: &str,
-    model: &str,
     runner: Option<&str>,
 ) -> Result<TaskOutcome> {
     let dir = paths::data_root().join("agents").join(agent_id);
@@ -206,20 +205,7 @@ async fn run_task(
         .map_err(|e| RuvosError::InternalError(format!("agent dir: {}", e)))?;
 
     let artifact = dir.join("output.md");
-    // Attempt real LLM inference; fall back to deterministic template when
-    // ANTHROPIC_API_KEY is absent (preserves behaviour in tests and CI).
-    let content = match crate::llm::call_llm(
-        crate::llm::archetype_system_prompt(archetype),
-        prompt,
-        model,
-    )
-    .await
-    {
-        Ok(Some(llm_text)) => {
-            format!("# {archetype} agent\n\n## Task\n{prompt}\n\n## Output\n{llm_text}\n")
-        }
-        _ => build_artifact(archetype, prompt),
-    };
+    let content = build_artifact(archetype, prompt);
     tokio::fs::write(&artifact, &content)
         .await
         .map_err(|e| RuvosError::InternalError(format!("write artifact: {}", e)))?;
@@ -454,7 +440,7 @@ impl ToolHandler for AgentSpawnHandler {
             let runner = params.get("runner").and_then(|value| value.as_str());
 
             // Real execution.
-            let outcome = match run_task(&agent_id, &archetype, &prompt, &model, runner).await {
+            let outcome = match run_task(&agent_id, &archetype, &prompt, runner).await {
                 Ok(outcome) => outcome,
                 Err(error) => {
                     publish_event(RuntimeEvent {
@@ -827,7 +813,7 @@ mod tests {
     #[tokio::test]
     async fn no_runner_defaults_to_success() {
         let _g = isolate();
-        let o = run_task("a1", "coder", "x", "claude-haiku-4-5", None).await.unwrap();
+        let o = run_task("a1", "coder", "x", None).await.unwrap();
         assert!(o.success, "no executor → assumed success");
         assert_eq!(o.exit_code, None);
         assert!(o.stream.is_none(), "no runner → no stream analysis");
@@ -847,7 +833,7 @@ mod tests {
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let o = run_task("a4", "coder", "x", "claude-haiku-4-5", script.to_str()).await.unwrap();
+        let o = run_task("a4", "coder", "x", script.to_str()).await.unwrap();
         assert!(o.success);
         let (observed, _anomalies) = o.stream.expect("runner stream summary");
         assert!(
@@ -861,7 +847,7 @@ mod tests {
     async fn runner_exit_zero_is_success() {
         let _g = isolate();
         // `true` exits 0.
-        let o = run_task("a2", "coder", "x", "claude-haiku-4-5", Some("true")).await.unwrap();
+        let o = run_task("a2", "coder", "x", Some("true")).await.unwrap();
         assert!(o.success);
         assert_eq!(o.exit_code, Some(0));
     }
@@ -871,7 +857,7 @@ mod tests {
     async fn runner_nonzero_exit_is_failure() {
         let _g = isolate();
         // `false` exits 1 → a real failure signal.
-        let o = run_task("a3", "tester", "x", "claude-haiku-4-5", Some("false")).await.unwrap();
+        let o = run_task("a3", "tester", "x", Some("false")).await.unwrap();
         assert!(!o.success, "non-zero exit must be a failure");
         assert_eq!(o.exit_code, Some(1));
     }
@@ -939,7 +925,7 @@ mod tests {
         // Use a real system binary as the runner: `echo` prints its args. Driven
         // via run_task with an explicit runner so the test never mutates the
         // process-global RUVOS_AGENT_RUNNER (which would race other tests).
-        let o = run_task("r1", "docs", "document the API", "claude-haiku-4-5", Some("echo"))
+        let o = run_task("r1", "docs", "document the API", Some("echo"))
             .await
             .unwrap();
         // echo <archetype> -- <prompt> → stdout captured as result.

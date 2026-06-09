@@ -1,10 +1,9 @@
-//! Thin async wrapper around the Anthropic Messages API.
+//! LLM coordination helpers for the orchestrate domain.
 //!
-//! `call_llm` returns `Ok(None)` when `ANTHROPIC_API_KEY` is not set so
-//! callers can fall back to deterministic templates without error.
-
-use crate::{Result, RuvosError};
-use serde_json::json;
+//! Ruvos does not perform LLM inference internally. Instead, `orchestrate_run`
+//! returns `coordinator_steps` — one per pipeline step — so the MCP host
+//! (Claude Code) can run each step's inference in its own context and store
+//! the real artifacts back via `agent_spawn`.
 
 /// Archetype-specific system prompts — project-agnostic, task-focused.
 pub fn archetype_system_prompt(archetype: &str) -> &'static str {
@@ -62,61 +61,4 @@ pub fn archetype_system_prompt(archetype: &str) -> &'static str {
         }
         _ => "You are a helpful technical expert. Complete the task described below.",
     }
-}
-
-/// Call the Anthropic Messages API with the given system prompt and user message.
-///
-/// Returns `Ok(None)` when `ANTHROPIC_API_KEY` is absent — the caller should
-/// fall back to a deterministic template. Returns `Ok(Some(text))` on success.
-pub async fn call_llm(
-    system_prompt: &str,
-    user_message: &str,
-    model: &str,
-) -> Result<Option<String>> {
-    let api_key = match std::env::var("ANTHROPIC_API_KEY") {
-        Ok(key) if !key.is_empty() => key,
-        _ => return Ok(None),
-    };
-
-    let client = reqwest::Client::new();
-    let body = json!({
-        "model": model,
-        "max_tokens": 1024,
-        "system": system_prompt,
-        "messages": [{ "role": "user", "content": user_message }]
-    });
-
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| RuvosError::InternalError(format!("llm request: {e}")))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(RuvosError::InternalError(format!(
-            "llm api {status}: {text}"
-        )));
-    }
-
-    let payload: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| RuvosError::InternalError(format!("llm response parse: {e}")))?;
-
-    let text = payload["content"]
-        .as_array()
-        .and_then(|blocks| blocks.first())
-        .and_then(|block| block["text"].as_str())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            RuvosError::InternalError("llm response missing content block".to_string())
-        })?;
-
-    Ok(Some(text))
 }

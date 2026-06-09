@@ -1,0 +1,116 @@
+{
+  "pack_path": "/tmp/.tmpN3e9NQ/skills.redb",
+  "query": "coordinator routing delegation handoff bugfix force a repair path researcher coder tester coordinator planner coder tester reviewer plan the work under coordinator control execute in a fixed handoff order verify and close out the result",
+  "selections": [
+    {
+      "skill_id": "architecting-security",
+      "name": "architecting-security",
+      "score": 11,
+      "reason": "tag match",
+      "purpose": "---",
+      "tags": [
+        "ancoleman",
+        "and",
+        "architecting",
+        "architectures",
+        "cis",
+        "comprehensive",
+        "control",
+        "csf",
+        "defense",
+        "domain"
+      ],
+      "validation": [
+        "verify the result matches the skill intent"
+      ]
+    },
+    {
+      "skill_id": "claw-control",
+      "name": "claw-control",
+      "score": 11,
+      "reason": "tag match",
+      "purpose": "---",
+      "tags": [
+        "adarshmishra07",
+        "agent",
+        "and",
+        "approval",
+        "autonomous",
+        "claw",
+        "complete",
+        "control",
+        "coordination",
+        "domain"
+      ],
+      "validation": [
+        "verify the result matches the skill intent"
+      ]
+    },
+    {
+      "skill_id": "command-center",
+      "name": "command-center",
+      "score": 11,
+      "reason": "tag match",
+      "purpose": "---",
+      "tags": [
+        "all",
+        "and",
+        "center",
+        "command",
+        "control",
+        "cost",
+        "dashboard",
+        "description",
+        "domain",
+        "jontsai"
+      ],
+      "validation": [
+        "verify the result matches the skill intent"
+      ]
+    },
+    {
+      "skill_id": "implementing-compliance",
+      "name": "implementing-compliance",
+      "score": 11,
+      "reason": "tag match",
+      "purpose": "---",
+      "tags": [
+        "ancoleman",
+        "and",
+        "automated",
+        "code",
+        "compliance",
+        "control",
+        "description",
+        "domain",
+        "dss",
+        "enforcement"
+      ],
+      "validation": [
+        "verify the result matches the skill intent"
+      ]
+    },
+    {
+      "skill_id": "prd-taskmaster",
+      "name": "prd-taskmaster",
+      "score": 11,
+      "reason": "tag match",
+      "purpose": "---",
+      "tags": [
+        "and",
+        "anombyte93",
+        "comprehensive",
+        "description",
+        "detects",
+        "domain",
+        "execute",
+        "existing",
+        "generates",
+        "generator"
+      ],
+      "validation": [
+        "verify the result matches the skill intent"
+      ]
+    }
+  ]
+}

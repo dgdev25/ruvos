@@ -453,6 +453,33 @@ impl ToolHandler for OrchestrateRunHandler {
                         .unwrap_or_else(|| archetype.clone())
                 })
                 .collect();
+            // Build the coordinator plan upfront — one entry per step with the
+            // system prompt and fully-formed user prompt.  The MCP host (Claude
+            // Code) reads these and runs real inference in its own context, then
+            // stores results back via agent_spawn.  No API key or subprocess needed.
+            let coordinator_steps: Vec<Value> = pipeline
+                .iter()
+                .enumerate()
+                .map(|(index, archetype)| {
+                    let role_prefix = swarm_step_roles
+                        .get(index)
+                        .map(|role| {
+                            format!("[{} orchestration as {}] {}", label, role, task)
+                        })
+                        .unwrap_or_else(|| format!("[{} orchestration] {}", label, task));
+                    json!({
+                        "step_index": index,
+                        "archetype": archetype,
+                        "swarm_role": swarm_step_roles.get(index),
+                        "system_prompt": crate::llm::archetype_system_prompt(archetype),
+                        "user_prompt": role_prefix,
+                        "inject_via": format!(
+                            "Call agent_spawn with archetype={archetype} and the inference result as prompt"
+                        ),
+                    })
+                })
+                .collect();
+
             publish_event(RuntimeEvent {
                 kind: "orchestrate.run.started".to_string(),
                 payload: json!({
@@ -711,7 +738,8 @@ impl ToolHandler for OrchestrateRunHandler {
                 "generated_sources": generated_sources,
                 "selected_skills": &task_skill_bundle,
                 "selected_skill_bundle_path": &selected_skill_bundle_path,
-                "steps": steps
+                "steps": steps,
+                "coordinator_steps": coordinator_steps
             }))
         })
     }
@@ -812,6 +840,53 @@ mod tests {
                 path
             );
         }
+    }
+
+    #[tokio::test]
+    async fn orchestrate_run_returns_coordinator_steps() {
+        // coordinator_steps lets the MCP host (Claude Code) run real inference
+        // per step in its own context — no API key or subprocess needed.
+        let _g = isolate();
+        let r = OrchestrateRunHandler
+            .execute(json!({"template": "feature", "task": "add POST /users"}))
+            .await
+            .unwrap();
+
+        let coord = r["coordinator_steps"].as_array().unwrap();
+        assert_eq!(coord.len(), 4, "one coordinator_step per pipeline step");
+
+        // Each entry must have the fields Claude Code needs to run inference.
+        for (i, step) in coord.iter().enumerate() {
+            assert_eq!(step["step_index"], i, "step_index matches position");
+            assert!(
+                step["archetype"].as_str().is_some(),
+                "archetype present at step {i}"
+            );
+            assert!(
+                !step["system_prompt"].as_str().unwrap_or("").is_empty(),
+                "system_prompt present at step {i}"
+            );
+            assert!(
+                !step["user_prompt"].as_str().unwrap_or("").is_empty(),
+                "user_prompt present at step {i}"
+            );
+            assert!(
+                step["inject_via"].as_str().is_some(),
+                "inject_via instruction present at step {i}"
+            );
+        }
+
+        // Pipeline archetypes are in the correct order.
+        assert_eq!(coord[0]["archetype"], "planner");
+        assert_eq!(coord[1]["archetype"], "coder");
+        assert_eq!(coord[2]["archetype"], "tester");
+        assert_eq!(coord[3]["archetype"], "reviewer");
+
+        // system_prompt is archetype-specific, not generic.
+        let planner_sys = coord[0]["system_prompt"].as_str().unwrap();
+        assert!(planner_sys.contains("planner"), "planner system_prompt is role-specific");
+        let coder_sys = coord[1]["system_prompt"].as_str().unwrap();
+        assert!(coder_sys.contains("engineer") || coder_sys.contains("code"), "coder system_prompt is role-specific");
     }
 
     #[tokio::test]
