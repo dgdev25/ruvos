@@ -3,6 +3,9 @@
 //! `ruvos_agent_exec` accepts a list of typed `ExecOp`s and runs them using
 //! `PluginExecutor` (tokio::process::Command).  With `sandbox: true` every op
 //! runs inside a fresh temp directory so nothing touches the host tree.
+//!
+//! ADR-017: `write_slot` / `read_slot` ops enable cross-agent file handoff
+//! within a swarm via ephemeral scratch slots scoped to a swarm ID.
 
 use crate::tools::handler::{ExecuteFuture, ToolHandler};
 use crate::Result;
@@ -33,15 +36,19 @@ impl ToolHandler for AgentExecHandler {
                         "properties": {
                             "op": {
                                 "type": "string",
-                                "enum": ["write_file", "read_file", "run_command", "git_op"]
+                                "enum": ["write_file", "read_file", "run_command", "git_op", "write_slot", "read_slot"]
                             },
-                            "path":    { "type": "string" },
-                            "content": { "type": "string" },
-                            "cmd":     { "type": "string" },
-                            "args":    { "type": "array", "items": { "type": "string" } },
-                            "cwd":     { "type": "string" },
-                            "git_op":  { "type": "string", "enum": ["add", "commit", "status", "diff"] },
-                            "message": { "type": "string" }
+                            "path":       { "type": "string" },
+                            "content":    { "type": "string" },
+                            "cmd":        { "type": "string" },
+                            "args":       { "type": "array", "items": { "type": "string" } },
+                            "cwd":        { "type": "string" },
+                            "git_op":     { "type": "string", "enum": ["add", "commit", "status", "diff"] },
+                            "message":    { "type": "string" },
+                            "slot_name":  { "type": "string", "description": "Slot identifier within the swarm scratch space" },
+                            "swarm_id":   { "type": "string", "description": "Swarm scope; defaults to 'default'" },
+                            "agent_id":   { "type": "string", "description": "Optional source agent tag for write_slot" },
+                            "timeout_ms": { "type": "integer", "description": "Max wait for read_slot in ms (default 10000)" }
                         },
                         "required": ["op"]
                     }
@@ -258,8 +265,99 @@ async fn execute_op(
             }
         }
 
+        "write_slot" => {
+            let slot_name = match op["slot_name"].as_str() {
+                Some(s) => s,
+                None => return op_error(index, op_name, "missing slot_name"),
+            };
+            let content = op["content"].as_str().unwrap_or("");
+            let swarm_id = op["swarm_id"].as_str().unwrap_or("default");
+            let agent_id = op["agent_id"].as_str().unwrap_or("");
+            let slot_path = slot_file_path(swarm_id, slot_name);
+            if let Some(parent) = slot_path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    return op_error(index, op_name, &format!("mkdir failed: {e}"));
+                }
+            }
+            // Write a JSON envelope so read_slot gets metadata too.
+            let envelope = json!({
+                "slot_name": slot_name,
+                "swarm_id": swarm_id,
+                "agent_id": agent_id,
+                "content": content,
+                "bytes": content.len(),
+            });
+            match std::fs::write(&slot_path, envelope.to_string()) {
+                Ok(()) => json!({
+                    "index": index,
+                    "op": op_name,
+                    "status": "ok",
+                    "slot_name": slot_name,
+                    "swarm_id": swarm_id,
+                    "bytes_written": content.len(),
+                }),
+                Err(e) => op_error(index, op_name, &e.to_string()),
+            }
+        }
+
+        "read_slot" => {
+            let slot_name = match op["slot_name"].as_str() {
+                Some(s) => s,
+                None => return op_error(index, op_name, "missing slot_name"),
+            };
+            let swarm_id = op["swarm_id"].as_str().unwrap_or("default");
+            let timeout_ms = op["timeout_ms"].as_u64().unwrap_or(10_000);
+            let slot_path = slot_file_path(swarm_id, slot_name);
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_millis(timeout_ms);
+            loop {
+                if slot_path.exists() {
+                    match std::fs::read_to_string(&slot_path) {
+                        Ok(raw) => {
+                            let envelope: Value =
+                                serde_json::from_str(&raw).unwrap_or(json!({"content": raw}));
+                            let content = envelope["content"].as_str().unwrap_or("").to_owned();
+                            break json!({
+                                "index": index,
+                                "op": op_name,
+                                "status": "ok",
+                                "slot_name": slot_name,
+                                "swarm_id": swarm_id,
+                                "agent_id": envelope["agent_id"],
+                                "content": content,
+                                "bytes": content.len(),
+                            });
+                        }
+                        Err(e) => break op_error(index, op_name, &e.to_string()),
+                    }
+                }
+                if std::time::Instant::now() >= deadline {
+                    break op_error(
+                        index,
+                        op_name,
+                        &format!("timeout waiting for slot '{slot_name}' in swarm '{swarm_id}'"),
+                    );
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        }
+
         other => op_error(index, other, &format!("unknown op: {other}")),
     }
+}
+
+/// Path to a named slot file: `~/.ruvos/swarms/{swarm_id}/slots/{slot_name}`.
+fn slot_file_path(swarm_id: &str, slot_name: &str) -> PathBuf {
+    crate::paths::data_root().join("swarms").join(swarm_id).join("slots").join(slot_name)
+}
+
+/// Remove all slots for a swarm (call on swarm_complete).
+pub fn clear_swarm_slots(swarm_id: &str) -> std::io::Result<()> {
+    let dir = crate::paths::data_root().join("swarms").join(swarm_id).join("slots");
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir)?;
+    }
+    Ok(())
 }
 
 fn op_error(index: usize, op: &str, message: &str) -> Value {
@@ -396,5 +494,86 @@ mod tests {
     async fn validate_rejects_missing_ops() {
         let err = AgentExecHandler.validate(&json!({}));
         assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn write_slot_and_read_slot_roundtrip() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    {
+                        "op": "write_slot",
+                        "slot_name": "coder-output",
+                        "swarm_id": "test-swarm-1",
+                        "agent_id": "coder-agent",
+                        "content": "fn main() { println!(\"hello\"); }"
+                    },
+                    {
+                        "op": "read_slot",
+                        "slot_name": "coder-output",
+                        "swarm_id": "test-swarm-1",
+                        "timeout_ms": 1000
+                    }
+                ]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["ops_executed"], 2);
+        assert_eq!(result["results"][0]["status"], "ok");
+        assert_eq!(result["results"][0]["slot_name"], "coder-output");
+        assert_eq!(result["results"][1]["status"], "ok");
+        assert_eq!(result["results"][1]["content"], "fn main() { println!(\"hello\"); }");
+        assert_eq!(result["results"][1]["agent_id"], "coder-agent");
+    }
+
+    #[tokio::test]
+    async fn read_slot_times_out_when_missing() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    {
+                        "op": "read_slot",
+                        "slot_name": "nonexistent-slot",
+                        "swarm_id": "test-swarm-2",
+                        "timeout_ms": 300
+                    }
+                ]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["results"][0]["status"], "error");
+        assert!(result["results"][0]["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("timeout"));
+    }
+
+    #[tokio::test]
+    async fn clear_swarm_slots_removes_slot_dir() {
+        let _g = isolate();
+        // Write a slot then clear it.
+        AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    {
+                        "op": "write_slot",
+                        "slot_name": "artifact",
+                        "swarm_id": "cleanup-swarm",
+                        "content": "data"
+                    }
+                ]
+            }))
+            .await
+            .unwrap();
+
+        let slot_path = slot_file_path("cleanup-swarm", "artifact");
+        assert!(slot_path.exists(), "slot file must exist before clear");
+        clear_swarm_slots("cleanup-swarm").unwrap();
+        assert!(!slot_path.exists(), "slot file must be gone after clear");
     }
 }

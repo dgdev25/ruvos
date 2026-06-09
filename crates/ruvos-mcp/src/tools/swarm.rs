@@ -911,6 +911,9 @@ impl ToolHandler for SwarmCompleteHandler {
                 }),
             )?;
 
+            // Clear ephemeral scratch slots for this swarm (ADR-017).
+            let _ = crate::tools::agent_exec::clear_swarm_slots(&stored.id);
+
             Ok(json!({
                 "status": "completed",
                 "swarm": stored
