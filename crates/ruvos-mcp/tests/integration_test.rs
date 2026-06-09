@@ -175,11 +175,12 @@ fn test_mcp_protocol_handshake() {
         compressed["error"]
     );
     assert_eq!(compressed["result"]["isError"], false);
+    // rmcp places compression metadata in _meta (MCP protocol field), not a top-level key.
     assert!(
-        compressed["result"]["compression"]["changed"]
+        compressed["result"]["_meta"]["compression"]["changed"]
             .as_bool()
             .unwrap_or(false),
-        "large MCP tool outputs should be compressed"
+        "large MCP tool outputs should be compressed (check _meta.compression)"
     );
 
     drop(stdin);

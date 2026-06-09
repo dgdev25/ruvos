@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod agent_exec;
+pub mod aisp_layer;
 pub mod agent_store;
 pub mod compress;
 pub mod cve;

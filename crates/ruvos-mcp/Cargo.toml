@@ -36,6 +36,10 @@ ruvos-memory-graph = { path = "../../substrate/ruvos-memory-graph" }
 ruvos-skills = { path = "../../substrate/ruvos-skills" }
 ruvos-cve-lite = { path = "../ruvos-cve-lite" }
 tempfile = "3"
+futures = { workspace = true }
+aisp = "0.1"
+rosetta-aisp = "0.2"
+rmcp = { version = "1.7.0", features = ["server", "transport-async-rw"] }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }

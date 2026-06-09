@@ -163,6 +163,27 @@ impl ToolHandler for HooksPreHandler {
                 }
             }
 
+            // ADR-034: AISP prompt-precision layer for task pre-hooks. Off by
+            // default; when enabled in ~/.ruvos/hooks.json it converts the task
+            // prose to AISP, validates the tier, and (if a min_tier gate is set
+            // and warn_only=false) can mark the task blocked.
+            if matches!(hook_kind, HookKind::Task) {
+                let cfg = crate::tools::aisp_layer::AispConfig::load();
+                if cfg.enabled {
+                    let prose = Self::extract_task_text(&payload);
+                    if !prose.trim().is_empty() {
+                        let assessment = crate::tools::aisp_layer::assess(&prose, &cfg);
+                        let blocked = assessment.blocked;
+                        if let Value::Object(ref mut map) = out {
+                            map.insert("aisp".to_string(), assessment.to_json());
+                            if blocked {
+                                map.insert("status".to_string(), json!("blocked"));
+                            }
+                        }
+                    }
+                }
+            }
+
             publish_event(RuntimeEvent {
                 kind: "hooks.pre.completed".to_string(),
                 payload: json!({
@@ -180,6 +201,19 @@ impl ToolHandler for HooksPreHandler {
 }
 
 impl HooksPreHandler {
+    /// Extract task-spec prose from a task hook payload, preferring fields that
+    /// carry the natural-language objective. Falls back to `extract_content`.
+    fn extract_task_text(payload: &Value) -> String {
+        for key in ["prompt", "task", "description", "objective", "spec"] {
+            if let Some(s) = payload.get(key).and_then(|v| v.as_str()) {
+                if !s.trim().is_empty() {
+                    return s.to_string();
+                }
+            }
+        }
+        Self::extract_content(payload)
+    }
+
     /// Extract the most relevant text to scan from a hook payload, preferring
     /// well-known fields and falling back to the stringified payload.
     fn extract_content(payload: &Value) -> String {
@@ -375,12 +409,13 @@ impl ToolHandler for HooksPostHandler {
                 task_id: None,
             });
 
-            let success = obj
-                .get("success")
-                .and_then(|v| v.as_bool())
-                .ok_or_else(|| {
-                    crate::RuvosError::InvalidParams("success must be a boolean".to_string())
-                })?;
+            let success = match obj.get("success") {
+                Some(Value::Bool(b)) => *b,
+                Some(Value::String(s)) => s == "true",
+                _ => return Err(crate::RuvosError::InvalidParams(
+                    "success must be a boolean (or string \"true\"/\"false\")".to_string(),
+                )),
+            };
 
             let message = obj
                 .get("message")
@@ -469,6 +504,103 @@ mod safety_tests {
 
         assert_eq!(r["blocked"], false, "safe command must not be blocked");
         assert_eq!(r["safety"]["passed"], true);
+    }
+
+    #[tokio::test]
+    async fn post_accepts_boolean_string_true() {
+        let _g = isolate();
+        let r = HooksPostHandler::new()
+            .execute(serde_json::json!({
+                "kind": "task",
+                "payload": {},
+                "success": "true"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn post_accepts_boolean_string_false() {
+        let _g = isolate();
+        let r = HooksPostHandler::new()
+            .execute(serde_json::json!({
+                "kind": "task",
+                "payload": {},
+                "success": "false"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn pre_task_aisp_absent_when_disabled() {
+        let _g = isolate();
+        // No hooks.json written → AISP layer is disabled by default.
+        let r = HooksPreHandler::new()
+            .execute(json!({
+                "kind": "task",
+                "payload": { "prompt": "For all users, if admin then allow access" }
+            }))
+            .await
+            .unwrap();
+        assert!(r.get("aisp").is_none(), "AISP must be absent unless enabled");
+    }
+
+    #[tokio::test]
+    async fn pre_task_aisp_attached_when_enabled() {
+        let g = isolate();
+        // Enable the AISP layer via ~/.ruvos/hooks.json in the isolated root,
+        // warn_only so it never blocks.
+        let cfg_path = crate::paths::data_root().join("hooks.json");
+        std::fs::create_dir_all(cfg_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cfg_path,
+            r#"{"aisp":{"enabled":true,"warn_only":true,"auto_convert":true}}"#,
+        )
+        .unwrap();
+
+        let r = HooksPreHandler::new()
+            .execute(json!({
+                "kind": "task",
+                "payload": { "prompt": "For all users, if admin then allow access" }
+            }))
+            .await
+            .unwrap();
+
+        let aisp = r.get("aisp").expect("AISP assessment must be attached when enabled");
+        assert!(aisp["tier"].is_string());
+        assert!(aisp["aisp_spec"].is_string());
+        assert_eq!(aisp["blocked"], false, "warn_only must not block");
+        // status must remain the dispatcher's value (not 'blocked') under warn_only.
+        assert_ne!(r["status"], "blocked");
+        drop(g);
+    }
+
+    #[tokio::test]
+    async fn pre_task_aisp_blocks_below_min_tier() {
+        let g = isolate();
+        let cfg_path = crate::paths::data_root().join("hooks.json");
+        std::fs::create_dir_all(cfg_path.parent().unwrap()).unwrap();
+        // Hard gate at Platinum, warn_only off → vague prose must block.
+        std::fs::write(
+            &cfg_path,
+            r#"{"aisp":{"enabled":true,"min_tier":"platinum","warn_only":false}}"#,
+        )
+        .unwrap();
+
+        let r = HooksPreHandler::new()
+            .execute(json!({
+                "kind": "task",
+                "payload": { "prompt": "do the thing somehow" }
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(r["aisp"]["blocked"], true);
+        assert_eq!(r["status"], "blocked");
+        drop(g);
     }
 
     #[tokio::test]

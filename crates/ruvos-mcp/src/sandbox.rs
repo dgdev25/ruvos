@@ -7,6 +7,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Result, RuvosError};
 
+fn validate_branch_name(branch: &str) -> Result<()> {
+    if branch.is_empty() {
+        return Err(RuvosError::InternalError(
+            "branch name must not be empty".to_string(),
+        ));
+    }
+    if !branch
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '/' | '.'))
+    {
+        return Err(RuvosError::InternalError(format!(
+            "branch name contains invalid characters: {branch}"
+        )));
+    }
+    if branch.starts_with('-') || branch.starts_with('.') {
+        return Err(RuvosError::InternalError(format!(
+            "branch name must not start with '-' or '.': {branch}"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorktreeSandbox {
     pub repo_root: PathBuf,
@@ -28,6 +50,8 @@ impl WorktreeSandbox {
     }
 
     pub fn create(&self) -> Result<()> {
+        validate_branch_name(&self.branch)?;
+
         if let Some(parent) = self.worktree_path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
                 RuvosError::InternalError(format!("worktree parent create failed: {error}"))
