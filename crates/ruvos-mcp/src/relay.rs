@@ -190,7 +190,15 @@ fn prune(id: &str) {
 }
 
 /// Register / refresh this instance's presence, returning the written record.
+/// The presence id is `instance_id()` (the process UUID).
 pub fn announce(summary: &str) -> Result<Presence> {
+    announce_as(instance_id(), summary)
+}
+
+/// Register / refresh presence under an explicit `id` rather than the process UUID.
+/// Use this for named agents (e.g. "ruvos-daemon") so that `relay::send` can
+/// look them up by stable name instead of ephemeral UUID.
+pub fn announce_as(id: &str, summary: &str) -> Result<Presence> {
     paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("relay root: {e}")))?;
     std::fs::create_dir_all(paths::relays_dir())
         .map_err(|e| RuvosError::InternalError(format!("relay dir: {e}")))?;
@@ -200,7 +208,7 @@ pub fn announce(summary: &str) -> Result<Presence> {
         .unwrap_or_default();
 
     let presence = Presence {
-        id: instance_id().to_string(),
+        id: id.to_string(),
         pid: std::process::id(),
         cwd,
         git_repo: discover_git_repo(),

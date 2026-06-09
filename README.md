@@ -6,7 +6,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-4.0.0--rc.1-14b8a6">
   <img alt="built with Rust" src="https://img.shields.io/badge/built%20with-Rust-d9772a?logo=rust&logoColor=white">
   <img alt="protocol MCP" src="https://img.shields.io/badge/protocol-MCP-3b82f6">
-  <img alt="52 MCP tools" src="https://img.shields.io/badge/MCP%20tools-52-2ac3de">
+  <img alt="53 MCP tools" src="https://img.shields.io/badge/MCP%20tools-53-2ac3de">
   <img alt="no Node" src="https://img.shields.io/badge/no%20Node-pure%20Rust-3fb950">
   <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
@@ -41,7 +41,8 @@ It's **one static Rust binary**: no Node.js, no background service, no external 
 - 👥 **A team of agents** — spawn 12 specialist archetypes (coder, tester, security, …); a GOAP A\* planner computes the pipeline for your goal, and failed steps retry or stop.
 - 🔍 **CVE / vulnerability scanning** — scan any JS/TS project for known vulnerabilities via the OSV database; outputs JSON, SARIF 2.1.0 (GitHub Code Scanning), or a terminal table. Offline mode uses a local SQLite advisory database.
 - 🛡️ **Safety + provenance built in** — risky actions are risk-checked before they run, and every action lands in a signed audit log you can verify.
-- 📡 **Multi-terminal coordination** — independent Claude Code instances discover and message each other through plain files; no daemon, no port, no database.
+- 📡 **Multi-terminal coordination** — independent Claude Code instances discover and message each other through plain files; no daemon, no port, no database. The optional `ruvos daemon watch` relay listener processes tasks dispatched from the relay bus and stores results back into memory.
+- ⚡ **Agent execution bridge** (ADR-015) — `ruvos_agent_exec` closes the "markdown-only" gap: agents can now write files, run shell commands, and perform git operations directly, with optional OS-level sandbox isolation.
 - 🗜️ **Context compression** — trim large JSON, log, code, and text payloads; originals are stored in signed session files when needed, with a replayable regression suite.
 - 🔁 **Learning signals** — successful outcomes feed `memory` and `intent` stores so future routing improves without a second memory system.
 
@@ -120,13 +121,14 @@ You ask in plain language; rUvOS **recalls** relevant past decisions, a planner 
 
 | You say… | …and rUvOS handles it with |
 |----------|----------------------------|
-| *"Use rUvOS to build a POST /users endpoint"* | `session.create`, `orchestrate.run` |
-| *"Have rUvOS remember we're using PostgreSQL"* | `memory.store` |
-| *"Ask rUvOS what we decided about the schema"* | `memory.search` |
-| *"Resume my rUvOS session from yesterday"* | `session.resume` |
-| *"Scan this project for CVEs"* | `gov.cve_lookup` |
-| *"Ask rUvOS if it's safe to run this command"* | `hooks.pre` (risk assessment) |
-| *"Show me the rUvOS audit log for the last hour"* | `gov.events` |
+| *"Use rUvOS to build a POST /users endpoint"* | `ruvos_session_create`, `ruvos_orchestrate_run` |
+| *"Have rUvOS remember we're using PostgreSQL"* | `ruvos_memory_store` |
+| *"Ask rUvOS what we decided about the schema"* | `ruvos_memory_search` |
+| *"Resume my rUvOS session from yesterday"* | `ruvos_session_resume` |
+| *"Scan this project for CVEs"* | `ruvos_gov_cve_lookup` |
+| *"Ask rUvOS if it's safe to run this command"* | `ruvos_hooks_pre` (risk assessment) |
+| *"Show me the rUvOS audit log for the last hour"* | `ruvos_gov_events` |
+| *"Have rUvOS write this file and run the tests"* | `ruvos_agent_exec` (execution bridge) |
 
 ---
 
@@ -299,9 +301,57 @@ Sessions are signed `.rvf` containers (HMAC-SHA256 + SHAKE-256 witness chain). F
 Two rUvOS instances sharing one `RUVOS_HOME` discover and message each other via plain JSON file mailboxes (no daemon, no port). Every coordination action is recorded in the signed audit log.
 
 ```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"relay.announce","arguments":{"summary":"backend: auth endpoints"}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"relay.list","arguments":{"scope":"machine"}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"relay.send","arguments":{"to":"A-uuid","body":"confirm the login shape?"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_relay_announce","arguments":{"summary":"backend: auth endpoints"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_relay_list","arguments":{"scope":"machine"}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ruvos_relay_send","arguments":{"to":"ruvos-daemon","body":"{\"method\":\"exec\",\"correlation_id\":\"t1\",\"params\":{\"ops\":[{\"op\":\"run_command\",\"cmd\":\"npm\",\"args\":[\"test\"]}]}}"}}}
+```
+
+**Named-agent presence** — `relay::announce_as(id, summary)` writes a presence file under a stable name (e.g. `ruvos-daemon`) instead of the ephemeral process UUID, so `relay_send` can resolve it by name across sessions.
+
+### `agent_exec` — execution bridge (ADR-015)
+
+`ruvos_agent_exec` closes the agent "markdown-only" gap: agents can now write files, run shell commands, perform git operations, and optionally isolate all work in a fresh OS-level temp directory.
+
+```jsonc
+// write a file, run tests, commit — all in one call
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_agent_exec","arguments":{
+  "ops":[
+    {"op":"write_file","path":"src/lib.rs","content":"…"},
+    {"op":"run_command","cmd":"cargo","args":["test"]},
+    {"op":"git_op","git_op":"commit","message":"feat: add impl"}
+  ]
+}}}
+
+// sandbox mode — all paths relative to a fresh temp dir (nothing touches the host tree)
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_agent_exec","arguments":{
+  "sandbox":true,
+  "ops":[{"op":"run_command","cmd":"make","args":["build"]}]
+}}}
+```
+
+**Ops:** `write_file` · `read_file` · `run_command` (with optional `cwd`) · `git_op` (`add` · `commit` · `status` · `diff`). Pipeline stops on the first non-zero exit code.
+
+### `ruvos daemon watch` — relay inbox listener
+
+A persistent background process that polls the relay bus and dispatches tasks to `ruvos_agent_exec`. Results are stored in `memory` namespace `daemon` so any instance can read them.
+
+```bash
+ruvos daemon watch                        # listens on "ruvos-daemon" inbox
+ruvos daemon watch --agent-id my-agent    # custom inbox name
+ruvos daemon watch --poll-ms 100          # faster polling
+```
+
+Send tasks from any Claude Code session:
+
+```jsonc
+// fire-and-forget exec via relay
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_relay_send","arguments":{
+  "to":"ruvos-daemon",
+  "body":"{\"method\":\"exec\",\"correlation_id\":\"build-1\",\"params\":{\"ops\":[{\"op\":\"run_command\",\"cmd\":\"cargo\",\"args\":[\"build\"]}]}}"
+}}}
+
+// read result from memory once the daemon has processed it
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_memory_retrieve","arguments":{"key":"daemon/results/build-1","namespace":"daemon"}}}
 ```
 
 ### `orchestrate` — planned multi-agent pipelines
@@ -416,7 +466,7 @@ Plus **22 RuVector substrate crates** (HNSW, SONA, GOAP, redb store, `.rvf` cryp
 
 ## 🩺 Status
 
-**`v4.0.0-rc.1` — production-grade.** 52 MCP tools across 12 domains, 1,044 tests passing, zero compiler/clippy warnings across the entire 30-crate workspace (standing zero-defect policy).
+**`v4.0.0-rc.1` — production-grade.** 53 MCP tools across 12 domains (including `ruvos_agent_exec`), 180 tests passing in ruvos-mcp, zero compiler/clippy warnings across the entire 30-crate workspace (standing zero-defect policy).
 
 **Honest scope notes:**
 - Vector ranking uses TF cosine similarity + HNSW + RuLake (real, working algorithms); neural embeddings are feature-hashing today — a provider API can be swapped in behind the same interface.

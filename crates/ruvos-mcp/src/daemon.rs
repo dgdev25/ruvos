@@ -62,7 +62,12 @@ pub async fn run_daemon(config: DaemonConfig, mut shutdown: tokio::sync::watch::
 
                 // Refresh presence periodically so other agents can find us.
                 if poll_count % HEARTBEAT_EVERY_N_POLLS == 1 {
-                    let _ = relay::announce(&format!("ruvos daemon ({})", config.agent_id));
+                    // Write presence as config.agent_id so relay::send("ruvos-daemon", …)
+                    // can resolve the named inbox without knowing our process UUID.
+                    let _ = relay::announce_as(
+                        &config.agent_id,
+                        &format!("ruvos daemon ({})", config.agent_id),
+                    );
                 }
 
                 // Drain inbox and dispatch each message.
@@ -78,10 +83,12 @@ pub async fn run_daemon(config: DaemonConfig, mut shutdown: tokio::sync::watch::
                                     "daemon/results/{}",
                                     result.correlation_id.as_deref().unwrap_or("unknown")
                                 );
+                                let value_str = serde_json::to_string(&result.output)
+                                    .unwrap_or_default();
                                 let _ = MemoryStoreHandler
                                     .execute(json!({
                                         "key": key,
-                                        "value": result.output,
+                                        "value": value_str,
                                         "namespace": "daemon",
                                         "tags": ["daemon", "exec_result"],
                                     }))
