@@ -17,6 +17,7 @@ pub mod constants;
 pub mod daemon;
 pub mod error;
 pub mod eval;
+pub mod llm;
 pub mod paths;
 pub mod protocol;
 pub mod relay;
@@ -26,7 +27,6 @@ pub mod sandbox;
 pub mod server;
 pub mod skills;
 pub mod store;
-pub mod llm;
 pub mod swarm;
 pub mod tools;
 

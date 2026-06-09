@@ -233,8 +233,7 @@ mod tests {
 
         // Write a ping message to the daemon's inbox directly.
         crate::paths::ensure_root().unwrap();
-        let inbox_dir = crate::paths::relays_dir()
-            .join(format!("{}.inbox", DAEMON_AGENT_ID));
+        let inbox_dir = crate::paths::relays_dir().join(format!("{}.inbox", DAEMON_AGENT_ID));
         std::fs::create_dir_all(&inbox_dir).unwrap();
         let body = json!({
             "method": "ping",
@@ -265,13 +264,16 @@ mod tests {
         let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
 
         // The result should have been stored in memory.
-        let stored = MemoryStoreHandler; // use search to verify
+        let _stored = MemoryStoreHandler; // use search to verify
         let search_result = crate::tools::memory::MemorySearchHandler
             .execute(json!({ "query": "daemon/results/inbox-test", "namespace": "daemon" }))
             .await
             .unwrap();
         // At least one result referencing the correlation id should exist.
         let hits = search_result["results"].as_array().unwrap();
-        assert!(!hits.is_empty(), "daemon should have stored the result in memory");
+        assert!(
+            !hits.is_empty(),
+            "daemon should have stored the result in memory"
+        );
     }
 }

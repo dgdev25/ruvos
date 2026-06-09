@@ -74,10 +74,7 @@ impl ToolHandler for AgentExecHandler {
 }
 
 async fn run_exec(params: Value) -> Result<Value> {
-    let ops = params["ops"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let ops = params["ops"].as_array().cloned().unwrap_or_default();
     let sandbox = params["sandbox"].as_bool().unwrap_or(false);
     let working_dir_override = params["working_dir"].as_str().map(PathBuf::from);
 
@@ -109,7 +106,9 @@ async fn run_exec(params: Value) -> Result<Value> {
         }
     }
 
-    let all_ok = results.iter().all(|r| r["status"].as_str() != Some("error"));
+    let all_ok = results
+        .iter()
+        .all(|r| r["status"].as_str() != Some("error"));
     Ok(json!({
         "success": all_ok,
         "sandbox": sandbox,
@@ -184,7 +183,11 @@ async fn execute_op(
             };
             let args: Vec<String> = op["args"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let cwd = op["cwd"]
                 .as_str()
@@ -198,7 +201,11 @@ async fn execute_op(
                 cwd,
             };
             match executor.execute(&req).await {
-                Ok(ExecutionResult { status, stdout, stderr }) => json!({
+                Ok(ExecutionResult {
+                    status,
+                    stdout,
+                    stderr,
+                }) => json!({
                     "index": index,
                     "op": op_name,
                     "status": if status == 0 { "ok" } else { "error" },
@@ -224,7 +231,11 @@ async fn execute_op(
                 "add" => {
                     let paths: Vec<String> = op["paths"]
                         .as_array()
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
                         .unwrap_or_else(|| vec![".".to_string()]);
                     let mut a = vec!["add".to_string()];
                     a.extend(paths);
@@ -235,8 +246,8 @@ async fn execute_op(
                     vec!["commit".to_string(), "-m".to_string(), message.to_string()]
                 }
                 "status" => vec!["status".to_string(), "--short".to_string()],
-                "diff"   => vec!["diff".to_string()],
-                other    => return op_error(index, op_name, &format!("unknown git_op: {other}")),
+                "diff" => vec!["diff".to_string()],
+                other => return op_error(index, op_name, &format!("unknown git_op: {other}")),
             };
             let req = ExecutionRequest {
                 plugin_name: "agent_exec".to_string(),
@@ -245,7 +256,11 @@ async fn execute_op(
                 cwd,
             };
             match executor.execute(&req).await {
-                Ok(ExecutionResult { status, stdout, stderr }) => json!({
+                Ok(ExecutionResult {
+                    status,
+                    stdout,
+                    stderr,
+                }) => json!({
                     "index": index,
                     "op": op_name,
                     "git_op": git_op,
@@ -322,8 +337,10 @@ mod tests {
         assert_eq!(result["results"][1]["content"], "sandbox test");
         // Path written is inside a temp dir, not the cwd.
         let written_path = result["results"][0]["path"].as_str().unwrap();
-        assert!(written_path.contains(std::env::temp_dir().to_str().unwrap())
-            || written_path.contains("/tmp"));
+        assert!(
+            written_path.contains(std::env::temp_dir().to_str().unwrap())
+                || written_path.contains("/tmp")
+        );
     }
 
     #[tokio::test]
@@ -340,7 +357,10 @@ mod tests {
 
         assert_eq!(result["success"], true);
         assert_eq!(result["results"][0]["exit_code"], 0);
-        assert!(result["results"][0]["stdout"].as_str().unwrap().contains("hello world"));
+        assert!(result["results"][0]["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("hello world"));
     }
 
     #[tokio::test]
