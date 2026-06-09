@@ -166,8 +166,15 @@ pub async fn serve() -> anyhow::Result<()> {
     );
     let registry = create_registry();
     let handler = RuvosServerHandler::new(registry);
-    serve_server(handler, (tokio::io::stdin(), tokio::io::stdout()))
+    // serve_server completes the MCP handshake and returns a RunningService.
+    // Calling .waiting() keeps the server alive to process tool calls until
+    // the client closes the connection.
+    let running = serve_server(handler, (tokio::io::stdin(), tokio::io::stdout()))
         .await
         .map_err(|e| anyhow::anyhow!("rmcp server error: {e}"))?;
+    running
+        .waiting()
+        .await
+        .map_err(|e| anyhow::anyhow!("rmcp server join error: {e}"))?;
     Ok(())
 }
