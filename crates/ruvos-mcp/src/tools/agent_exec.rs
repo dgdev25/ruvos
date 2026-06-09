@@ -8,6 +8,7 @@
 //! within a swarm via ephemeral scratch slots scoped to a swarm ID.
 
 use crate::tools::handler::{ExecuteFuture, ToolHandler};
+use futures::future::join_all;
 use crate::Result;
 use ruvos_plugin_host::executor::PluginExecutor;
 use ruvos_plugin_host::types::{ExecutionRequest, ExecutionResult};
@@ -37,7 +38,7 @@ impl ToolHandler for AgentExecHandler {
                         "properties": {
                             "op": {
                                 "type": "string",
-                                "enum": ["write_file", "patch_file", "read_file", "run_command", "git_op", "write_slot", "read_slot", "install_binary", "cargo_check", "cargo_build", "cargo_test"]
+                                "enum": ["write_file", "patch_file", "read_file", "run_command", "git_op", "write_slot", "read_slot", "install_binary", "cargo_check", "cargo_build", "cargo_test", "parallel_group"]
                             },
                             "path":       { "type": "string" },
                             "content":    { "type": "string" },
@@ -58,7 +59,8 @@ impl ToolHandler for AgentExecHandler {
                             "manifest_path":  { "type": "string", "description": "Path to Cargo.toml (cargo_* ops; defaults to cwd)" },
                             "package":        { "type": "string", "description": "Cargo package name (-p flag)" },
                             "release":        { "type": "boolean", "description": "Build in release mode (cargo_build only)" },
-                            "test_filter":    { "type": "string", "description": "Test name filter (cargo_test only)" }
+                            "test_filter":    { "type": "string", "description": "Test name filter (cargo_test only)" },
+                            "ops":             { "type": "array", "description": "Child ops to run concurrently (parallel_group only; nesting not permitted)" }
                         },
                         "required": ["op"]
                     }
@@ -154,7 +156,11 @@ async fn run_exec(params: Value) -> Result<Value> {
             json!({"op_index": i, "op": op, "status": "pending"}).to_string(),
         );
 
-        let result = execute_op(&executor, op, base_cwd.as_deref(), i).await;
+        let result = if op_name == "parallel_group" {
+            run_parallel_group(&executor, op, base_cwd.as_deref(), i, &journal_dir).await
+        } else {
+            execute_op(&executor, op, base_cwd.as_deref(), i).await
+        };
         let status = if result["status"].as_str() == Some("error") {
             "failed"
         } else {
@@ -615,8 +621,91 @@ async fn execute_op(
             }
         }
 
+        "parallel_group" => op_error(index, "parallel_group", "parallel_group cannot be nested — use it at the top-level ops list only"),
         other => op_error(index, other, &format!("unknown op: {other}")),
     }
+}
+
+async fn run_parallel_group(
+    executor: &PluginExecutor,
+    op: &Value,
+    base_cwd: Option<&std::path::Path>,
+    index: usize,
+    journal_dir: &std::path::Path,
+) -> Value {
+    let child_ops: Vec<Value> = op["ops"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    if child_ops.iter().any(|c| c["op"].as_str() == Some("parallel_group")) {
+        return op_error(index, "parallel_group", "nested parallel_group not permitted (depth limit = 1)");
+    }
+
+    if child_ops.is_empty() {
+        return json!({
+            "index": index,
+            "op": "parallel_group",
+            "status": "ok",
+            "child_count": 0,
+            "children": [],
+        });
+    }
+
+    for (j, child_op) in child_ops.iter().enumerate() {
+        let child_checkpoint = journal_dir.join(format!("{index}_{j}.json"));
+        let _ = std::fs::write(
+            &child_checkpoint,
+            json!({"op_index": format!("{index}_{j}"), "op": child_op, "status": "pending"}).to_string(),
+        );
+    }
+
+    let mut child_futs = Vec::with_capacity(child_ops.len());
+    for (j, child_op) in child_ops.iter().enumerate() {
+        child_futs.push(execute_op(executor, child_op, base_cwd, j));
+    }
+    let child_results = join_all(child_futs).await;
+
+    for (j, child_result) in child_results.iter().enumerate() {
+        let child_checkpoint = journal_dir.join(format!("{index}_{j}.json"));
+        let child_status = if child_result["status"].as_str() == Some("error") { "failed" } else { "completed" };
+        let _ = std::fs::write(
+            &child_checkpoint,
+            json!({
+                "op_index": format!("{index}_{j}"),
+                "op": &child_ops[j],
+                "status": child_status,
+                "result": child_result,
+            }).to_string(),
+        );
+    }
+
+    let first_error: Option<String> = child_results.iter()
+        .find(|r| r["status"].as_str() == Some("error"))
+        .map(|r| {
+            r["error"].as_str()
+                .or_else(|| r["stderr"].as_str().filter(|s| !s.is_empty()))
+                .map(String::from)
+                .unwrap_or_else(|| format!(
+                    "child op '{}' failed with exit_code {}",
+                    r["op"].as_str().unwrap_or("unknown"),
+                    r["exit_code"].as_i64().unwrap_or(-1),
+                ))
+        });
+    let all_ok = first_error.is_none();
+    let child_count = child_results.len();
+
+    let mut result = json!({
+        "index": index,
+        "op": "parallel_group",
+        "status": if all_ok { "ok" } else { "error" },
+        "child_count": child_count,
+        "children": child_results,
+    });
+    if let Some(err) = first_error {
+        result["first_error"] = Value::String(err);
+    }
+    result
 }
 
 /// Path to a named slot file: `~/.ruvos/swarms/{swarm_id}/slots/{slot_name}`.
@@ -1037,6 +1126,98 @@ mod tests {
         assert_eq!(r["success"], true);
         assert!(r["errors"].is_number());
         assert!(r["warnings"].is_number());
+    }
+
+    #[tokio::test]
+    async fn parallel_group_runs_all_children() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.txt");
+        let c = dir.path().join("c.txt");
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "parallel_group",
+                    "ops": [
+                        { "op": "write_file", "path": a.to_str().unwrap(), "content": "alpha" },
+                        { "op": "write_file", "path": b.to_str().unwrap(), "content": "beta" },
+                        { "op": "write_file", "path": c.to_str().unwrap(), "content": "gamma" },
+                    ]
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["results"][0]["status"], "ok");
+        assert_eq!(result["results"][0]["child_count"], 3);
+        assert_eq!(result["results"][0]["children"][0]["status"], "ok");
+        assert_eq!(result["results"][0]["children"][1]["status"], "ok");
+        assert_eq!(result["results"][0]["children"][2]["status"], "ok");
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "alpha");
+        assert_eq!(std::fs::read_to_string(&b).unwrap(), "beta");
+        assert_eq!(std::fs::read_to_string(&c).unwrap(), "gamma");
+    }
+
+    #[tokio::test]
+    async fn parallel_group_partial_failure_reports_error() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("good.txt");
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "parallel_group",
+                    "ops": [
+                        { "op": "write_file", "path": good.to_str().unwrap(), "content": "ok" },
+                        { "op": "run_command", "cmd": "false", "args": [] },
+                    ]
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], false);
+        assert_eq!(result["results"][0]["status"], "error");
+        assert!(result["results"][0]["first_error"].as_str().is_some());
+        assert!(good.exists(), "write_file child must complete even when another child fails");
+    }
+
+    #[tokio::test]
+    async fn parallel_group_nested_returns_error() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "parallel_group",
+                    "ops": [{
+                        "op": "parallel_group",
+                        "ops": [{ "op": "run_command", "cmd": "echo", "args": ["hi"] }]
+                    }]
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["results"][0]["status"], "error");
+        assert!(result["results"][0]["error"].as_str().unwrap_or("").contains("nested"));
+    }
+
+    #[tokio::test]
+    async fn parallel_group_empty_ops_succeeds() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{ "op": "parallel_group", "ops": [] }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["results"][0]["child_count"], 0);
     }
 
     #[tokio::test]

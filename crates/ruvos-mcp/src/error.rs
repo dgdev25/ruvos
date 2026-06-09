@@ -43,4 +43,12 @@ impl RuvosError {
     }
 }
 
+impl std::fmt::Display for RuvosError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+impl std::error::Error for RuvosError {}
+
 pub type Result<T> = std::result::Result<T, RuvosError>;
