@@ -32,6 +32,16 @@ impl ToolHandler for GovWitnessVerifyHandler {
     fn domain(&self) -> &'static str {
         "gov"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["rvf_path"],
+            "properties": {
+                "rvf_path": { "type": "string", "description": "Absolute path to a .rvf session file (not a directory)" }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("rvf_path").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(

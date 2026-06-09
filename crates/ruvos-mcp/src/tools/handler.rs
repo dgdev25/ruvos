@@ -33,6 +33,17 @@ pub trait ToolHandler: Send + Sync {
 
     /// Execute the tool with given parameters (returns a boxed async future)
     fn execute(&self, params: Value) -> ExecuteFuture;
+
+    /// JSON Schema for the MCP inputSchema field.
+    /// Default: permissive (accepts any object). Override to declare required fields
+    /// so MCP clients pass typed values instead of strings.
+    fn schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true
+        })
+    }
 }
 
 /// Registry of all tool handlers, keyed by "domain.name"
@@ -241,6 +252,44 @@ impl ToolRegistry {
         let mut tools: Vec<String> = self.handlers.keys().cloned().collect();
         tools.sort();
         tools
+    }
+
+    /// Build MCP tool definition objects (name + description + inputSchema) by
+    /// combining the public tool_registry() metadata with each handler's schema().
+    /// Handlers that override schema() get proper typed schemas; all others get
+    /// the permissive fallback.
+    pub fn mcp_tool_definitions(&self) -> Vec<serde_json::Value> {
+        let metadata = crate::tools::tool_registry();
+        // Build a lookup: "domain.name" -> schema from the live handler
+        let mut schema_map: std::collections::HashMap<String, serde_json::Value> =
+            std::collections::HashMap::new();
+        for (key, handler) in &self.handlers {
+            schema_map.insert(key.clone(), handler.schema());
+        }
+        let mut defs: Vec<serde_json::Value> = metadata
+            .into_iter()
+            .map(|t| {
+                let schema = schema_map.get(&t.name).cloned().unwrap_or_else(|| {
+                    serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                    })
+                });
+                serde_json::json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "inputSchema": schema
+                })
+            })
+            .collect();
+        defs.sort_by(|a, b| {
+            a["name"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(b["name"].as_str().unwrap_or(""))
+        });
+        defs
     }
 }
 

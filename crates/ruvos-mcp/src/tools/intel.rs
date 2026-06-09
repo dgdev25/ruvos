@@ -301,6 +301,17 @@ impl ToolHandler for IntelPatternStoreHandler {
     fn domain(&self) -> &'static str {
         "intel"
     }
+    fn schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["trajectory", "outcome"],
+            "properties": {
+                "trajectory": { "type": "array", "items": { "type": "string" }, "description": "Ordered list of steps taken" },
+                "outcome": { "type": "string", "description": "Result or lesson from the trajectory" }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         if params
             .get("trajectory")
@@ -368,6 +379,17 @@ impl ToolHandler for IntelPatternSearchHandler {
     }
     fn domain(&self) -> &'static str {
         "intel"
+    }
+    fn schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["query"],
+            "properties": {
+                "query": { "type": "string", "description": "Natural language query to find similar trajectories" },
+                "top_k": { "type": "integer", "description": "Maximum results to return", "default": 5 }
+            },
+            "additionalProperties": false
+        })
     }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("query").and_then(|v| v.as_str()).is_none() {
@@ -507,6 +529,21 @@ impl ToolHandler for IntelIntentStoreHandler {
         "intel"
     }
 
+    fn schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["kind", "text"],
+            "properties": {
+                "kind": { "type": "string", "description": "Category: goal | preference | workflow" },
+                "text": { "type": "string", "description": "Human-readable intent description" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "source": { "type": "string", "default": "user" },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 1.0 }
+            },
+            "additionalProperties": false
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("kind").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -584,6 +621,19 @@ impl ToolHandler for IntelIntentSearchHandler {
 
     fn domain(&self) -> &'static str {
         "intel"
+    }
+
+    fn schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["query"],
+            "properties": {
+                "query": { "type": "string", "description": "Search for stored goals and preferences" },
+                "top_k": { "type": "integer", "default": 5 },
+                "kind": { "type": "string", "description": "Filter by kind (goal | preference | workflow)" }
+            },
+            "additionalProperties": false
+        })
     }
 
     fn validate(&self, params: &Value) -> Result<()> {

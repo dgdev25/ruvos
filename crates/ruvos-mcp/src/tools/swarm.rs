@@ -447,6 +447,19 @@ impl ToolHandler for SwarmCreateHandler {
     fn domain(&self) -> &'static str {
         "swarm"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["objective"],
+            "properties": {
+                "objective": { "type": "string", "description": "The swarm's goal or mission" },
+                "topology": { "type": "string", "enum": ["star", "mesh", "pipeline", "hierarchical"], "description": "Swarm communication topology" },
+                "swarm_id": { "type": "string", "description": "Optional custom swarm ID" },
+                "max_agents": { "type": "integer" }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("objective").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -593,6 +606,19 @@ impl ToolHandler for SwarmAssignHandler {
     fn domain(&self) -> &'static str {
         "swarm"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["agent_id", "task_id"],
+            "properties": {
+                "agent_id": { "type": "string" },
+                "task_id": { "type": "string" },
+                "swarm_id": { "type": "string" },
+                "description": { "type": "string" }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("agent_id").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -665,6 +691,18 @@ impl ToolHandler for SwarmHeartbeatHandler {
     fn domain(&self) -> &'static str {
         "swarm"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["agent_id"],
+            "properties": {
+                "agent_id": { "type": "string" },
+                "swarm_id": { "type": "string" },
+                "status": { "type": "string" }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("agent_id").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -727,6 +765,20 @@ impl ToolHandler for SwarmMessageHandler {
     }
     fn domain(&self) -> &'static str {
         "swarm"
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["body"],
+            "properties": {
+                "body": { "type": "string", "description": "Message content" },
+                "to": { "type": "string", "description": "Target agent_id (or omit with broadcast=true)" },
+                "broadcast": { "type": "boolean", "description": "Send to all swarm members", "default": false },
+                "targets": { "type": "array", "items": { "type": "string" }, "description": "List of target agent IDs" },
+                "swarm_id": { "type": "string" }
+            },
+            "additionalProperties": false
+        })
     }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("body").and_then(|v| v.as_str()).is_none() {
@@ -879,6 +931,18 @@ impl ToolHandler for SwarmFailHandler {
     }
     fn domain(&self) -> &'static str {
         "swarm"
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["reason"],
+            "properties": {
+                "reason": { "type": "string", "description": "Why the swarm failed" },
+                "swarm_id": { "type": "string" },
+                "failed_by": { "type": "string" }
+            },
+            "additionalProperties": false
+        })
     }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("reason").and_then(|v| v.as_str()).is_none() {
@@ -1204,6 +1268,19 @@ impl ToolHandler for SwarmJoinHandler {
     fn domain(&self) -> &'static str {
         "swarm"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["agent_id"],
+            "properties": {
+                "agent_id": { "type": "string" },
+                "swarm_id": { "type": "string" },
+                "role": { "type": "string", "default": "worker" },
+                "capabilities": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("agent_id").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -1295,6 +1372,18 @@ impl ToolHandler for SwarmLeaveHandler {
     }
     fn domain(&self) -> &'static str {
         "swarm"
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["agent_id"],
+            "properties": {
+                "agent_id": { "type": "string" },
+                "swarm_id": { "type": "string" },
+                "force": { "type": "boolean", "default": false }
+            },
+            "additionalProperties": false
+        })
     }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("agent_id").and_then(|v| v.as_str()).is_none() {

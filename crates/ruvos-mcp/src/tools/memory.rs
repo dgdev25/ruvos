@@ -301,6 +301,19 @@ impl ToolHandler for MemoryStoreHandler {
     fn domain(&self) -> &'static str {
         "memory"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["key", "value"],
+            "properties": {
+                "key": { "type": "string", "description": "Unique identifier for the entry" },
+                "value": { "type": "string", "description": "Content to store" },
+                "namespace": { "type": "string", "description": "Namespace for the entry", "default": "default" },
+                "tags": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": false
+        })
+    }
     fn validate(&self, params: &Value) -> Result<()> {
         for field in ["key", "value"] {
             if params.get(field).and_then(|v| v.as_str()).is_none() {
@@ -392,6 +405,17 @@ impl ToolHandler for MemoryRetrieveHandler {
     }
     fn domain(&self) -> &'static str {
         "memory"
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["key"],
+            "properties": {
+                "key": { "type": "string" },
+                "namespace": { "type": "string", "default": "default" }
+            },
+            "additionalProperties": false
+        })
     }
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("key").and_then(|v| v.as_str()).is_none() {
@@ -526,6 +550,19 @@ impl ToolHandler for MemorySearchHandler {
     }
     fn domain(&self) -> &'static str {
         "memory"
+    }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["query"],
+            "properties": {
+                "query": { "type": "string", "description": "Natural language search query" },
+                "namespace": { "type": "string", "default": "default" },
+                "top_k": { "type": "integer", "default": 10 },
+                "filter_tags": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": true
+        })
     }
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {

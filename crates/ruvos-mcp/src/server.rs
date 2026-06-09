@@ -135,21 +135,7 @@ impl JsonRpcServer {
 
     /// Build MCP tool definitions (name, description, JSON Schema) for tools/list.
     fn tool_definitions(&self) -> Vec<serde_json::Value> {
-        crate::tools::tool_registry()
-            .into_iter()
-            .map(|t| {
-                serde_json::json!({
-                    "name": t.name,
-                    "description": t.description,
-                    // Permissive schema: handlers do their own validation.
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {},
-                        "additionalProperties": true
-                    }
-                })
-            })
-            .collect()
+        self.registry.mcp_tool_definitions()
     }
 
     /// Dispatch a `tools/call` request to the matching handler.
