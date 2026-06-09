@@ -1,86 +1,135 @@
-# ADR-032: Multi-Provider LLM Routing (Claudish Patterns)
+# ADR-032: Multi-Provider LLM Routing via CLI-First + OpenRouter Fallback
 
 **Status:** Proposed  
-**Date:** 2026-06-09  
-**Source:** `/mnt/datadisk/repos/claudish` (TypeScript, MIT, 580+ models via OpenRouter)
+**Date:** 2026-06-09 (revised after Prism/PAL clink analysis)
 
 ## Context
 
-Ruvos assumes a single LLM provider: Anthropic (via `ANTHROPIC_API_KEY`). `orchestrate_run` and `agent_spawn` hardcode Anthropic's API. For a large project build:
+Ruvos currently hardcodes Anthropic's REST API via `ANTHROPIC_API_KEY`. This violates two hard constraints:
 
-1. Some tasks are better suited to different models (Opus for architecture, Haiku for boilerplate, specialised code models for complex Rust)
-2. Cost control requires routing cheap tasks to cheaper models
-3. The user's requirement "I DO NOT want to use the Anthropic API key" means an alternative routing layer is essential
+1. **`ANTHROPIC_API_KEY` must never be used** — the user exclusively uses subscription-based CLI tools and OpenRouter.
+2. **CLI subscriptions are the primary compute** — `claude`, `gemini`, `codex` CLIs are already installed and authenticated via their respective subscription plans; they cost nothing beyond the subscription.
 
-Claudish (`/mnt/datadisk/repos/claudish`) is a multi-provider LLM proxy (TypeScript, MIT) supporting 580+ models via OpenRouter with API translation, extended thinking, and context scaling. Its routing patterns are directly applicable to ruvos.
+Prism (the production redevelopment of PAL MCP Server) solves this with its `clink` module: it detects which CLI executables are present at startup, routes inference calls through them via subprocess, and falls back to API-key providers (OpenRouter only) when CLIs are absent. Ruvos must adopt the same pattern natively in Rust.
+
+## Routing Priority (hard-ordered, non-negotiable)
+
+```
+1. claude CLI   (subscription, no API key)    — `claude --print --output-format json`
+2. gemini CLI   (subscription, no API key)    — `gemini -o json`
+3. codex CLI    (subscription, no API key)    — `codex exec --json`
+4. OpenRouter   (OPENROUTER_API_KEY only)     — REST to api.openrouter.ai
+
+NEVER: ANTHROPIC_API_KEY or any direct Anthropic REST endpoint
+NEVER: GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY as standalone keys
+```
+
+At startup, ruvos probes `$PATH` for each CLI executable. The first available CLI in priority order becomes the active provider. OpenRouter is used **only** if no CLI is found and `OPENROUTER_API_KEY` is set.
 
 ## Decision
 
-Add provider abstraction to ruvos's LLM call layer:
+### 1. `CliRouter` — new crate `ruvos-llm-router`
 
-1. Introduce a `LlmProvider` enum in `ruvos-mcp`: `Anthropic`, `OpenRouter`, `Ollama`, `Prism`
-2. Read provider config from `~/.ruvos/llm.toml`:
-   ```toml
-   [default]
-   provider = "openrouter"
-   model = "anthropic/claude-sonnet-4-6"
+A lightweight Rust module that mirrors clink's architecture:
 
-   [archetypes.coder]
-   provider = "openrouter"
-   model = "anthropic/claude-opus-4-8"
+```rust
+pub enum LlmProvider {
+    ClaudeCli,    // `claude --print --output-format json [--model <m>]`
+    GeminiCli,    // `gemini -o json [--model <m>]`
+    CodexCli,     // `codex exec --json [--model <m>]`
+    OpenRouter,   // REST: api.openrouter.ai/api/v1/chat/completions
+}
 
-   [archetypes.tester]
-   provider = "openrouter"
-   model = "anthropic/claude-haiku-4-5"
-   ```
-3. `agent_spawn` and `orchestrate_run` resolve the archetype to its configured provider + model before building the inference prompt
-4. The Prism MCP tool (`mcp__prism__chat`) is exposed as a `Prism` provider option — satisfying the "use Prism, not bare API" preference in project memory
+pub struct CliRouter {
+    provider: LlmProvider,
+    model: Option<String>,    // passed to CLI via --model flag
+    system_prompt: String,    // role-specific system prompt injected via --append-system-prompt
+}
+```
 
-Claudish's TypeScript proxy is NOT ported to Rust; instead, ruvos calls the configured provider's REST API directly using `reqwest`. The routing logic (model selection per archetype) is the Claudish pattern to adopt, not its proxy architecture.
+Detection at startup (in order):
+```rust
+fn detect_provider() -> LlmProvider {
+    if which::which("claude").is_ok() { return LlmProvider::ClaudeCli; }
+    if which::which("gemini").is_ok() { return LlmProvider::GeminiCli; }
+    if which::which("codex").is_ok()  { return LlmProvider::CodexCli; }
+    if std::env::var("OPENROUTER_API_KEY").is_ok() { return LlmProvider::OpenRouter; }
+    panic!("No LLM provider available: install claude/gemini/codex CLI or set OPENROUTER_API_KEY");
+}
+```
+
+### 2. Config: `~/.ruvos/llm.toml`
+
+```toml
+[routing]
+# Priority order: first available wins. "auto" = use detect_provider().
+priority = ["claude", "gemini", "codex", "openrouter"]
+
+[claude]
+model = "sonnet"                 # passed as --model sonnet
+extra_args = ["--permission-mode", "acceptEdits"]
+
+[gemini]
+model = "gemini-2.5-pro"
+extra_args = ["--yolo"]
+
+[codex]
+extra_args = ["--dangerously-bypass-approvals-and-sandbox", "--enable", "web_search_request"]
+
+[openrouter]
+# OPENROUTER_API_KEY read from environment, not stored here
+default_model = "anthropic/claude-sonnet-4-6"
+
+[archetypes]
+# Per-archetype overrides: CLI/model selection for specific roles
+coder.cli   = "claude"
+coder.model = "sonnet"
+tester.cli  = "gemini"
+reviewer.cli = "codex"
+```
+
+### 3. Output parsing
+
+Each CLI produces different JSON schema — parsers mirror Prism's `clink/parsers/`:
+
+| CLI | Output format | Parse target |
+|-----|--------------|---------------|
+| `claude` | `{"type":"result","result":"..."}` | `.result` string |
+| `gemini` | `{"candidates":[{"content":{"parts":[{"text":"..."}]}}]}` | `.candidates[0].content.parts[0].text` |
+| `codex` | JSONL stream, last line `{"type":"message","content":"..."}` | last `.content` |
+| OpenRouter | OpenAI-compatible: `.choices[0].message.content` | standard |
+
+### 4. Integration points
+
+- `agent_spawn`: resolves archetype → `CliRouter` → subprocess or REST call
+- `orchestrate_run`: passes `model` hint from step config; router honours it if the CLI accepts `--model`
+- `ruvos_agent_exec` (`cargo_check` etc.): unaffected — those call `cargo`, not an LLM
+
+### 5. Prism as a meta-provider
+
+When Prism MCP server is running, `mcp__prism__chat` and `mcp__prism__clink` are available as an alternative to direct CLI subprocess. This is the `Prism` provider option — it delegates routing to Prism's own clink registry rather than ruvos doing the subprocess itself. Useful when Prism is already running and clink config is managed there.
+
+```toml
+[routing]
+priority = ["prism", "claude", "gemini", "codex", "openrouter"]
+```
 
 ## Consequences
 
 **Positive:**
-- Closes the "no Anthropic API key" requirement: ruvos can route through OpenRouter or Prism
-- Cost control: cheap tasks use cheap models; expensive tasks (architecture, security review) use Opus
-- No vendor lock-in at the ruvos level
+- Zero API key management for primary inference — CLI subscriptions handle auth
+- Prism's proven routing pattern adopted in Rust; no Python subprocess chain
+- `OPENROUTER_API_KEY` is the only key ruvos ever reads; clearly documented
+- Per-archetype CLI routing enables cost/capability optimisation without API spend
 
 **Trade-offs:**
-- `reqwest` dependency addition (likely already present; check workspace)
-- `llm.toml` config file is new state to manage; must document format clearly
-- Different providers have different rate limits and context windows — ruvos must handle provider-specific errors gracefully
-
-## Prism Integration
-
-Prism (`mcp__prism__*`) is the production deployment of what was originally PAL MCP Server — a multi-provider MCP bridge with 11+ tools (chat, planner, debug, codereview, thinkdeep, consensus, challenge, precommit, etc.) routing through OpenRouter.
-
-Ruvos can integrate Prism at two levels:
-
-### Level 1 — Provider alias (included in this ADR)
-
-The `Prism` variant in `LlmProvider` routes LLM calls through `mcp__prism__chat` instead of a direct REST call. This satisfies the user's "use Prism/OpenRouter, not bare Anthropic API" constraint and is already captured in the `llm.toml` config above.
-
-### Level 2 — Native tool mirroring (future ADR)
-
-Prism's higher-order tools (thinkdeep, consensus, challenge) represent orchestration patterns that ruvos should eventually own natively:
-
-| Prism tool | Equivalent ruvos concept | Target ADR |
-|------------|--------------------------|------------|
-| `consensus` | Multi-agent vote across archetypes | ADR-026 (agent_verify RARV) |
-| `challenge` | Adversarial review of a claim | ADR-026 (agent_verify RARV) |
-| `thinkdeep` | Extended reasoning pass before agent_exec | ADR-034 (spec validation) |
-| `planner` | Structured goal decomposition | ADR-004 (GOAP planner) |
-| `codereview` | Post-edit quality gate | ADR-025 (contract auto-check hook) |
-
-Until those ADRs are implemented, ruvos calls Prism tools directly via MCP when the equivalent native capability is absent. This is not a long-term dependency — it is a bridge that shrinks as ruvos matures.
-
-### Conversation threading
-
-Prism manages conversation history across turns; ruvos's current `agent_spawn` creates stateless one-shot agents. The session system (ADR-001, `ruvos_session_*`) is the ruvos equivalent. Prism threading patterns should inform session design — specifically: thread IDs passed through `orchestrate_run` steps so multi-turn agent chains share context.
+- CLI subprocess has higher latency than direct REST (∼100–300ms overhead per call for process spawn)
+- CLI output formats vary; parsing is fragile against CLI version changes — parsers must be versioned
+- `codex exec` runs in a sandboxed environment; some file-access patterns differ from direct API calls
+- If all CLIs and OpenRouter are absent, ruvos hard-panics at startup — this is intentional (fail-fast over silent degradation)
 
 ## Alternatives Considered
 
-- **Hardcode Anthropic only**: current approach. Violates user's stated constraint. Rejected.
-- **Port Claudish/PAL to Rust**: full rewrite of the proxy. Overkill — the routing logic is 50 lines; the proxy server is not needed. Rejected (PAL was already redeveloped into Prism).
-- **Always use Prism**: satisfies preference but Prism is not always available (requires MCP server running). Use as one provider option, not the only one.
-- **Replace Prism entirely with native ruvos tools**: correct long-term direction but not for this ADR. Native equivalents are tracked in ADR-026, ADR-034, and ADR-004.
+- **Direct Anthropic REST**: violates the hard `ANTHROPIC_API_KEY` constraint. Rejected unconditionally.
+- **Always use Prism MCP tool**: satisfies constraints but adds a process dependency. Use as a priority-0 option, not the only one.
+- **Port Prism's full clink system to Rust**: correct direction. This ADR IS that port — `CliRouter` is the Rust-native clink.
