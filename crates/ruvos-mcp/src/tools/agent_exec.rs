@@ -385,10 +385,11 @@ mod tests {
     async fn git_status_in_cwd() {
         let _g = isolate();
         // git status in the ruvos repo dir should succeed.
+        let cwd = std::env::current_dir().unwrap();
         let result = AgentExecHandler
             .execute(json!({
                 "ops": [
-                    { "op": "git_op", "git_op": "status", "cwd": "/home/lyle/dev/ruvos" }
+                    { "op": "git_op", "git_op": "status", "cwd": cwd.to_string_lossy() }
                 ]
             }))
             .await
