@@ -13,6 +13,7 @@ use ruvos_plugin_host::executor::PluginExecutor;
 use ruvos_plugin_host::types::{ExecutionRequest, ExecutionResult};
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use uuid::Uuid;
 
 pub struct AgentExecHandler;
 
@@ -63,6 +64,10 @@ impl ToolHandler for AgentExecHandler {
                 "working_dir": {
                     "type": "string",
                     "description": "Override working directory for all run_command / git_op calls"
+                },
+                "resume_journal_id": {
+                    "type": "string",
+                    "description": "Resume a previous run: skip ops already marked completed in the journal. Get journal_id from a prior agent_exec response."
                 }
             },
             "required": ["ops"]
@@ -91,6 +96,17 @@ async fn run_exec(params: Value) -> Result<Value> {
     let sandbox = params["sandbox"].as_bool().unwrap_or(false);
     let working_dir_override = params["working_dir"].as_str().map(PathBuf::from);
 
+    // ADR-019: journal setup — resume skips already-completed ops.
+    let resume_journal_id = params["resume_journal_id"].as_str().map(String::from);
+    let journal_id = resume_journal_id
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let journal_dir = crate::paths::data_root()
+        .join("exec-journal")
+        .join(&journal_id);
+    let _ = std::fs::create_dir_all(&journal_dir);
+    purge_stale_journals();
+
     // Create sandbox temp dir if requested.
     let _sandbox_dir: Option<tempfile::TempDir>;
     let base_cwd: Option<PathBuf> = if sandbox {
@@ -107,10 +123,50 @@ async fn run_exec(params: Value) -> Result<Value> {
 
     let executor = PluginExecutor::new();
     let mut results: Vec<Value> = Vec::with_capacity(ops.len());
+    let mut skipped = 0usize;
 
     for (i, op) in ops.iter().enumerate() {
         let op_name = op["op"].as_str().unwrap_or("unknown");
+        let checkpoint_path = journal_dir.join(format!("{i}.json"));
+
+        // Resume: skip ops that already completed in a prior run.
+        if resume_journal_id.is_some() {
+            if let Ok(raw) = std::fs::read_to_string(&checkpoint_path) {
+                if let Ok(entry) = serde_json::from_str::<Value>(&raw) {
+                    if entry["status"].as_str() == Some("completed") {
+                        results.push(entry["result"].clone());
+                        skipped += 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Write pending checkpoint before executing.
+        let _ = std::fs::write(
+            &checkpoint_path,
+            json!({"op_index": i, "op": op, "status": "pending"}).to_string(),
+        );
+
         let result = execute_op(&executor, op, base_cwd.as_deref(), i).await;
+        let status = if result["status"].as_str() == Some("error") {
+            "failed"
+        } else {
+            "completed"
+        };
+
+        // Persist outcome to journal.
+        let _ = std::fs::write(
+            &checkpoint_path,
+            json!({
+                "op_index": i,
+                "op": op,
+                "status": status,
+                "result": &result,
+            })
+            .to_string(),
+        );
+
         results.push(result);
         // Stop on first fatal failure (exit status != 0 for commands).
         let last = results.last().unwrap();
@@ -124,8 +180,29 @@ async fn run_exec(params: Value) -> Result<Value> {
         "success": all_ok,
         "sandbox": sandbox,
         "ops_executed": results.len(),
+        "skipped_completed": skipped,
+        "journal_id": journal_id,
         "results": results,
     }))
+}
+
+/// Remove exec-journal directories older than 24 hours.
+fn purge_stale_journals() {
+    let journal_root = crate::paths::data_root().join("exec-journal");
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(86400))
+        .unwrap_or(std::time::UNIX_EPOCH);
+    if let Ok(entries) = std::fs::read_dir(&journal_root) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if let Ok(modified) = meta.modified() {
+                    if modified < cutoff {
+                        let _ = std::fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+    }
 }
 
 async fn execute_op(
@@ -695,5 +772,77 @@ mod tests {
         assert!(slot_path.exists(), "slot file must exist before clear");
         clear_swarm_slots("cleanup-swarm").unwrap();
         assert!(!slot_path.exists(), "slot file must be gone after clear");
+    }
+
+    #[tokio::test]
+    async fn journal_id_returned_in_response() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({"ops": [{"op": "run_command", "cmd": "echo", "args": ["hi"]}]}))
+            .await
+            .unwrap();
+        assert!(result["journal_id"].as_str().is_some(), "journal_id must be present");
+        assert_eq!(result["skipped_completed"], 0);
+    }
+
+    #[tokio::test]
+    async fn resume_skips_completed_ops() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let file_a = dir.path().join("a.txt");
+        let file_b = dir.path().join("b.txt");
+
+        // First run: write two files; op 1 succeeds, op 2 fails (dir missing).
+        let first = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    {"op": "write_file", "path": file_a.to_str().unwrap(), "content": "hello"},
+                    {"op": "run_command", "cmd": "false", "args": []}
+                ]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(first["success"], false, "first run should fail at op 1");
+        let journal_id = first["journal_id"].as_str().unwrap().to_string();
+        assert!(file_a.exists(), "op 0 wrote file_a");
+
+        // Second run with resume: op 0 is skipped (already completed),
+        // op 1 now succeeds (replaced with echo).
+        let second = AgentExecHandler
+            .execute(json!({
+                "resume_journal_id": journal_id,
+                "ops": [
+                    {"op": "write_file", "path": file_a.to_str().unwrap(), "content": "OVERWRITE"},
+                    {"op": "write_file", "path": file_b.to_str().unwrap(), "content": "world"}
+                ]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(second["success"], true, "second run must succeed");
+        assert_eq!(second["skipped_completed"], 1, "op 0 must be skipped");
+        // file_a content must NOT be overwritten (op was skipped)
+        assert_eq!(std::fs::read_to_string(&file_a).unwrap(), "hello");
+        // file_b must now exist (op 1 ran)
+        assert_eq!(std::fs::read_to_string(&file_b).unwrap(), "world");
+    }
+
+    #[tokio::test]
+    async fn resume_without_journal_reruns_all() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("x.txt");
+        // No resume_journal_id — fresh run, journal_id differs each time.
+        let r1 = AgentExecHandler
+            .execute(json!({"ops": [{"op": "write_file", "path": file.to_str().unwrap(), "content": "v1"}]}))
+            .await
+            .unwrap();
+        let r2 = AgentExecHandler
+            .execute(json!({"ops": [{"op": "write_file", "path": file.to_str().unwrap(), "content": "v2"}]}))
+            .await
+            .unwrap();
+        assert_ne!(r1["journal_id"], r2["journal_id"], "each run must get a fresh journal_id");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "v2");
     }
 }
