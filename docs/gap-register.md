@@ -26,9 +26,7 @@ Each gap is a concrete, reproducible finding — not speculation.
 | 3 | `agent_spawn` | No git operations | Cannot commit, diff, read log, or read git blame |
 | 8 | Agent artifacts | No structured code output | Artifact format is free markdown; no parseable code blocks, no typed JSON output schema |
 | 10 | Agent pipeline | No cross-agent file passing | Agent A cannot hand a file artifact to Agent B automatically; requires the orchestrator to read and re-pass content |
-| 11 | `orchestrate_run` | Agents echo task spec, do not invoke LLM | `output.md` artifacts are template-form scaffolds (task description re-stated), not actual synthesised plans or code |
-
-**Note on gap 11:** `orchestrate_run` runs planner → coder → tester → reviewer in a 4-step pipeline, but each step agent only produces a structured template echoing the task description. No LLM inference runs inside the agent. This makes the orchestration useful for routing/logging but not for generating specifications. Resolution: wire each archetype to an LLM call inside `execute()`.
+| 11 | `orchestrate_run` | ~~Agents echo task spec, do not invoke LLM~~ **Fixed (ef9a2da)** — `src/llm.rs` added; `run_task` calls Anthropic API when `ANTHROPIC_API_KEY` is set, falls back to template otherwise | Set `ANTHROPIC_API_KEY` |
 
 ---
 
@@ -38,7 +36,7 @@ Each gap is a concrete, reproducible finding — not speculation.
 |---|-----------|-----|-----------|
 | 4 | `relay_send` | Stale presence — `delivered: false` unless target has active recent `relay_announce` | Poll with heartbeat; accept delivered:false as normal |
 | 5 | Plugin system | 0 plugins registered — `plugin_invoke` untestable | N/A until first plugin is written |
-| 6 | Swarm | State is in-memory only — lost on process restart | Persist swarm state to redb (same pattern as sessions) |
+| 6 | Swarm | ~~State is in-memory only — lost on process restart~~ **Already resolved** — `swarm::store()`/`current()` write/read JSON files in `data_root/swarm.json` | — |
 | 9 | `gov_cve_lookup` | Requires a lockfile (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`) — exits early for projects without one | Ensure lockfile exists before calling; note that Rust projects need `Cargo.lock` committed |
 
 ---
@@ -75,4 +73,4 @@ All wrong field names below were corrected by adding typed JSON Schemas to the h
 
 ---
 
-*Last updated: 2026-06-09. 52 tools exercised; 13 gaps identified.*
+*Last updated: 2026-06-09. 52 tools exercised; 13 gaps identified. Gap 6 was inaccurate (already resolved). Gap 11 fixed in ef9a2da.*
