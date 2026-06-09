@@ -1,67 +1,111 @@
-# ADR-034: AISP Spec Validation in hooks_pre
+# ADR-034: AISP Symbolic Notation in hooks_pre — Prompt Precision Layer
 
 **Status:** Proposed  
-**Date:** 2026-06-09  
-**Source:** `aisp-open-core` (formal spec validator, 512-symbol grammar, quality tier grading)
+**Date:** 2026-06-09 (rewritten after reading aisp-open-core repo)  
+**Source:** `aisp-open-core` (AISP 5.1 Platinum Specification — MIT)
 
 ## Context
 
-Ruvos agents receive free-form task prompts. There is currently no validation step that checks whether a prompt is a well-formed, actionable spec before it is executed. Vague, ambiguous, or underspecified prompts reach `agent_exec` and `orchestrate_run` unchanged — producing low-quality or incorrect output.
+Ruvos agents receive free-form natural language prompts. Natural language has an ambiguity rate of 40–65%, producing inconsistent agent outputs and requiring clarification loops. AISP (AI Symbolic Protocol) is a formal notation standard that replaces ambiguous prose with mathematical symbols:
 
-`aisp-open-core` is a formal spec validator with:
-- A 512-symbol grammar (intent, constraints, success criteria, context, scope)
-- Quality tier grading: `S` (complete) → `A` → `B` → `C` → `F` (unparseable)
-- Structured output (`--json`) with missing-field diagnostics and improvement suggestions
+| Prose | AISP | Ambiguity |
+|-------|------|-----------|
+| "For all users, if admin then allow" | `∀u∈Users:admin(u)⇒allow(u)` | <2% |
+| "Define x as 5" | `x≜5` | 0% |
+| "There exists a valid solution" | `∃x:valid(x)` | 0% |
 
-Wiring it into `hooks_pre` would gate every task before an agent fires — the same hook already used for routing and context injection.
+AISP 5.1 defines:
+- **512 official symbols** across 8 categories (Transmuters, Topologics, Quantifiers, Contractors, Domains, Intents, Delimiters, Reserved)
+- **Quality tiers** graded by semantic density (δ = ratio of symbolic to total content): Platinum (◊⁺⁺, δ≥0.75) → Gold (◊⁺, δ≥0.60) → Silver (◊, δ≥0.40) → Bronze (◊⁻, δ≥0.20) → Reject (⊘, δ<0.20)
+- **Proof-carrying documents** with `⟦Ε⟧` evidence blocks
+
+Native Rust crates are available:
+- `aisp` v0.1.0 — document validation and tier computation
+- `rosetta-aisp` v0.2.0 — bidirectional prose↔AISP conversion
+- `rosetta-aisp-llm` v0.3.0 — LLM-fallback converter for low-confidence prose
 
 ## Decision
 
-Add spec validation as an optional `hooks_pre` stage:
+Add an AISP **prompt precision layer** to ruvos — wired into `hooks_pre` and `agent_spawn` — that converts incoming natural language task specs to AISP notation before agents receive them.
 
-1. **`HooksPreHandler` extended with a `spec_validate` stage** — runs after routing, before returning. If enabled in `~/.ruvos/hooks.toml`, it calls the AISP validator on the incoming `task` payload.
+### 1. Conversion pipeline in `hooks_pre`
 
-2. **Config gate in `hooks.toml`**:
-   ```toml
-   [spec_validation]
-   enabled = true
-   min_tier = "B"          # reject tiers C and F
-   warn_only = false        # if true, log warning but don't block
-   ```
+```
+Incoming task prompt (prose)
+  ↓
+ rosetta-aisp: rule-based prose→AISP conversion
+  ↓ (if confidence < threshold)
+ rosetta-aisp-llm: LLM-enhanced conversion (via CliRouter, ADR-032)
+  ↓
+ aisp: validate document, compute tier (δ) and completeness (φ)
+  ↓
+ hooks_pre response: { original, aisp_spec, tier, delta, suggestions }
+```
 
-3. **Validation result in `hooks_pre` response**:
-   ```json
-   {
-     "routing": "...",
-     "spec": {
-       "tier": "A",
-       "score": 87,
-       "missing": ["success_criteria"],
-       "suggestions": ["Add a measurable success condition"]
-     }
-   }
-   ```
-   If tier < `min_tier` and `warn_only = false`, `hooks_pre` returns `status: "blocked"` with the spec diagnostics so the caller can improve the prompt before retrying.
+The converted AISP spec is attached to the `hooks_pre` response alongside the original. Downstream tools (`orchestrate_run`, `agent_spawn`) use the AISP spec when constructing agent prompts.
 
-4. **Implementation**: AISP is not rewritten in Rust for this ADR. `hooks_pre` shells out to the `aisp` binary via `PluginExecutor` (same pattern as `run_command`). A future ADR can embed the grammar as a Rust crate.
+### 2. Quality gate (optional, config-driven)
 
-5. **`ruvos_orchestrate_run` integration**: when `hooks_pre` blocks with `status: "blocked"` and a `spec` payload, the orchestrator surfaces the diagnostics to the caller rather than proceeding.
+`~/.ruvos/hooks.toml`:
+```toml
+[aisp]
+enabled = true
+min_tier = "silver"        # reject if δ < 0.40
+warn_only = false           # if true: attach AISP but don’t block on low tier
+auto_convert = true         # automatically convert prose; false = validate only if AISP already present
+```
+
+If `min_tier` is set and `warn_only = false`, `hooks_pre` returns `status: "blocked"` with the AISP diagnostic when the converted spec scores below threshold. The caller receives the AISP version and suggestions to improve density.
+
+### 3. Rust crate integration
+
+Add to `ruvos-mcp/Cargo.toml`:
+```toml
+aisp = "0.1"
+rosetta-aisp = "0.2"
+# rosetta-aisp-llm only if LLM fallback enabled in config
+```
+
+The `aisp` crate provides `Document::parse()` and `Document::tier()`. `rosetta-aisp` provides `convert(prose: &str) -> AispDoc`. No npm/external binary dependency.
+
+### 4. AISP spec passed to agents
+
+When `agent_spawn` or `orchestrate_run` constructs an agent prompt, if the `hooks_pre` response includes an `aisp_spec`, it is injected as a structured context block:
+
+```
+⟦Λ:Task⟧{
+  ψ≜⟨implement, auth_middleware, rust⟩
+  Pre: session_store_compliant(GDPR)
+  Post: ∀r∈Routes:auth(r)⇒session_valid(r)
+  Type: ⊤⇒Feature
+}
+```
+
+Agents receiving AISP-formatted specs produce consistent, unambiguous outputs. The AI_GUIDE.md from aisp-open-core can be injected as system-prompt context to any agent so it understands the notation natively.
+
+### 5. Tier reporting in `gov_health` / `gov_report`
+
+The average AISP tier across recent agent calls becomes a governance metric: a declining δ trend indicates spec quality is degrading.
 
 ## Consequences
 
 **Positive:**
-- Catches underspecified prompts before they waste LLM tokens on an agent run
-- Quality tier grading gives callers actionable feedback, not just a rejection
-- Config gate makes it opt-in — existing workflows unchanged until `enabled = true`
-- `warn_only` mode lets teams observe quality without breaking anything
+- Ambiguity reduced from 40–65% → <2% for converted specs (AISP evidence: 97x pipeline success improvement)
+- Pure Rust integration — no subprocess, no npm, no external binary
+- Quality gating is optional and config-driven; existing workflows unchanged until `enabled = true`
+- AISP tier is a measurable quality signal for governance reporting
 
 **Trade-offs:**
-- Shell-out adds latency (~50–150ms) to every `hooks_pre` call when enabled
-- Requires `aisp` binary on `$PATH`; ruvos should degrade gracefully if it is absent (log a warning, skip validation)
-- Grammar coverage: AISP's 512-symbol grammar is designed for structured software specs, not all prompt types. Free-form creative prompts may tier as `C` even when they are perfectly actionable.
+- `rosetta-aisp` rule-based conversion is imperfect for complex prose; LLM fallback (`rosetta-aisp-llm`) adds a CliRouter call (ADR-032 required first)
+- AISP notation is unfamiliar to humans reading logs; ruvos must always store the original prose alongside the AISP form
+- Symbol density (δ) is a proxy for quality, not a guarantee — a spec full of symbols but missing intent still scores Platinum
+
+## Dependency
+
+ADR-032 (CliRouter) should be implemented first. `rosetta-aisp-llm` LLM fallback requires a working `CliRouter` instance. Rule-based conversion (`rosetta-aisp` only) can work without ADR-032.
 
 ## Alternatives Considered
 
-- **Inline Rust grammar parser**: highest performance, no dependency, but 512-symbol grammar is non-trivial to maintain in Rust. Deferred to a future ADR.
-- **LLM-based quality check**: ask a cheap model to grade the spec. More flexible grammar but adds a full LLM round-trip latency. Rejected for `hooks_pre` (too slow for a gate).
-- **Client-side only**: validate at the CLI layer before calling ruvos. Doesn't protect the MCP API surface. Rejected.
+- **Inline field-presence validator** (original ADR-034 design): checks for "intent", "success criteria" fields in plain prose. Brittle, language-specific, no formal grounding. Rejected.
+- **LLM-only spec improvement**: ask a model to rewrite the prompt as a better spec. No verifiable quality signal, full LLM latency on every call. Rejected.
+- **Shell out to `npx aisp-validator`**: works but adds Node.js dependency. Rust crates exist; use them. Rejected.
