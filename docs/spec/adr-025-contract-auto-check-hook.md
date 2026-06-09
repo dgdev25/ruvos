@@ -1,7 +1,7 @@
 # ADR-025: Contract Manifest Auto-Check Post-Edit Hook
 
-**Status:** Proposed  
-**Date:** 2026-06-09  
+**Status:** Implemented (as a generic `post_write_check`, not a hardcoded hook)
+**Date:** 2026-06-09
 **Gap:** #21 in gap-register.md
 
 ## Context
@@ -21,6 +21,37 @@ Implementation:
 4. If the check fails (drift detected), append a `contract_drift_warning` to the `agent_exec` response and continue (non-blocking)
 
 The check is non-blocking — it warns but does not abort the exec op. A follow-up `ruvos contracts generate` op can be added to the exec batch explicitly when tools are being added.
+
+### Implementation note (deviation from the original hooks_route design)
+
+The shipped implementation does **not** hardcode the ruvos paths into a hook route,
+because ruvos must remain **project-agnostic** (no awareness of `crates/ruvos-mcp/...`
+or `docs/contracts/...` in its own code). Instead, `agent_exec` gained an optional,
+fully caller-supplied `post_write_check` parameter:
+
+```json
+{
+  "ops": [ /* ... */ ],
+  "post_write_check": {
+    "when_path_contains": "crates/ruvos-mcp/src/tools/",
+    "when_path_ends_with": ".rs",
+    "command": "ruvos",
+    "args": ["contracts", "check", "docs/contracts/contract-manifest.json"],
+    "cwd": "/home/lyle/dev/ruvos"
+  }
+}
+```
+
+Behaviour: if any successful `write_file`/`patch_file` op touched a path matching the
+predicate, the command runs **once** after all ops complete. Non-zero exit attaches a
+non-blocking `post_write_check: { ran, drift: true, exit_code, warning }` to the
+response; `success` is never flipped. When the parameter is absent or no write matched,
+the field is omitted entirely. The watched glob, check command, and manifest path are
+all supplied by the caller — any project can use the mechanism; ruvos stays agnostic.
+
+This also avoids the glob-support enhancement to `hooks_route` the original design
+required. **Validated on first run:** the guard immediately surfaced real drift —
+`ruvos_server_reload` (ADR-033) had never been added to the manifest (53→54 tools).
 
 ## Consequences
 
