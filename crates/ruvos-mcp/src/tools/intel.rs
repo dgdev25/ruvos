@@ -36,6 +36,14 @@ pub struct Pattern {
     pub trajectory: Vec<String>,
     pub outcome: String,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -307,7 +315,11 @@ impl ToolHandler for IntelPatternStoreHandler {
             "required": ["trajectory", "outcome"],
             "properties": {
                 "trajectory": { "type": "array", "items": { "type": "string" }, "description": "Ordered list of steps taken" },
-                "outcome": { "type": "string", "description": "Result or lesson from the trajectory" }
+                "outcome":    { "type": "string", "description": "Result or lesson from the trajectory" },
+                "name":        { "type": "string", "description": "Short human-readable name for this pattern" },
+                "description": { "type": "string", "description": "Longer explanation of when to apply this pattern" },
+                "pattern":     { "type": "string", "description": "Canonical code or config snippet illustrating the pattern" },
+                "tags":        { "type": "array", "items": { "type": "string" }, "description": "Searchable labels" }
             },
             "additionalProperties": false
         })
@@ -340,6 +352,14 @@ impl ToolHandler for IntelPatternStoreHandler {
                 })
                 .unwrap_or_default();
             let outcome = params["outcome"].as_str().unwrap_or_default().to_string();
+            let name = params.get("name").and_then(|v| v.as_str()).map(String::from);
+            let description = params.get("description").and_then(|v| v.as_str()).map(String::from);
+            let pattern_snippet = params.get("pattern").and_then(|v| v.as_str()).map(String::from);
+            let tags: Vec<String> = params
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+                .unwrap_or_default();
             let id = Uuid::new_v4().to_string();
 
             let pattern = Pattern {
@@ -347,6 +367,10 @@ impl ToolHandler for IntelPatternStoreHandler {
                 trajectory,
                 outcome,
                 created_at: chrono::Utc::now().to_rfc3339(),
+                name,
+                description,
+                pattern: pattern_snippet,
+                tags,
             };
 
             let _guard = FILE_LOCK.lock().unwrap();
@@ -500,12 +524,25 @@ impl ToolHandler for IntelPatternSearchHandler {
             let results: Vec<Value> = merged
                 .iter()
                 .map(|(score, p)| {
-                    json!({
+                    let mut entry = json!({
                         "pattern_id": p.id,
                         "trajectory": p.trajectory,
                         "outcome": p.outcome,
                         "score": (score * 10000.0).round() / 10000.0
-                    })
+                    });
+                    if let Some(name) = &p.name {
+                        entry["name"] = json!(name);
+                    }
+                    if let Some(desc) = &p.description {
+                        entry["description"] = json!(desc);
+                    }
+                    if let Some(pat) = &p.pattern {
+                        entry["pattern"] = json!(pat);
+                    }
+                    if !p.tags.is_empty() {
+                        entry["tags"] = json!(p.tags);
+                    }
+                    entry
                 })
                 .collect();
 
