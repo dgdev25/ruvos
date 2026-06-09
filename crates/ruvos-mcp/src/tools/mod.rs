@@ -18,6 +18,7 @@ pub mod orchestrate_plan;
 pub mod plugin;
 pub mod relay;
 pub mod retrieval;
+pub mod server_reload;
 pub mod session;
 pub mod swarm;
 
@@ -59,6 +60,9 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(agent::AgentStatusHandler));
     registry.register(Box::new(agent::AgentMessageHandler));
     registry.register(Box::new(agent_exec::AgentExecHandler));
+
+    // Register server management tools
+    registry.register(Box::new(server_reload::ServerReloadHandler));
 
     // Register hooks tools
     registry.register(Box::new(hooks::HooksPreHandler::new()));
@@ -196,6 +200,12 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             name: "ruvos_agent_message".to_string(),
             description: "Send message to a named agent".to_string(),
             domain: "agent".to_string(),
+        },
+        // Server (1)
+        ToolMetadata {
+            name: "ruvos_server_reload".to_string(),
+            description: "Replace the running MCP server process in-place via execve (ADR-033). The new binary at the same path is exec'd with the same argv; the MCP session continues uninterrupted.".to_string(),
+            domain: "server".to_string(),
         },
         // Hooks (3)
         ToolMetadata {

@@ -37,7 +37,7 @@ impl ToolHandler for AgentExecHandler {
                         "properties": {
                             "op": {
                                 "type": "string",
-                                "enum": ["write_file", "patch_file", "read_file", "run_command", "git_op", "write_slot", "read_slot"]
+                                "enum": ["write_file", "patch_file", "read_file", "run_command", "git_op", "write_slot", "read_slot", "install_binary", "cargo_check", "cargo_build", "cargo_test"]
                             },
                             "path":       { "type": "string" },
                             "content":    { "type": "string" },
@@ -52,7 +52,13 @@ impl ToolHandler for AgentExecHandler {
                             "slot_name":  { "type": "string", "description": "Slot identifier within the swarm scratch space" },
                             "swarm_id":   { "type": "string", "description": "Swarm scope; defaults to 'default'" },
                             "agent_id":   { "type": "string", "description": "Optional source agent tag for write_slot" },
-                            "timeout_ms": { "type": "integer", "description": "Max wait for read_slot in ms (default 10000)" }
+                            "timeout_ms":     { "type": "integer", "description": "Max wait for read_slot in ms (default 10000)" },
+                            "src":            { "type": "string", "description": "Source binary path (install_binary)" },
+                            "dest":           { "type": "string", "description": "Destination path (install_binary) — atomic rename avoids text-file-busy" },
+                            "manifest_path":  { "type": "string", "description": "Path to Cargo.toml (cargo_* ops; defaults to cwd)" },
+                            "package":        { "type": "string", "description": "Cargo package name (-p flag)" },
+                            "release":        { "type": "boolean", "description": "Build in release mode (cargo_build only)" },
+                            "test_filter":    { "type": "string", "description": "Test name filter (cargo_test only)" }
                         },
                         "required": ["op"]
                     }
@@ -489,6 +495,126 @@ async fn execute_op(
             }
         }
 
+        "install_binary" => {
+            let src = match op["src"].as_str() {
+                Some(s) => s,
+                None => return op_error(index, op_name, "missing src"),
+            };
+            let dest = match op["dest"].as_str() {
+                Some(d) => d,
+                None => return op_error(index, op_name, "missing dest"),
+            };
+            let src_path = PathBuf::from(src);
+            let dest_path = PathBuf::from(dest);
+            // Atomic install: cp to dest.tmp then rename.
+            // This avoids "text file busy" when the destination binary is running.
+            let tmp_path = dest_path.with_extension(format!("tmp_{}", std::process::id()));
+            if let Some(parent) = dest_path.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    return op_error(index, op_name, &format!("mkdir failed: {e}"));
+                }
+            }
+            if let Err(e) = std::fs::copy(&src_path, &tmp_path) {
+                return op_error(index, op_name, &format!("copy failed: {e}"));
+            }
+            // Copy permissions from source so the installed binary stays executable.
+            if let Ok(meta) = std::fs::metadata(&src_path) {
+                let _ = std::fs::set_permissions(&tmp_path, meta.permissions());
+            }
+            match std::fs::rename(&tmp_path, &dest_path) {
+                Ok(()) => {
+                    let size = std::fs::metadata(&dest_path).map(|m| m.len()).unwrap_or(0);
+                    json!({
+                        "index": index,
+                        "op": op_name,
+                        "status": "ok",
+                        "src": src,
+                        "dest": dest,
+                        "bytes": size,
+                    })
+                }
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    op_error(index, op_name, &format!("rename failed: {e}"))
+                }
+            }
+        }
+
+        "cargo_check" | "cargo_build" | "cargo_test" => {
+            let subcommand = match op_name {
+                "cargo_check" => "check",
+                "cargo_build" => "build",
+                "cargo_test"  => "test",
+                _             => unreachable!(),
+            };
+            let mut cargo_args: Vec<String> = vec![subcommand.to_string()];
+            if let Some(pkg) = op["package"].as_str() {
+                cargo_args.push("-p".to_string());
+                cargo_args.push(pkg.to_string());
+            }
+            if let Some(manifest) = op["manifest_path"].as_str() {
+                cargo_args.push("--manifest-path".to_string());
+                cargo_args.push(manifest.to_string());
+            }
+            if op_name == "cargo_build" && op["release"].as_bool().unwrap_or(false) {
+                cargo_args.push("--release".to_string());
+            }
+            if op_name == "cargo_test" {
+                cargo_args.push("--".to_string());
+                if let Some(filter) = op["test_filter"].as_str() {
+                    cargo_args.push(filter.to_string());
+                }
+            }
+            let cwd = op["cwd"]
+                .as_str()
+                .map(PathBuf::from)
+                .or_else(|| base_cwd.map(|p| p.to_path_buf()));
+            let req = ExecutionRequest {
+                plugin_name: "agent_exec".to_string(),
+                command: "cargo".to_string(),
+                args: cargo_args,
+                cwd,
+            };
+            match executor.execute(&req).await {
+                Ok(ExecutionResult { status, stdout, stderr }) => {
+                    // Parse error/warning counts from cargo output.
+                    let combined = format!("{stdout}\n{stderr}");
+                    let errors = combined
+                        .lines()
+                        .filter(|l| l.contains("error[") || l.trim_start().starts_with("error"))
+                        .count();
+                    let warnings = combined
+                        .lines()
+                        .filter(|l| l.contains("warning[") || l.trim_start().starts_with("warning"))
+                        .count();
+                    // For cargo_test: count passed/failed from "test result:" line.
+                    let test_summary = if op_name == "cargo_test" {
+                        combined.lines()
+                            .find(|l| l.contains("test result:"))
+                            .map(String::from)
+                    } else {
+                        None
+                    };
+                    let mut result = json!({
+                        "index": index,
+                        "op": op_name,
+                        "status": if status == 0 { "ok" } else { "error" },
+                        "exit_code": status,
+                        "success": status == 0,
+                        "errors": errors,
+                        "warnings": warnings,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    });
+                    if let Some(summary) = test_summary {
+                        result["test_summary"] = serde_json::Value::String(summary);
+                    }
+                    result
+                }
+                Err(e) => op_error(index, op_name, &e.to_string()),
+            }
+        }
+
         other => op_error(index, other, &format!("unknown op: {other}")),
     }
 }
@@ -844,5 +970,95 @@ mod tests {
             .unwrap();
         assert_ne!(r1["journal_id"], r2["journal_id"], "each run must get a fresh journal_id");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "v2");
+    }
+
+    #[tokio::test]
+    async fn install_binary_atomic_rename() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("new_binary");
+        let dest = dir.path().join("installed_binary");
+        std::fs::write(&src, b"fake binary content v2").unwrap();
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "install_binary",
+                    "src": src.to_str().unwrap(),
+                    "dest": dest.to_str().unwrap()
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["results"][0]["status"], "ok");
+        assert!(result["results"][0]["bytes"].as_u64().unwrap() > 0);
+        // Verify content was copied correctly.
+        assert_eq!(std::fs::read(&dest).unwrap(), b"fake binary content v2");
+        // Verify no temp file left behind.
+        assert_eq!(dir.path().read_dir().unwrap().count(), 2); // src + dest only
+    }
+
+    #[tokio::test]
+    async fn install_binary_missing_src_returns_error() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "install_binary",
+                    "src": dir.path().join("nonexistent").to_str().unwrap(),
+                    "dest": dir.path().join("dest").to_str().unwrap()
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["results"][0]["status"], "error");
+    }
+
+    #[tokio::test]
+    async fn cargo_check_returns_structured_output() {
+        let _g = isolate();
+        // Run cargo check on the ruvos-mcp crate itself — must already compile.
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "cargo_check",
+                    "manifest_path": "/home/lyle/dev/ruvos/crates/ruvos-mcp/Cargo.toml"
+                }]
+            }))
+            .await
+            .unwrap();
+
+        let r = &result["results"][0];
+        assert_eq!(r["op"], "cargo_check");
+        assert_eq!(r["success"], true);
+        assert!(r["errors"].is_number());
+        assert!(r["warnings"].is_number());
+    }
+
+    #[tokio::test]
+    async fn cargo_test_returns_test_summary() {
+        let _g = isolate();
+        // Run a single fast test to verify the test_summary field is populated.
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "cargo_test",
+                    "manifest_path": "/home/lyle/dev/ruvos/crates/ruvos-mcp/Cargo.toml",
+                    "test_filter": "write_and_read_roundtrip"
+                }]
+            }))
+            .await
+            .unwrap();
+
+        let r = &result["results"][0];
+        assert_eq!(r["op"], "cargo_test");
+        assert_eq!(r["success"], true);
+        // test_summary should contain "test result: ok" from cargo output.
+        let summary = r["test_summary"].as_str().unwrap_or("");
+        assert!(summary.contains("test result:"), "expected test result line, got: {summary}");
     }
 }
