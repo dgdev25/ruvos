@@ -76,6 +76,18 @@ impl ToolHandler for AgentExecHandler {
                 "resume_journal_id": {
                     "type": "string",
                     "description": "Resume a previous run: skip ops already marked completed in the journal. Get journal_id from a prior agent_exec response."
+                },
+                "post_write_check": {
+                    "type": "object",
+                    "description": "ADR-025: project-agnostic drift guard. When any successful write_file/patch_file touches a path matching the predicate, run `command args` once (after all ops) and attach a non-blocking warning if it exits non-zero. Caller supplies all paths — ruvos stays project-agnostic.",
+                    "properties": {
+                        "when_path_contains":  { "type": "string", "description": "Trigger only when the written path contains this substring" },
+                        "when_path_ends_with": { "type": "string", "description": "Optional: additionally require the path to end with this suffix (e.g. '.rs')" },
+                        "command":             { "type": "string", "description": "Executable to run (e.g. 'ruvos')" },
+                        "args":                { "type": "array", "items": { "type": "string" }, "description": "Arguments (e.g. ['contracts','check','docs/contracts/contract-manifest.json'])" },
+                        "cwd":                 { "type": "string", "description": "Working directory for the check command" }
+                    },
+                    "required": ["when_path_contains", "command"]
                 }
             },
             "required": ["ops"]
@@ -188,14 +200,85 @@ async fn run_exec(params: Value) -> Result<Value> {
     }
 
     let all_ok = results.iter().all(|r| r["status"].as_str() != Some("error"));
-    Ok(json!({
+
+    // ADR-025: optional, project-agnostic post-write drift check. Fires once if
+    // any successful write_file/patch_file touched a path matching the
+    // caller-supplied predicate. Non-blocking: never flips `success`.
+    let post_write_check = run_post_write_check(&params, &results, &executor).await;
+
+    let mut out = json!({
         "success": all_ok,
         "sandbox": sandbox,
         "ops_executed": results.len(),
         "skipped_completed": skipped,
         "journal_id": journal_id,
         "results": results,
-    }))
+    });
+    if let Some(check) = post_write_check {
+        out["post_write_check"] = check;
+    }
+    Ok(out)
+}
+
+/// ADR-025: run the caller-supplied drift-check command if any successful
+/// write touched a matching path. Returns `None` when no `post_write_check` is
+/// configured or no write matched the predicate (so the field is omitted).
+async fn run_post_write_check(
+    params: &Value,
+    results: &[Value],
+    executor: &PluginExecutor,
+) -> Option<Value> {
+    let cfg = params.get("post_write_check")?.as_object()?;
+    let contains = cfg.get("when_path_contains").and_then(|v| v.as_str())?;
+    let ends_with = cfg.get("when_path_ends_with").and_then(|v| v.as_str());
+    let command = cfg.get("command").and_then(|v| v.as_str())?;
+    let args: Vec<String> = cfg.get("args")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let cwd = cfg.get("cwd").and_then(|v| v.as_str()).map(PathBuf::from);
+
+    // Did any successful write op touch a path matching the predicate?
+    let triggered = results.iter().any(|r| {
+        let op = r["op"].as_str().unwrap_or("");
+        if op != "write_file" && op != "patch_file" {
+            return false;
+        }
+        if r["status"].as_str() != Some("ok") {
+            return false;
+        }
+        let path = r["path"].as_str().unwrap_or("");
+        path.contains(contains) && ends_with.map(|s| path.ends_with(s)).unwrap_or(true)
+    });
+    if !triggered {
+        return None;
+    }
+
+    let req = ExecutionRequest {
+        plugin_name: "agent_exec".to_string(),
+        command: command.to_string(),
+        args,
+        cwd,
+    };
+    match executor.execute(&req).await {
+        Ok(ExecutionResult { status, stdout, stderr }) => {
+            let drift = status != 0;
+            let mut v = json!({
+                "ran": true,
+                "drift": drift,
+                "exit_code": status,
+            });
+            if drift {
+                let msg = if !stderr.trim().is_empty() { stderr } else { stdout };
+                v["warning"] = Value::String(format!("contract drift detected (non-blocking): {}", msg.trim()));
+            }
+            Some(v)
+        }
+        Err(e) => Some(json!({
+            "ran": false,
+            "error": format!("post_write_check command failed to launch: {e}"),
+        })),
+    }
 }
 
 /// Remove exec-journal directories older than 24 hours.
@@ -1126,6 +1209,103 @@ mod tests {
         assert_eq!(r["success"], true);
         assert!(r["errors"].is_number());
         assert!(r["warnings"].is_number());
+    }
+
+    #[tokio::test]
+    async fn post_write_check_runs_when_path_matches_and_flags_drift() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        // Path contains the watched substring and ends with .rs.
+        let watched = dir.path().join("tools").join("new_tool.rs");
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": watched.to_str().unwrap(), "content": "// tool" }
+                ],
+                "post_write_check": {
+                    "when_path_contains": "tools/",
+                    "when_path_ends_with": ".rs",
+                    "command": "false",
+                    "args": []
+                }
+            }))
+            .await
+            .unwrap();
+
+        // The write itself succeeds; the check is non-blocking.
+        assert_eq!(result["success"], true);
+        assert_eq!(result["post_write_check"]["ran"], true);
+        assert_eq!(result["post_write_check"]["drift"], true);
+        assert!(result["post_write_check"]["warning"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn post_write_check_passes_when_command_exits_zero() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let watched = dir.path().join("tools").join("ok_tool.rs");
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": watched.to_str().unwrap(), "content": "// tool" }
+                ],
+                "post_write_check": {
+                    "when_path_contains": "tools/",
+                    "command": "true",
+                    "args": []
+                }
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["post_write_check"]["ran"], true);
+        assert_eq!(result["post_write_check"]["drift"], false);
+        assert!(result["post_write_check"].get("warning").is_none());
+    }
+
+    #[tokio::test]
+    async fn post_write_check_skipped_when_path_does_not_match() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        // Writes to a non-watched path — check must NOT run.
+        let other = dir.path().join("docs").join("readme.md");
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": other.to_str().unwrap(), "content": "hi" }
+                ],
+                "post_write_check": {
+                    "when_path_contains": "crates/ruvos-mcp/src/tools/",
+                    "when_path_ends_with": ".rs",
+                    "command": "false",
+                    "args": []
+                }
+            }))
+            .await
+            .unwrap();
+
+        // No matching write → field omitted entirely.
+        assert!(result.get("post_write_check").is_none());
+    }
+
+    #[tokio::test]
+    async fn post_write_check_absent_is_noop() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("tools").join("x.rs");
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": f.to_str().unwrap(), "content": "x" }
+                ]
+            }))
+            .await
+            .unwrap();
+        assert_eq!(result["success"], true);
+        assert!(result.get("post_write_check").is_none());
     }
 
     #[tokio::test]
