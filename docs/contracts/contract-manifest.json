@@ -1,6 +1,6 @@
 {
   "version": "4.0.0-rc.1",
-  "tool_count": 54,
+  "tool_count": 53,
   "tools": [
     {
       "name": "ruvos_agent_exec",
@@ -186,11 +186,6 @@
       "name": "ruvos_relay_send",
       "domain": "relay",
       "description": "Deliver a message to another instance's file mailbox by id"
-    },
-    {
-      "name": "ruvos_server_reload",
-      "domain": "server",
-      "description": "Replace the running MCP server process in-place via execve (ADR-033). The new binary at the same path is exec'd with the same argv; the MCP session continues uninterrupted."
     },
     {
       "name": "ruvos_session_create",
