@@ -25,6 +25,7 @@ pub mod sandbox;
 pub mod server;
 pub mod skills;
 pub mod store;
+pub mod llm;
 pub mod swarm;
 pub mod tools;
 
