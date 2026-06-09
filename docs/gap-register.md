@@ -23,7 +23,6 @@ Each gap is a concrete, reproducible finding — not speculation.
 | 2 | `agent_spawn` | No shell/test execution | ✅ Closed by `ruvos_agent_exec` run_command op |
 | 3 | `agent_spawn` | No git operations | ✅ Closed by `ruvos_agent_exec` git_op |
 | 8 | Agent artifacts | No structured code output | ✅ Fixed `0e7b810` — `output_schema` param + `structured_output` response field |
-| 10 | Agent pipeline | No cross-agent file passing | Mitigated: agent_exec + memory bridge. Full automatic handoff still future work. |
 | 11 | `orchestrate_run` | Agents echo task spec, do not invoke LLM | ✅ Fixed `ef9a2da` — calls Anthropic API when `ANTHROPIC_API_KEY` set |
 
 ---
@@ -33,7 +32,6 @@ Each gap is a concrete, reproducible finding — not speculation.
 | # | Tool/area | Gap | Status |
 |---|-----------|-----|-------|
 | 4 | `relay_send` | Stale presence — `delivered: false` | ✅ Fixed `acd6fcb` — `relay::announce_as()` writes named presence |
-| 5 | Plugin system | 0 plugins registered | Open — needs first real plugin |
 | 6 | Swarm | State in-memory only | ✅ Already resolved — `swarm::store()`/`current()` persist to `swarm.json` |
 | 9 | `gov_cve_lookup` | Requires lockfile | By design — ensure `Cargo.lock` / `package-lock.json` exists |
 
@@ -61,13 +59,44 @@ All wrong field names below were corrected by adding typed JSON Schemas to the h
 
 ---
 
-## Open Items (pre-Sprint 9)
+## Open Items + Improvement Backlog
 
-| # | Area | Gap |
-|---|------|-----|
-| 10 | Cross-agent handoff | Full automatic file passing between pipeline agents — memory bridge is a workaround |
-| 5 | Plugin system | No plugins registered; `plugin_invoke` untestable until a real plugin is written |
+Identified 2026-06-09 from stress-testing and large-project planning (ForgeCMS Sprints 7–9).
+Priority: **P1** = blocks large project pipeline, **P2** = high value, **P3** = quality of life, **P4** = longer term.
+
+### P1 — Blocks pipeline
+
+| # | Area | Gap / Improvement | Notes |
+|---|------|-------------------|-------|
+| 10 | Cross-agent handoff | No automatic file passing between agents | Memory bridge is current workaround. Fix: `exchange_file` op writes to named swarm scratch slot; `read_slot` op consumes it. |
+| 14 | `orchestrate_run` | No real multi-step pipeline driver | Templates generate a task spec only. Needed: spawn `coder` → await → spawn `reviewer` with output → await → spawn `tester`. Sequential pipeline, not just template expansion. |
+| 15 | `agent_exec` | No checkpoint / resume on partial failure | A 12-op batch that fails on op 8 re-runs all 12 on retry. Need per-op journal so retry restarts from last successful op. |
+
+### P2 — High value
+
+| # | Area | Gap / Improvement | Notes |
+|---|------|-------------------|-------|
+| 5  | Plugin system | 0 plugins registered; `plugin_invoke` untestable | Build first real plugin: `forge-linter` (runs `cargo clippy` on a path). Proves dynamic dispatch end-to-end. |
+| 16 | `memory_search` / `intel_pattern_search` | Keyword-only search, no semantic similarity | Embed a small HNSW index (`usearch` crate, MIT, 0-dep) or call an embedding endpoint. "Find patterns similar to this auth middleware" requires vector search. |
+| 17 | `agent_exec` | All ops run sequentially, no parallelism | Add `parallel: true` flag or a `parallel_group` wrapper op so independent `write_file` ops fire concurrently. Will matter at Sprint 10+. |
+
+### P3 — Quality of life
+
+| # | Area | Gap / Improvement | Notes |
+|---|------|-------------------|-------|
+| 18 | `agent_exec` | No native patch/diff op | Patching large Rust files currently requires writing a Python script (workaround introduced Sprint 7). A `patch_file` op accepting unified diff or JSON patch would eliminate the double-brace Python pitfall. |
+| 19 | `swarm_assign` | No task dependency graph | Tasks are independent. Add `depends_on: [task_id]` field; coordinator blocks assignment until deps reach `completed` state. Enables `[write tests → implement → run tests → review]` pipelines. |
+| 20 | `gov_report` | Raw event dump, no sprint summary | Add `gov_sprint_summary(sprint_id)` returning: tasks completed, files changed, tests delta, agents used, wall-clock duration. Replaces manual progress tracking in docs/. |
+| 21 | Contracts | No auto-check after mcp source edits | Wire a post-edit hook: when any file under `crates/ruvos-mcp/src/` is written via `agent_exec`, automatically run `ruvos contracts check`. Catches manifest drift before push. |
+
+### P4 — Longer term
+
+| # | Area | Gap / Improvement | Notes |
+|---|------|-------------------|-------|
+| 22 | `agent_exec` | No streaming progress for long ops | Large file writes and test runs >5s give no feedback. Emit progress events per op. |
+| 23 | Session | No snapshot/resume across crashes | Persist swarm state + in-flight ops to `.rvf` snapshot so a crashed session can resume exactly. |
+| 24 | Workspace | Single working-dir assumption | ForgeCMS has two roots: `forgecms/` (Rust) and `forgecms/admin/` (TypeScript). `agent_exec` handles this via per-op `cwd`, but other tools (hooks, gov) assume one root. Multi-workspace config needed. |
 
 ---
 
-*Last updated: 2026-06-09. 53 tools. Gaps 1–4, 6–8, 11–13 resolved. 2 open items remain.*
+*Last updated: 2026-06-09. 53 tools. Gaps 1–4, 6–8, 11–13 resolved. Open: 10, 5, 14–24.*
