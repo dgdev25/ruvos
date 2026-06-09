@@ -36,10 +36,13 @@ impl ToolHandler for AgentExecHandler {
                         "properties": {
                             "op": {
                                 "type": "string",
-                                "enum": ["write_file", "read_file", "run_command", "git_op", "write_slot", "read_slot"]
+                                "enum": ["write_file", "patch_file", "read_file", "run_command", "git_op", "write_slot", "read_slot"]
                             },
                             "path":       { "type": "string" },
                             "content":    { "type": "string" },
+                            "old":        { "type": "string", "description": "Exact string to find (patch_file)" },
+                            "new":        { "type": "string", "description": "Replacement string (patch_file)" },
+                            "expected_replacements": { "type": "integer", "description": "How many occurrences to expect and replace (default 1)" },
                             "cmd":        { "type": "string" },
                             "args":       { "type": "array", "items": { "type": "string" } },
                             "cwd":        { "type": "string" },
@@ -342,6 +345,73 @@ async fn execute_op(
             }
         }
 
+        "patch_file" => {
+            let path_str = match op["path"].as_str() {
+                Some(p) => p,
+                None => return op_error(index, op_name, "missing path"),
+            };
+            let old = match op["old"].as_str() {
+                Some(s) => s,
+                None => return op_error(index, op_name, "missing 'old' string"),
+            };
+            let new = op["new"].as_str().unwrap_or("");
+            let expected = op["expected_replacements"].as_u64().unwrap_or(1) as usize;
+            let full_path: PathBuf = if let Some(base) = base_cwd {
+                base.join(path_str)
+            } else {
+                PathBuf::from(path_str)
+            };
+            let before = match std::fs::read_to_string(&full_path) {
+                Ok(s) => s,
+                Err(e) => return op_error(index, op_name, &format!("read failed: {e}")),
+            };
+            let count = before.match_indices(old).count();
+            if count != expected {
+                return op_error(
+                    index,
+                    op_name,
+                    &format!(
+                        "match count mismatch: expected {expected}, found {count} in '{}'",
+                        full_path.display()
+                    ),
+                );
+            }
+            let after = if expected == 1 {
+                before.replacen(old, new, 1)
+            } else {
+                before.replace(old, new)
+            };
+            // Atomic write: temp file in same directory + rename.
+            let parent = full_path.parent().unwrap_or(std::path::Path::new("."));
+            let tmp_path = parent.join(format!(
+                ".patch_tmp_{}_{}",
+                full_path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+                std::process::id()
+            ));
+            if let Err(e) = std::fs::write(&tmp_path, &after) {
+                return op_error(index, op_name, &format!("temp write failed: {e}"));
+            }
+            // Copy permissions from original before rename.
+            if let Ok(meta) = std::fs::metadata(&full_path) {
+                let _ = std::fs::set_permissions(&tmp_path, meta.permissions());
+            }
+            match std::fs::rename(&tmp_path, &full_path) {
+                Ok(()) => json!({
+                    "index": index,
+                    "op": op_name,
+                    "status": "ok",
+                    "path": full_path.to_string_lossy(),
+                    "replacements": count,
+                    "bytes_before": before.len(),
+                    "bytes_after": after.len(),
+                }),
+                Err(e) => {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    op_error(index, op_name, &format!("rename failed: {e}"))
+                }
+            }
+        }
+
         other => op_error(index, other, &format!("unknown op: {other}")),
     }
 }
@@ -551,6 +621,56 @@ mod tests {
             .as_str()
             .unwrap_or("")
             .contains("timeout"));
+    }
+
+    #[tokio::test]
+    async fn patch_file_replaces_exact_string() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.rs");
+        std::fs::write(&file, "fn foo() -> i32 { 1 }\n").unwrap();
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "patch_file",
+                    "path": file.to_str().unwrap(),
+                    "old": "fn foo() -> i32 { 1 }",
+                    "new": "fn foo() -> i32 { 42 }"
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["results"][0]["status"], "ok");
+        assert_eq!(result["results"][0]["replacements"], 1);
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert!(content.contains("42"), "replacement must be present");
+        assert!(!content.contains("{ 1 }"), "old string must be gone");
+    }
+
+    #[tokio::test]
+    async fn patch_file_errors_on_mismatch() {
+        let _g = isolate();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.rs");
+        std::fs::write(&file, "fn foo() {}\n").unwrap();
+
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [{
+                    "op": "patch_file",
+                    "path": file.to_str().unwrap(),
+                    "old": "fn bar() {}",
+                    "new": "fn bar() { todo!() }"
+                }]
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["results"][0]["status"], "error");
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content, "fn foo() {}\n", "file must be unchanged on mismatch");
     }
 
     #[tokio::test]
