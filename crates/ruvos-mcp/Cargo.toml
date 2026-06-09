@@ -37,6 +37,7 @@ ruvos-skills = { path = "../../substrate/ruvos-skills" }
 ruvos-cve-lite = { path = "../ruvos-cve-lite" }
 tempfile = "3"
 rmcp = { version = "1.7.0", features = ["server", "transport-async-rw"] }
+reqwest.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }
