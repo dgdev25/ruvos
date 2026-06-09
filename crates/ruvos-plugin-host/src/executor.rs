@@ -21,6 +21,9 @@ impl PluginExecutor {
         cmd.args(&request.args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(cwd) = &request.cwd {
+            cmd.current_dir(cwd);
+        }
 
         let output = cmd.output().await.map_err(|e| {
             crate::error::PluginError::ExecutionFailed(format!(

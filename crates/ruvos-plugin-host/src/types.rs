@@ -73,6 +73,8 @@ pub struct ExecutionRequest {
     pub plugin_name: String,
     pub command: String,
     pub args: Vec<String>,
+    /// Optional working directory for the subprocess.
+    pub cwd: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]

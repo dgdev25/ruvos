@@ -35,7 +35,7 @@ ruvos-store = { path = "../../substrate/ruvos-store" }
 ruvos-memory-graph = { path = "../../substrate/ruvos-memory-graph" }
 ruvos-skills = { path = "../../substrate/ruvos-skills" }
 ruvos-cve-lite = { path = "../ruvos-cve-lite" }
+tempfile = "3"
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["macros"] }
-tempfile = "3"

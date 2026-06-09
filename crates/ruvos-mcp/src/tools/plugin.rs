@@ -195,6 +195,7 @@ impl ToolHandler for PluginInvokeHandler {
                 plugin_name,
                 command,
                 args,
+                cwd: None,
             };
 
             match executor.execute(&request).await {

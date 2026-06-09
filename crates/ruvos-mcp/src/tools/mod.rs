@@ -1,6 +1,7 @@
 //! Tool registry for all public MCP tools.
 
 pub mod agent;
+pub mod agent_exec;
 pub mod agent_store;
 pub mod compress;
 pub mod cve;
@@ -57,6 +58,7 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(agent::AgentSpawnHandler));
     registry.register(Box::new(agent::AgentStatusHandler));
     registry.register(Box::new(agent::AgentMessageHandler));
+    registry.register(Box::new(agent_exec::AgentExecHandler));
 
     // Register hooks tools
     registry.register(Box::new(hooks::HooksPreHandler::new()));
@@ -171,6 +173,14 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             domain: "session".to_string(),
         },
         // Agent (3)
+        ToolMetadata {
+            name: "ruvos_agent_exec".to_string(),
+            description: "Execute a list of typed ops (write_file/read_file/run_command/git_op) \
+                          directly in ruvos — closes Gaps 1-3. sandbox:true runs ops in a fresh \
+                          temp dir for OS-level isolation."
+                .to_string(),
+            domain: "agent".to_string(),
+        },
         ToolMetadata {
             name: "ruvos_agent_spawn".to_string(),
             description: "Spawn a host agent: {host, archetype, prompt, traits, model, budget}"
@@ -473,6 +483,10 @@ mod integration_tests {
             ("ruvos_memory_retrieve", json!({"key": "k", "namespace": "test"})),
             ("ruvos_memory_list", json!({"namespace": "test"})),
             ("ruvos_session_create", json!({})),
+            (
+                "ruvos_agent_exec",
+                json!({"ops": [{"op": "run_command", "cmd": "echo", "args": ["ok"]}]}),
+            ),
             (
                 "ruvos_agent_spawn",
                 json!({"archetype": "coder", "prompt": "test", "model": "claude-haiku-4-5"}),

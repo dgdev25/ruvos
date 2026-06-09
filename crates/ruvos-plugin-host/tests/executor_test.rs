@@ -7,6 +7,7 @@ async fn test_execute_simple_command() {
         plugin_name: "test_plugin".to_string(),
         command: "echo".to_string(),
         args: vec!["hello".to_string()],
+        cwd: None,
     };
 
     let result = executor.execute(&request).await.expect("execution failed");
@@ -23,6 +24,7 @@ async fn test_execute_nonexistent_command() {
         plugin_name: "test_plugin".to_string(),
         command: "nonexistent_command_12345".to_string(),
         args: vec![],
+        cwd: None,
     };
 
     let result = executor.execute(&request).await;
@@ -36,6 +38,7 @@ async fn test_execute_command_with_failure() {
         plugin_name: "test_plugin".to_string(),
         command: "sh".to_string(),
         args: vec!["-c".to_string(), "exit 1".to_string()],
+        cwd: None,
     };
 
     let result = executor.execute(&request).await.expect("execution failed");

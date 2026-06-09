@@ -85,12 +85,30 @@ enum Commands {
         #[command(subcommand)]
         command: CveCommand,
     },
+    /// Relay daemon — persistent bus listener for the agent execution bridge.
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommand,
+    },
 }
 
 #[derive(Subcommand)]
 enum McpCommand {
     /// Serve the MCP server
     Serve,
+}
+
+#[derive(Subcommand)]
+enum DaemonCommand {
+    /// Start the relay inbox listener (runs until SIGINT/SIGTERM).
+    Watch {
+        /// Relay agent_id to listen on (default: ruvos-daemon).
+        #[arg(long, default_value = "ruvos-daemon")]
+        agent_id: String,
+        /// Inbox poll interval in milliseconds.
+        #[arg(long, default_value_t = 500)]
+        poll_ms: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -373,6 +391,24 @@ async fn main() -> anyhow::Result<()> {
             McpCommand::Serve => {
                 info!("Starting MCP server");
                 ruvos_cli::commands::mcp::serve().await?;
+            }
+        },
+        Commands::Daemon { command } => match command {
+            DaemonCommand::Watch { agent_id, poll_ms } => {
+                info!("Starting relay daemon (agent_id={agent_id}, poll_ms={poll_ms})");
+                let (tx, rx) = tokio::sync::watch::channel(false);
+                // Graceful shutdown on Ctrl-C / SIGTERM.
+                tokio::spawn(async move {
+                    tokio::signal::ctrl_c()
+                        .await
+                        .expect("failed to listen for ctrl-c");
+                    let _ = tx.send(true);
+                });
+                let cfg = ruvos_mcp::daemon::DaemonConfig {
+                    agent_id,
+                    poll_interval_ms: poll_ms,
+                };
+                ruvos_mcp::daemon::run_daemon(cfg, rx).await;
             }
         },
         Commands::Cve { command } => match command {
