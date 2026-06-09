@@ -5,39 +5,37 @@ Each gap is a concrete, reproducible finding — not speculation.
 
 ---
 
-## Schema Gaps (highest priority — break MCP client type safety)
+## Schema Gaps — RESOLVED
 
-| # | Tool | Missing field | Symptom |
-|---|------|--------------|---------|
-| 12 | `intel_pattern_store` | `trajectory` (array of strings) | Call fails: "missing 'trajectory' field" |
-| 13 | `intel_pattern_store` | `outcome` (string) | Call fails: "missing 'outcome' field" |
-| 7  | `hooks_post` | `success` typed as `boolean` in schema | MCP client serialises as string `"true"` — server rejects unless restarted after schema commit |
-
-**Fix:** Add `trajectory` and `outcome` to the `intel_pattern_store` JSON Schema `required` array in `intel.rs`. Restart server after any schema change to apply typed coercion.
+| # | Tool | Gap | Status |
+|---|------|----|--------|
+| 12 | `intel_pattern_store` | `trajectory` required field | ✅ Already in schema + validate() — was never missing |
+| 13 | `intel_pattern_store` | `outcome` required field | ✅ Already in schema + validate() — was never missing |
+| 7  | `hooks_post` | `success` boolean coercion | ✅ Fixed `0e7b810` — now accepts `true` and `"true"`/`"false"` |
 
 ---
 
-## Agent Capability Gaps (medium priority — limits what agents can do)
+## Agent Capability Gaps — RESOLVED
 
-| # | Area | Gap | Impact |
+| # | Area | Gap | Status |
 |---|------|-----|--------|
-| 1 | `agent_spawn` | No filesystem write | Agents produce markdown artifacts only; cannot write `.ts`, `.rs`, or any source file |
-| 2 | `agent_spawn` | No shell/test execution | Cannot run `vitest`, `cargo test`, `npm build`, etc. |
-| 3 | `agent_spawn` | No git operations | Cannot commit, diff, read log, or read git blame |
-| 8 | Agent artifacts | No structured code output | Artifact format is free markdown; no parseable code blocks, no typed JSON output schema |
-| 10 | Agent pipeline | No cross-agent file passing | Agent A cannot hand a file artifact to Agent B automatically; requires the orchestrator to read and re-pass content |
-| 11 | `orchestrate_run` | ~~Agents echo task spec, do not invoke LLM~~ **Fixed (ef9a2da)** — `src/llm.rs` added; `run_task` calls Anthropic API when `ANTHROPIC_API_KEY` is set, falls back to template otherwise | Set `ANTHROPIC_API_KEY` |
+| 1 | `agent_spawn` | No filesystem write | ✅ Closed by `ruvos_agent_exec` (commit `2a9b0cd`) |
+| 2 | `agent_spawn` | No shell/test execution | ✅ Closed by `ruvos_agent_exec` run_command op |
+| 3 | `agent_spawn` | No git operations | ✅ Closed by `ruvos_agent_exec` git_op |
+| 8 | Agent artifacts | No structured code output | ✅ Fixed `0e7b810` — `output_schema` param + `structured_output` response field |
+| 10 | Agent pipeline | No cross-agent file passing | Mitigated: agent_exec + memory bridge. Full automatic handoff still future work. |
+| 11 | `orchestrate_run` | Agents echo task spec, do not invoke LLM | ✅ Fixed `ef9a2da` — calls Anthropic API when `ANTHROPIC_API_KEY` set |
 
 ---
 
-## Infrastructure Gaps (lower priority — workarounds exist)
+## Infrastructure Gaps
 
-| # | Tool/area | Gap | Workaround |
-|---|-----------|-----|-----------|
-| 4 | `relay_send` | Stale presence — `delivered: false` unless target has active recent `relay_announce` | Poll with heartbeat; accept delivered:false as normal |
-| 5 | Plugin system | 0 plugins registered — `plugin_invoke` untestable | N/A until first plugin is written |
-| 6 | Swarm | ~~State is in-memory only — lost on process restart~~ **Already resolved** — `swarm::store()`/`current()` write/read JSON files in `data_root/swarm.json` | — |
-| 9 | `gov_cve_lookup` | Requires a lockfile (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`) — exits early for projects without one | Ensure lockfile exists before calling; note that Rust projects need `Cargo.lock` committed |
+| # | Tool/area | Gap | Status |
+|---|-----------|-----|-------|
+| 4 | `relay_send` | Stale presence — `delivered: false` | ✅ Fixed `acd6fcb` — `relay::announce_as()` writes named presence |
+| 5 | Plugin system | 0 plugins registered | Open — needs first real plugin |
+| 6 | Swarm | State in-memory only | ✅ Already resolved — `swarm::store()`/`current()` persist to `swarm.json` |
+| 9 | `gov_cve_lookup` | Requires lockfile | By design — ensure `Cargo.lock` / `package-lock.json` exists |
 
 ---
 
@@ -63,14 +61,13 @@ All wrong field names below were corrected by adding typed JSON Schemas to the h
 
 ---
 
-## Proposed Prioritisation
+## Open Items (pre-Sprint 9)
 
-1. **Fix schema gaps 12 + 13** (`intel_pattern_store` missing required fields) — one-line Rust change each, immediate call-site fix
-2. **Fix gap 7** (`hooks_post` boolean coercion) — server restart resolves it; schema already committed
-3. **Gap 11** (`orchestrate_run` LLM inference) — highest value unlock; turns orchestration into a real planning tool
-4. **Gap 1–3** (agent filesystem/shell/git) — enables autonomous TDD cycles; requires sandboxed execution environment
-5. **Gap 6** (swarm persistence) — necessary for long-running multi-session workflows
+| # | Area | Gap |
+|---|------|-----|
+| 10 | Cross-agent handoff | Full automatic file passing between pipeline agents — memory bridge is a workaround |
+| 5 | Plugin system | No plugins registered; `plugin_invoke` untestable until a real plugin is written |
 
 ---
 
-*Last updated: 2026-06-09. 52 tools exercised; 13 gaps identified. Gap 6 was inaccurate (already resolved). Gap 11 fixed in ef9a2da.*
+*Last updated: 2026-06-09. 53 tools. Gaps 1–4, 6–8, 11–13 resolved. 2 open items remain.*
