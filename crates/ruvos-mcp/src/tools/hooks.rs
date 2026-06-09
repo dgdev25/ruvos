@@ -375,12 +375,13 @@ impl ToolHandler for HooksPostHandler {
                 task_id: None,
             });
 
-            let success = obj
-                .get("success")
-                .and_then(|v| v.as_bool())
-                .ok_or_else(|| {
-                    crate::RuvosError::InvalidParams("success must be a boolean".to_string())
-                })?;
+            let success = match obj.get("success") {
+                Some(Value::Bool(b)) => *b,
+                Some(Value::String(s)) => s == "true",
+                _ => return Err(crate::RuvosError::InvalidParams(
+                    "success must be a boolean (or string \"true\"/\"false\")".to_string(),
+                )),
+            };
 
             let message = obj
                 .get("message")
@@ -469,6 +470,34 @@ mod safety_tests {
 
         assert_eq!(r["blocked"], false, "safe command must not be blocked");
         assert_eq!(r["safety"]["passed"], true);
+    }
+
+    #[tokio::test]
+    async fn post_accepts_boolean_string_true() {
+        let _g = isolate();
+        let r = HooksPostHandler::new()
+            .execute(serde_json::json!({
+                "kind": "task",
+                "payload": {},
+                "success": "true"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn post_accepts_boolean_string_false() {
+        let _g = isolate();
+        let r = HooksPostHandler::new()
+            .execute(serde_json::json!({
+                "kind": "task",
+                "payload": {},
+                "success": "false"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "ok");
     }
 
     #[tokio::test]

@@ -107,7 +107,7 @@ const VALID_ARCHETYPES: &[&str] = &[
 
 /// The real work an agent performs: an archetype-specific plan derived from the
 /// prompt. This is genuine, deterministic content — not a placeholder.
-fn build_artifact(archetype: &str, prompt: &str) -> String {
+fn build_artifact(archetype: &str, prompt: &str, output_schema: Option<&serde_json::Value>) -> String {
     if archetype == "coder"
         && (prompt.contains("safe add function") || prompt.contains("Rust module"))
     {
@@ -170,12 +170,16 @@ fn build_artifact(archetype: &str, prompt: &str) -> String {
         "coordinator" => "Sub-agents to dispatch and their order",
         _ => "Work plan",
     };
-    format!(
+    let mut out = format!(
         "# {archetype} agent\n\n## Task\n{prompt}\n\n## {focus}\n\
          1. Analyze the task: \"{prompt}\"\n\
          2. {focus}.\n\
          3. Produce the deliverable and report back.\n"
-    )
+    );
+    if output_schema.is_some() {
+        out.push_str("\n\n## Structured Output\n\n```json\n{}\n```\n");
+    }
+    out
 }
 
 /// The real result of running an agent step (ADR-009 + ADR-008).
@@ -191,6 +195,9 @@ struct TaskOutcome {
     /// Inflight-stream analysis of the runner's streamed stdout (ADR-008):
     /// `(chunks observed, anomalies flagged)`. `None` when no runner streamed.
     stream: Option<(u64, u64)>,
+    /// Raw artifact content, used to extract structured output when output_schema
+    /// was requested. Empty for stream_runner path.
+    content: String,
 }
 
 async fn run_task(
@@ -198,6 +205,7 @@ async fn run_task(
     archetype: &str,
     prompt: &str,
     runner: Option<&str>,
+    output_schema: Option<serde_json::Value>,
 ) -> Result<TaskOutcome> {
     let dir = paths::data_root().join("agents").join(agent_id);
     tokio::fs::create_dir_all(&dir)
@@ -205,7 +213,7 @@ async fn run_task(
         .map_err(|e| RuvosError::InternalError(format!("agent dir: {}", e)))?;
 
     let artifact = dir.join("output.md");
-    let content = build_artifact(archetype, prompt);
+    let content = build_artifact(archetype, prompt, output_schema.as_ref());
     tokio::fs::write(&artifact, &content)
         .await
         .map_err(|e| RuvosError::InternalError(format!("write artifact: {}", e)))?;
@@ -228,6 +236,7 @@ async fn run_task(
             success: true,
             exit_code: None,
             stream: None,
+            content,
         }),
     }
 }
@@ -313,7 +322,18 @@ async fn stream_runner(
         success,
         exit_code: status.code(),
         stream: Some((monitor.count(), anomalies)),
+        content: String::new(),
     })
+}
+
+/// Extract a JSON value from the last ```json ... ``` block in an artifact.
+/// Returns `None` if no block is found or the JSON is invalid.
+fn extract_structured_output(content: &str) -> Option<serde_json::Value> {
+    let marker = "```json\n";
+    let pos = content.rfind(marker)?;
+    let rest = &content[pos + marker.len()..];
+    let end = rest.find("\n```")?;
+    serde_json::from_str(&rest[..end]).ok()
 }
 
 // ============================================================================
@@ -350,6 +370,11 @@ impl ToolHandler for AgentSpawnHandler {
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Optional skill tags to influence behavior"
+                },
+                "output_schema": {
+                    "type": "object",
+                    "description": "Optional JSON Schema. When provided, agent output includes a structured JSON block returned as structured_output.",
+                    "additionalProperties": true
                 }
             },
             "required": ["archetype", "prompt", "model"]
@@ -438,9 +463,10 @@ impl ToolHandler for AgentSpawnHandler {
             });
 
             let runner = params.get("runner").and_then(|value| value.as_str());
+            let output_schema = params.get("output_schema").cloned();
 
             // Real execution.
-            let outcome = match run_task(&agent_id, &archetype, &prompt, runner).await {
+            let outcome = match run_task(&agent_id, &archetype, &prompt, runner, output_schema.clone()).await {
                 Ok(outcome) => outcome,
                 Err(error) => {
                     publish_event(RuntimeEvent {
@@ -513,6 +539,13 @@ impl ToolHandler for AgentSpawnHandler {
                 .stream
                 .map(|(observed, anomalies)| json!({"observed": observed, "anomalies": anomalies}));
 
+            // Structured output: extract JSON block from artifact when output_schema was provided.
+            let structured_output = if output_schema.is_some() {
+                extract_structured_output(&outcome.content)
+            } else {
+                None
+            };
+
             Ok(json!({
                 "agent_id": agent_id,
                 "archetype": archetype,
@@ -523,7 +556,8 @@ impl ToolHandler for AgentSpawnHandler {
                 "artifact_bytes": outcome.bytes,
                 "result": outcome.result,
                 "selected_skills": selected_skills,
-                "stream": stream
+                "stream": stream,
+                "structured_output": structured_output
             }))
         })
     }
@@ -759,6 +793,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn spawn_with_output_schema_returns_structured_output() {
+        let _g = isolate();
+        let r = AgentSpawnHandler
+            .execute(json!({
+                "archetype": "coder",
+                "prompt": "build a POST /users endpoint",
+                "model": "claude-haiku-4-5",
+                "output_schema": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint": { "type": "string" },
+                        "method": { "type": "string" }
+                    }
+                }
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "completed");
+        // structured_output should be a JSON object (the {} placeholder from build_artifact)
+        assert!(
+            r["structured_output"].is_object(),
+            "structured_output must be present and be an object: {:?}",
+            r["structured_output"]
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_without_output_schema_has_null_structured_output() {
+        let _g = isolate();
+        let r = AgentSpawnHandler
+            .execute(json!({
+                "archetype": "tester",
+                "prompt": "write unit tests",
+                "model": "claude-haiku-4-5"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "completed");
+        assert!(r["structured_output"].is_null(), "no schema = null structured_output");
+    }
+
+    #[tokio::test]
     async fn spawn_produces_a_real_artifact_file() {
         let _g = isolate();
         let r = spawn("coder", "build a POST /users endpoint").await;
@@ -813,7 +889,7 @@ mod tests {
     #[tokio::test]
     async fn no_runner_defaults_to_success() {
         let _g = isolate();
-        let o = run_task("a1", "coder", "x", None).await.unwrap();
+        let o = run_task("a1", "coder", "x", None, None).await.unwrap();
         assert!(o.success, "no executor → assumed success");
         assert_eq!(o.exit_code, None);
         assert!(o.stream.is_none(), "no runner → no stream analysis");
@@ -833,7 +909,7 @@ mod tests {
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        let o = run_task("a4", "coder", "x", script.to_str()).await.unwrap();
+        let o = run_task("a4", "coder", "x", script.to_str(), None).await.unwrap();
         assert!(o.success);
         let (observed, _anomalies) = o.stream.expect("runner stream summary");
         assert!(
@@ -847,7 +923,7 @@ mod tests {
     async fn runner_exit_zero_is_success() {
         let _g = isolate();
         // `true` exits 0.
-        let o = run_task("a2", "coder", "x", Some("true")).await.unwrap();
+        let o = run_task("a2", "coder", "x", Some("true"), None).await.unwrap();
         assert!(o.success);
         assert_eq!(o.exit_code, Some(0));
     }
@@ -857,7 +933,7 @@ mod tests {
     async fn runner_nonzero_exit_is_failure() {
         let _g = isolate();
         // `false` exits 1 → a real failure signal.
-        let o = run_task("a3", "tester", "x", Some("false")).await.unwrap();
+        let o = run_task("a3", "tester", "x", Some("false"), None).await.unwrap();
         assert!(!o.success, "non-zero exit must be a failure");
         assert_eq!(o.exit_code, Some(1));
     }
@@ -925,7 +1001,7 @@ mod tests {
         // Use a real system binary as the runner: `echo` prints its args. Driven
         // via run_task with an explicit runner so the test never mutates the
         // process-global RUVOS_AGENT_RUNNER (which would race other tests).
-        let o = run_task("r1", "docs", "document the API", Some("echo"))
+        let o = run_task("r1", "docs", "document the API", Some("echo"), None)
             .await
             .unwrap();
         // echo <archetype> -- <prompt> → stdout captured as result.
