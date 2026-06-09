@@ -130,6 +130,17 @@ impl ToolHandler for RelaySendHandler {
     fn domain(&self) -> &'static str {
         "relay"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "to":   { "type": "string", "description": "Recipient instance UUID" },
+                "body": { "type": "string", "description": "Message body to deliver" }
+            },
+            "required": ["to", "body"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("to").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -179,6 +190,22 @@ impl ToolHandler for RelayContractStoreHandler {
     fn domain(&self) -> &'static str {
         "relay"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "topic":        { "type": "string", "description": "Coordination topic name" },
+                "owner":        { "type": "string", "description": "Owning instance UUID" },
+                "name":         { "type": "string", "description": "Optional human-readable contract name" },
+                "participants": { "type": "array", "items": { "type": "string" }, "description": "Participant instance UUIDs" },
+                "schema":       { "type": "object", "additionalProperties": true, "description": "Optional contract schema/metadata" },
+                "handoff_to":   { "type": "string", "description": "Optional instance UUID to hand off to on resolution" },
+                "status":       { "type": "string", "description": "Initial status (default: open)" }
+            },
+            "required": ["topic", "owner"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("topic").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
@@ -350,6 +377,19 @@ impl ToolHandler for RelayContractResolveHandler {
     fn domain(&self) -> &'static str {
         "relay"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "id":          { "type": "string", "description": "Contract UUID to resolve" },
+                "resolution":  { "type": "string", "description": "Resolution description" },
+                "status":      { "type": "string", "description": "Final status (default: resolved)" },
+                "handoff_to":  { "type": "string", "description": "Optional instance UUID to hand off to" }
+            },
+            "required": ["id", "resolution"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("id").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(

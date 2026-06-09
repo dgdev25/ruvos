@@ -116,6 +116,16 @@ impl ToolHandler for SessionResumeHandler {
         "session"
     }
 
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string", "description": "UUID of the session to resume" }
+            },
+            "required": ["session_id"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if !params.is_object() {
             return Err(RuvosError::InvalidParams(
@@ -198,6 +208,19 @@ impl ToolHandler for SessionForkHandler {
 
     fn domain(&self) -> &'static str {
         "session"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "source_session_id": {
+                    "type": "string",
+                    "description": "UUID of the session to fork from"
+                }
+            },
+            "required": ["source_session_id"]
+        })
     }
 
     fn validate(&self, params: &Value) -> Result<()> {

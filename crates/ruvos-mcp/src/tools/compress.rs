@@ -20,6 +20,28 @@ impl ToolHandler for CompressRunHandler {
         "compress"
     }
 
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Text or JSON content to compress"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["json", "text", "code"],
+                    "description": "Content type hint for compression strategy"
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Optional session UUID to attach the compressed output to"
+                }
+            },
+            "required": ["content"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("content").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(

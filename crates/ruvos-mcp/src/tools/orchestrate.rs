@@ -255,6 +255,33 @@ impl ToolHandler for OrchestrateRunHandler {
         "orchestrate"
     }
 
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "template": {
+                    "type": "string",
+                    "enum": ["feature", "bugfix", "refactor", "security", "sparc"],
+                    "description": "Named orchestration template (pipeline of archetypes)"
+                },
+                "goal": {
+                    "type": "object",
+                    "description": "GOAP goal object specifying desired end conditions",
+                    "additionalProperties": true
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Human-readable task description passed to every agent in the pipeline"
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Optional model override for all pipeline agents"
+                }
+            },
+            "required": ["task"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         // A run is driven by either a known `template` or an explicit `goal`.
         let has_goal = params

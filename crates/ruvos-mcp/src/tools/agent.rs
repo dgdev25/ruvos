@@ -329,6 +329,33 @@ impl ToolHandler for AgentSpawnHandler {
     fn domain(&self) -> &'static str {
         "agent"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "archetype": {
+                    "type": "string",
+                    "enum": ["coder", "reviewer", "tester"],
+                    "description": "Agent archetype controlling the task focus and artifact style"
+                },
+                "prompt": {
+                    "type": "string",
+                    "description": "Task description or goal for the agent"
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model ID to use for this agent (e.g. claude-sonnet-4-6)"
+                },
+                "traits": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Optional skill tags to influence behavior"
+                }
+            },
+            "required": ["archetype", "prompt", "model"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         for field in ["archetype", "prompt", "model"] {
             if params.get(field).and_then(|v| v.as_str()).is_none() {
@@ -515,6 +542,15 @@ impl ToolHandler for AgentStatusHandler {
     fn domain(&self) -> &'static str {
         "agent"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "agent_id": { "type": "string", "description": "Agent UUID to query; omit to list all agents" }
+            }
+        })
+    }
+
     fn validate(&self, _params: &Value) -> Result<()> {
         Ok(())
     }
@@ -565,6 +601,17 @@ impl ToolHandler for AgentMessageHandler {
     fn domain(&self) -> &'static str {
         "agent"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "agent_id": { "type": "string", "description": "Target agent UUID" },
+                "message":  { "type": "string", "description": "Message content to deliver" }
+            },
+            "required": ["agent_id", "message"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("agent_id").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(

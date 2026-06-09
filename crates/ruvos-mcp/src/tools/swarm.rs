@@ -453,7 +453,7 @@ impl ToolHandler for SwarmCreateHandler {
             "required": ["objective"],
             "properties": {
                 "objective": { "type": "string", "description": "The swarm's goal or mission" },
-                "topology": { "type": "string", "enum": ["star", "mesh", "pipeline", "hierarchical"], "description": "Swarm communication topology" },
+                "topology": { "type": "string", "enum": ["hierarchical", "mesh", "hybrid", "adaptive"], "description": "Swarm communication topology" },
                 "swarm_id": { "type": "string", "description": "Optional custom swarm ID" },
                 "max_agents": { "type": "integer" }
             },

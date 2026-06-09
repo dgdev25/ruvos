@@ -275,6 +275,17 @@ impl ToolHandler for GovReplayHandler {
     fn domain(&self) -> &'static str {
         "gov"
     }
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string", "description": "Session UUID to replay events for" },
+                "task_id":    { "type": "string", "description": "Task ID to replay events for (alternative to session_id)" },
+                "limit":      { "type": "integer", "description": "Max events to return" }
+            }
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params.get("session_id").and_then(|v| v.as_str()).is_none()
             && params.get("task_id").and_then(|v| v.as_str()).is_none()

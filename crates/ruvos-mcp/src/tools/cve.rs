@@ -19,6 +19,24 @@ impl ToolHandler for GovCveLookupHandler {
         "gov"
     }
 
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "project_path": {
+                    "type": "string",
+                    "description": "Absolute path to the project root to scan for CVEs (must contain a lockfile)"
+                },
+                "min_severity": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "critical"],
+                    "description": "Minimum severity level to report (default: low)"
+                }
+            },
+            "required": ["project_path"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         if params
             .get("project_path")

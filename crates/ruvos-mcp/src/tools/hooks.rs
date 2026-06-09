@@ -53,6 +53,25 @@ impl ToolHandler for HooksPreHandler {
         "hooks"
     }
 
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": ["task", "edit", "command", "session"],
+                    "description": "Hook event kind"
+                },
+                "payload": {
+                    "type": "object",
+                    "description": "Event payload object",
+                    "additionalProperties": true
+                }
+            },
+            "required": ["kind", "payload"]
+        })
+    }
+
     fn validate(&self, params: &Value) -> Result<()> {
         // Validate required fields: kind, payload
         if !params.is_object() {
@@ -248,6 +267,38 @@ impl ToolHandler for HooksPostHandler {
 
     fn domain(&self) -> &'static str {
         "hooks"
+    }
+
+    fn schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": ["task", "edit", "command", "session"],
+                    "description": "Hook event kind"
+                },
+                "payload": {
+                    "type": "object",
+                    "description": "Event payload object",
+                    "additionalProperties": true
+                },
+                "success": {
+                    "type": "boolean",
+                    "description": "Whether the hooked operation succeeded"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Optional outcome message"
+                },
+                "metadata": {
+                    "type": "object",
+                    "description": "Optional additional metadata",
+                    "additionalProperties": true
+                }
+            },
+            "required": ["kind", "payload", "success"]
+        })
     }
 
     fn validate(&self, params: &Value) -> Result<()> {
