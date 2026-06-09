@@ -1,44 +1,85 @@
-# ADR-020: Semantic Memory Search via arroy + fastembed-rs
+# ADR-020: Semantic Memory Search — Status of Retrieval Infrastructure
 
-**Status:** Proposed  
-**Date:** 2026-06-09  
-**Gap:** #16 in gap-register.md  
-**Source repos:** meilisearch/arroy (MIT), Anush008/fastembed-rs (Apache-2.0)
+**Status:** Accepted (infrastructure already present; neural embedding deferred)
+**Date:** 2026-06-09 (revised after source inspection)
+**Gap:** #16 in gap-register.md
+**Supersedes:** the original "embed arroy + fastembed-rs" proposal (rejected — see Decision)
 
 ## Context
 
-`ruvos_memory_search` and `ruvos_intel_pattern_search` use keyword matching. For a large codebase, "find patterns similar to this auth middleware" or "retrieve memories related to the ForgeCMS widget system" cannot be answered by substring match — they require semantic (vector) similarity.
+The original ADR-020 asserted that `ruvos_memory_search` and `ruvos_intel_pattern_search`
+"use keyword matching" and could not answer semantic-similarity queries. **Source
+inspection on 2026-06-09 showed this premise is false.** The retrieval stack is already
+real and multi-tiered:
 
-The stress-test session revealed this concretely: searching for prior sprint patterns returned nothing useful because widget implementations from Sprint 3 use different vocabulary than Sprint 8, even though they share structural patterns.
+- **`embedding.rs`** — `embed()` produces 384-dim L2-normalised dense vectors; ANN
+  retrieval runs on `ruvector-core`'s real **HNSW** index (`hnsw_rank`), a predicate-aware
+  **ACORN** filtered-HNSW path (`acorn_rank`) for tag-scoped queries, and an in-memory
+  **RaBitQ** (1-bit quantized + exact rerank) path for small candidate sets.
+- **`memory.rs` (`memory.search`)** — Tier 1 ANN retrieval (HNSW or ACORN by filter
+  presence) → BM25 sparse pass for exact/rare-term recall → **MMR** re-ranking for
+  diversity → recency boost → bandit-feedback reweighting (ADR-005). Tier 2 federates
+  through RuLake.
+- **`intel.rs` (`intel.pattern_search`)** — TF-cosine disk recall **plus** SONA
+  **ReasoningBank** in-memory K-means cluster similarity, which finds structurally similar
+  trajectories even when keywords differ.
+
+The genuine limitation is one level deeper than the ADR claimed: `embed()` is a
+**FNV-1a feature-hashing** embedder ("the hashing trick"). It is deterministic, offline,
+and zero-dependency — but it matches on **token overlap**, not meaning. "auth middleware"
+and "authentication interceptor" share no tokens and therefore land far apart in vector
+space. A learned (neural) embedder would close that semantic gap.
 
 ## Decision
 
-Embed a two-crate stack into `ruvos-store`:
+**1. Reject the arroy + fastembed-rs stack.** `fastembed-rs` pulls in **ONNX Runtime
+(`ort`)**, a heavy C++ dependency. Adding it would:
+- break the workspace's `unsafe_code = "forbid"` / pure-Rust posture (C++ FFI);
+- reintroduce a multi-minute cold-compile — the exact problem just eliminated by removing
+  `reqwest`/`ring`/`rustls` (see ADR-032 history);
+- add a ~23 MB first-run model download and an out-of-process model cache to manage.
 
-1. **arroy** (MIT, meilisearch) — LMDB-backed approximate nearest neighbours with random-projection indexing. Pure Rust, embeddable, no separate process. Index is stored alongside the existing redb store.
-2. **fastembed-rs** (Apache-2.0, compatible with ruvos MIT distribution) — local ONNX embedding generation. Default model: `all-MiniLM-L6-v2` (384 dims, ~23MB). No GPU, no external API call required.
+`arroy` (LMDB ANN) is also redundant: `ruvector-core` HNSW + ACORN already provide
+embeddable, in-process ANN with no new storage engine.
 
-Behaviour change:
-- `memory_store` and `intel_pattern_store` embed the content/trajectory at write time and insert into the arroy index alongside the redb record.
-- `memory_search` and `intel_pattern_search` accept a new optional `semantic: true` flag. When set, the query is embedded and the top-K nearest neighbours are retrieved from arroy, then reranked by redb metadata filters.
-- Keyword search remains the default to preserve backwards compatibility.
+**2. Record that the retrieval infrastructure satisfies the gap's intent.** Semantic-style
+retrieval (ANN + MMR + cluster similarity + sparse fusion) is implemented and shipping.
+Gap #16's retrieval requirement is met.
+
+**3. Defer neural embedding as scoped future work.** When semantic recall across
+divergent vocabulary becomes a measured bottleneck, the upgrade is isolated to `embed()` —
+every downstream consumer (HNSW/ACORN/RaBitQ/MMR) is embedder-agnostic and needs no change.
+The constraint-respecting implementation path (NOT done now) is:
+
+- Route embedding through **OpenRouter** (the only permitted API key) via a **curl
+  subprocess** — the same pattern as the ADR-032 `CliRouter`. No new crates, no ONNX.
+- Add a content-addressed **on-disk embedding cache** (`~/.ruvos/embed-cache/<hash>.vec`)
+  and a **batch** embed call, so HNSW indexing loops that call `embed()` per item do not
+  issue N network requests.
+- Keep the FNV-1a feature-hash embedder as the **offline default** when
+  `OPENROUTER_API_KEY` is unset — preserving determinism and zero-dependency operation.
+- `EMBED_DIM` stays 384 so the existing indices need no reshape if a 384-dim model is used;
+  a dimension change requires an index rebuild (migration note for that future ADR).
 
 ## Consequences
 
 **Positive:**
-- "Find patterns similar to X" works across vocabulary differences
-- Fully local — no embedding API key, no latency spike from external calls
-- arroy's LMDB backing means the vector index and the KV store share one process boundary
+- No heavy C++/ONNX dependency; pure-Rust guarantee and fast compile preserved.
+- The shipping retrieval stack is documented accurately; the gap register reflects reality.
+- The future neural-embedding upgrade is a single-function change behind a stable interface.
 
 **Trade-offs:**
-- fastembed-rs is Apache-2.0 (not MIT); acceptable for distribution but must be documented in NOTICE file
-- First-run embedding model download (~23MB); subsequent runs use local cache
-- arroy index must be rebuilt if the embedding model changes (migration tooling needed)
-- `semantic: true` adds ~5-50ms latency per search vs. keyword scan
+- Until the deferred work lands, cross-vocabulary semantic matches rely on token overlap
+  plus SONA cluster similarity — weaker than a learned embedder for paraphrase-heavy queries.
+- The eventual OpenRouter embedding path adds network latency on cache miss (mitigated by
+  the on-disk cache) and depends on `OPENROUTER_API_KEY` for its best-quality mode.
 
 ## Alternatives Considered
 
-- **usearch** (Apache-2.0, 4,200 stars, C++ core): higher performance but C dependency breaks pure-Rust guarantee. Rejected.
-- **hora-search/hora** (Apache-2.0): maintenance status uncertain. Rejected.
-- **External embedding API** (OpenAI/Anthropic): adds network dependency, API key, latency, cost. Rejected.
-- **cogniplex/codemem patterns** (Apache-2.0): graph-vector hybrid; overkill for initial implementation but referenced for future graph-memory ADR.
+- **fastembed-rs + arroy (original proposal):** rejected — ONNX C++ dep, compile-time
+  regression, redundant ANN engine. See Decision.
+- **usearch / hora:** C++ core or uncertain maintenance; also redundant given ruvector-core.
+- **External embedding API (OpenAI/Anthropic direct):** violates the no-Anthropic-key and
+  CLI-first constraints. OpenRouter-via-curl is the only permitted networked path.
+- **Status quo forever:** acceptable at current scale; revisit when semantic recall is a
+  measured bottleneck.
