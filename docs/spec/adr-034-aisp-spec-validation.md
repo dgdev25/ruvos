@@ -1,7 +1,8 @@
 # ADR-034: AISP Symbolic Notation in hooks_pre — Prompt Precision Layer
 
-**Status:** Proposed  
+**Status:** Implemented  
 **Date:** 2026-06-09 (rewritten after reading aisp-open-core repo)  
+**Implemented:** 2026-06-10 — phase 1 (hooks_pre, commit 339875d), phase 2 (agent_spawn, commit 830bab4)  
 **Source:** `aisp-open-core` (AISP 5.1 Platinum Specification — MIT)
 
 ## Context
