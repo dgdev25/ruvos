@@ -1,5 +1,5 @@
-use crate::{paths, Result, RuvosError};
 use super::artifact::build_artifact;
+use crate::{paths, Result, RuvosError};
 
 pub(super) struct TaskOutcome {
     pub(super) artifact_path: String,
@@ -38,9 +38,9 @@ pub(super) async fn run_task(
                 let system_prompt = crate::llm::archetype_system_prompt(archetype);
                 match router.call(system_prompt, prompt).await {
                     Ok(text) => {
-                        tokio::fs::write(&artifact, &text)
-                            .await
-                            .map_err(|e| RuvosError::InternalError(format!("write artifact: {e}")))?;
+                        tokio::fs::write(&artifact, &text).await.map_err(|e| {
+                            RuvosError::InternalError(format!("write artifact: {e}"))
+                        })?;
                         let bytes = text.len() as u64;
                         return Ok(TaskOutcome {
                             artifact_path,
@@ -57,7 +57,8 @@ pub(super) async fn run_task(
                     }
                     Err(e) => {
                         tracing::warn!(
-                            "CliRouter failed for {archetype}: {:?} — using placeholder artifact", e
+                            "CliRouter failed for {archetype}: {:?} — using placeholder artifact",
+                            e
                         );
                     }
                 }

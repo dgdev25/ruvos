@@ -90,7 +90,11 @@ impl ToolHandler for AgentSpawnHandler {
             let provided_skill_bundle: Option<SkillBundle> = params
                 .get("skill_bundle")
                 .and_then(|value| {
-                    if value.is_null() { None } else { Some(value.clone()) }
+                    if value.is_null() {
+                        None
+                    } else {
+                        Some(value.clone())
+                    }
                 })
                 .map(|value| {
                     serde_json::from_value(value).map_err(|error| {
@@ -133,9 +137,20 @@ impl ToolHandler for AgentSpawnHandler {
             });
 
             let runner = params.get("runner").and_then(|value| value.as_str());
-            let output_schema = params.get("output_schema").cloned();
+            let output_schema = params
+                .get("output_schema")
+                .filter(|v| !v.is_null())
+                .cloned();
 
-            let outcome = match run_task(&agent_id, &archetype, &prompt, runner, output_schema.clone()).await {
+            let outcome = match run_task(
+                &agent_id,
+                &archetype,
+                &prompt,
+                runner,
+                output_schema.clone(),
+            )
+            .await
+            {
                 Ok(outcome) => outcome,
                 Err(error) => {
                     publish_event(RuntimeEvent {
@@ -154,7 +169,11 @@ impl ToolHandler for AgentSpawnHandler {
                     return Err(error);
                 }
             };
-            let status = if outcome.success { "completed" } else { "failed" };
+            let status = if outcome.success {
+                "completed"
+            } else {
+                "failed"
+            };
 
             let record = agent_store::build_agent_record(
                 &agent_id,

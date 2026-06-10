@@ -27,9 +27,9 @@ pub enum LlmProvider {
 impl LlmProvider {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::ClaudeCli  => "claude",
-            Self::GeminiCli  => "gemini",
-            Self::CodexCli   => "codex",
+            Self::ClaudeCli => "claude",
+            Self::GeminiCli => "gemini",
+            Self::CodexCli => "codex",
             Self::OpenRouter => "openrouter",
         }
     }
@@ -53,9 +53,9 @@ mod tests {
 
     #[test]
     fn provider_name_round_trip() {
-        assert_eq!(LlmProvider::ClaudeCli.name(),  "claude");
-        assert_eq!(LlmProvider::GeminiCli.name(),  "gemini");
-        assert_eq!(LlmProvider::CodexCli.name(),   "codex");
+        assert_eq!(LlmProvider::ClaudeCli.name(), "claude");
+        assert_eq!(LlmProvider::GeminiCli.name(), "gemini");
+        assert_eq!(LlmProvider::CodexCli.name(), "codex");
         assert_eq!(LlmProvider::OpenRouter.name(), "openrouter");
     }
 
@@ -82,7 +82,10 @@ mod tests {
 
     #[test]
     fn detect_returns_none_when_no_provider() {
-        let cfg = RouterConfig { priority: vec![], ..Default::default() };
+        let cfg = RouterConfig {
+            priority: vec![],
+            ..Default::default()
+        };
         assert!(CliRouter::detect_with_config(cfg).is_none());
     }
 
@@ -126,14 +129,20 @@ mod tests {
         let cfg = RouterConfig::from_json(&v);
         assert_eq!(cfg.claude_model, "opus");
         assert_eq!(cfg.priority, RouterConfig::default().priority);
-        assert_eq!(cfg.gemini_extra_args, RouterConfig::default().gemini_extra_args);
+        assert_eq!(
+            cfg.gemini_extra_args,
+            RouterConfig::default().gemini_extra_args
+        );
     }
 
     #[test]
     fn config_from_json_non_array_extra_args_keeps_default() {
         let v = serde_json::json!({ "claude": { "extra_args": "not-an-array" } });
         let cfg = RouterConfig::from_json(&v);
-        assert_eq!(cfg.claude_extra_args, RouterConfig::default().claude_extra_args);
+        assert_eq!(
+            cfg.claude_extra_args,
+            RouterConfig::default().claude_extra_args
+        );
     }
 
     #[test]
@@ -184,11 +193,13 @@ mod tests {
         });
         let cfg = RouterConfig::from_json(&v);
         assert!(
-            !cfg.claude_extra_args.contains(&"--permission-mode".to_string()),
+            !cfg.claude_extra_args
+                .contains(&"--permission-mode".to_string()),
             "--permission-mode must be stripped"
         );
         assert!(
-            cfg.claude_extra_args.contains(&"--safe-user-flag".to_string()),
+            cfg.claude_extra_args
+                .contains(&"--safe-user-flag".to_string()),
             "safe flag must be kept"
         );
     }
@@ -211,9 +222,9 @@ mod tests {
             }
         });
         let cfg = RouterConfig::from_json(&v);
-        assert!(!cfg.codex_extra_args.contains(
-            &"--dangerously-bypass-approvals-and-sandbox".to_string()
-        ));
+        assert!(!cfg
+            .codex_extra_args
+            .contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
         assert!(cfg.codex_extra_args.contains(&"--timeout".to_string()));
         assert!(cfg.codex_extra_args.contains(&"30".to_string()));
     }
@@ -288,12 +299,14 @@ mod tests {
         };
         let result = CliRouter::detect_with_config(cfg);
 
-        match old {
-            Some(v) => std::env::set_var(key, v),
-            None => {}
+        if let Some(v) = old {
+            std::env::set_var(key, v)
         }
 
-        assert!(result.is_none(), "openrouter without API key must not be detected");
+        assert!(
+            result.is_none(),
+            "openrouter without API key must not be detected"
+        );
     }
 
     #[test]
@@ -363,7 +376,10 @@ mod tests {
     #[test]
     fn which_exe_with_nonexistent_path_dirs_returns_none() {
         let old = std::env::var_os("PATH").unwrap_or_default();
-        std::env::set_var("PATH", "/nonexistent_ruvos_dir_1/bin:/nonexistent_ruvos_dir_2");
+        std::env::set_var(
+            "PATH",
+            "/nonexistent_ruvos_dir_1/bin:/nonexistent_ruvos_dir_2",
+        );
         let result = which_exe("sh");
         std::env::set_var("PATH", old);
         assert!(result.is_none(), "all PATH dirs nonexistent → sh not found");
@@ -396,7 +412,10 @@ mod tests {
         });
         let cfg = RouterConfig::from_json(&v);
         assert_eq!(cfg.claude_model, RouterConfig::default().claude_model);
-        assert_eq!(cfg.openrouter_model, RouterConfig::default().openrouter_model);
+        assert_eq!(
+            cfg.openrouter_model,
+            RouterConfig::default().openrouter_model
+        );
     }
 
     #[test]

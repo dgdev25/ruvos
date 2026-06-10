@@ -13,16 +13,31 @@ impl CliRouter {
     /// Detect the first available provider using the default priority order.
     /// Returns `None` if no CLI is in PATH and OPENROUTER_API_KEY is unset.
     pub fn detect() -> Option<Self> {
+        // Escape hatch: when RUVOS_DISABLE_CLI_ROUTER is truthy, skip all
+        // provider auto-detection and return None, so callers fall back to
+        // their non-router path (e.g. run_task's deterministic placeholder).
+        // Honored ONLY here — not in detect_with_config — so the routing-logic
+        // unit tests that call detect_with_config(explicit_cfg) stay pure, and
+        // hermetic tests / operators can force no-router mode without touching
+        // PATH or OPENROUTER_API_KEY. Production default is unchanged (unset).
+        if std::env::var("RUVOS_DISABLE_CLI_ROUTER")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            return None;
+        }
         Self::detect_with_config(RouterConfig::load())
     }
 
     pub fn detect_with_config(config: RouterConfig) -> Option<Self> {
         for name in &config.priority {
             let provider = match name.as_str() {
-                "claude"     if which_exe("claude").is_some()  => LlmProvider::ClaudeCli,
-                "gemini"     if which_exe("gemini").is_some()  => LlmProvider::GeminiCli,
-                "codex"      if which_exe("codex").is_some()   => LlmProvider::CodexCli,
-                "openrouter" if std::env::var("OPENROUTER_API_KEY").is_ok() => LlmProvider::OpenRouter,
+                "claude" if which_exe("claude").is_some() => LlmProvider::ClaudeCli,
+                "gemini" if which_exe("gemini").is_some() => LlmProvider::GeminiCli,
+                "codex" if which_exe("codex").is_some() => LlmProvider::CodexCli,
+                "openrouter" if std::env::var("OPENROUTER_API_KEY").is_ok() => {
+                    LlmProvider::OpenRouter
+                }
                 _ => continue,
             };
             return Some(Self { provider, config });
@@ -37,9 +52,9 @@ impl CliRouter {
     /// Run inference: system prompt + user prompt → text response.
     pub async fn call(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
         match self.provider {
-            LlmProvider::ClaudeCli  => self.call_claude(system_prompt, user_prompt).await,
-            LlmProvider::GeminiCli  => self.call_gemini(system_prompt, user_prompt).await,
-            LlmProvider::CodexCli   => self.call_codex(system_prompt, user_prompt).await,
+            LlmProvider::ClaudeCli => self.call_claude(system_prompt, user_prompt).await,
+            LlmProvider::GeminiCli => self.call_gemini(system_prompt, user_prompt).await,
+            LlmProvider::CodexCli => self.call_codex(system_prompt, user_prompt).await,
             LlmProvider::OpenRouter => self.call_openrouter(system_prompt, user_prompt).await,
         }
     }
@@ -68,19 +83,18 @@ impl CliRouter {
 
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            return Err(RuvosError::InternalError(
-                format!("claude exited {}: {stderr}", out.status),
-            ));
+            return Err(RuvosError::InternalError(format!(
+                "claude exited {}: {stderr}",
+                out.status
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&out.stdout);
         let v: Value = serde_json::from_str(&stdout)
             .map_err(|e| RuvosError::InternalError(format!("claude JSON: {e} — raw: {stdout}")))?;
-        v["result"].as_str()
-            .map(String::from)
-            .ok_or_else(|| RuvosError::InternalError(
-                format!("claude: no .result field — raw: {stdout}"),
-            ))
+        v["result"].as_str().map(String::from).ok_or_else(|| {
+            RuvosError::InternalError(format!("claude: no .result field — raw: {stdout}"))
+        })
     }
 
     async fn call_gemini(&self, system_prompt: &str, user_prompt: &str) -> Result<String> {
@@ -137,16 +151,22 @@ impl CliRouter {
                 { "role": "system", "content": system_prompt },
                 { "role": "user",   "content": user_prompt }
             ]
-        }).to_string();
+        })
+        .to_string();
 
         // curl subprocess — zero extra deps, avoids ring/rustls compile overhead.
         let out = tokio::process::Command::new("curl")
             .args([
-                "-s", "-X", "POST",
+                "-s",
+                "-X",
+                "POST",
                 "https://openrouter.ai/api/v1/chat/completions",
-                "-H", &format!("Authorization: Bearer {api_key}"),
-                "-H", "Content-Type: application/json",
-                "-d", &body,
+                "-H",
+                &format!("Authorization: Bearer {api_key}"),
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                &body,
             ])
             .output()
             .await
@@ -154,20 +174,23 @@ impl CliRouter {
 
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            return Err(RuvosError::InternalError(
-                format!("curl exited {}: {stderr}", out.status),
-            ));
+            return Err(RuvosError::InternalError(format!(
+                "curl exited {}: {stderr}",
+                out.status
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&out.stdout);
-        let v: Value = serde_json::from_str(&stdout)
-            .map_err(|e| RuvosError::InternalError(format!("openrouter JSON: {e} — raw: {stdout}")))?;
+        let v: Value = serde_json::from_str(&stdout).map_err(|e| {
+            RuvosError::InternalError(format!("openrouter JSON: {e} — raw: {stdout}"))
+        })?;
 
-        v["choices"][0]["message"]["content"].as_str()
+        v["choices"][0]["message"]["content"]
+            .as_str()
             .map(String::from)
-            .ok_or_else(|| RuvosError::InternalError(
-                format!("openrouter: unexpected response: {v}"),
-            ))
+            .ok_or_else(|| {
+                RuvosError::InternalError(format!("openrouter: unexpected response: {v}"))
+            })
     }
 }
 
@@ -206,11 +229,15 @@ pub(super) fn parse_codex_output(stdout: &str) -> Result<String> {
                 None
             }
         })
-        .last();
+        .next_back();
 
     text.or_else(|| {
         let t = stdout.trim().to_string();
-        if t.is_empty() { None } else { Some(t) }
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
     })
     .ok_or_else(|| RuvosError::InternalError("codex: no output".into()))
 }
@@ -232,6 +259,20 @@ pub fn which_exe(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── detect() escape hatch ────────────────────────────────────────────────
+
+    #[test]
+    fn detect_returns_none_when_disabled() {
+        // Monotonic: set and never unset (matches the agent test isolate()
+        // convention), so this introduces no cross-test env race. No test
+        // expects detect() to return Some, so a process-wide disable is safe.
+        std::env::set_var("RUVOS_DISABLE_CLI_ROUTER", "1");
+        assert!(
+            CliRouter::detect().is_none(),
+            "RUVOS_DISABLE_CLI_ROUTER must short-circuit detect() to None"
+        );
+    }
 
     // ── parse_codex_output ───────────────────────────────────────────────────
 
@@ -309,7 +350,10 @@ mod tests {
     fn gemini_json_without_known_paths_falls_back_to_raw() {
         let out = r#"{"unknown_key":"value"}"#;
         let result = parse_gemini_output(out).unwrap();
-        assert!(!result.is_empty(), "valid JSON with no known paths → raw text");
+        assert!(
+            !result.is_empty(),
+            "valid JSON with no known paths → raw text"
+        );
     }
 
     #[test]

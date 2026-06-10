@@ -6,16 +6,16 @@
 
 use std::sync::Arc;
 
+use rmcp::ErrorData as McpError;
 use rmcp::{
-    ServerHandler,
     model::{
         CallToolRequestParams, CallToolResult, Content, Implementation, ListToolsResult,
         ServerCapabilities, ServerInfo, Tool,
     },
-    service::{RequestContext, RoleServer},
     serve_server,
+    service::{RequestContext, RoleServer},
+    ServerHandler,
 };
-use rmcp::ErrorData as McpError;
 use serde_json::Value;
 use tracing::warn;
 
@@ -42,10 +42,7 @@ impl RuvosServerHandler {
     fn def_to_tool(def: &Value) -> Option<Tool> {
         let name = def["name"].as_str()?.to_owned();
         let description = def["description"].as_str().map(|s| s.to_owned());
-        let schema_map = def["inputSchema"]
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let schema_map = def["inputSchema"].as_object().cloned().unwrap_or_default();
         Some(Tool::new_with_raw(
             name,
             description.map(std::borrow::Cow::Owned),
@@ -57,9 +54,7 @@ impl RuvosServerHandler {
 impl ServerHandler for RuvosServerHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-        .with_server_info(
-            Implementation::new("ruvos", env!("CARGO_PKG_VERSION"))
-        )
+            .with_server_info(Implementation::new("ruvos", env!("CARGO_PKG_VERSION")))
     }
 
     fn list_tools(
@@ -68,72 +63,70 @@ impl ServerHandler for RuvosServerHandler {
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
         let defs = self.registry.mcp_tool_definitions();
-        let tools: Vec<Tool> = defs
-            .iter()
-            .filter_map(Self::def_to_tool)
-            .collect();
+        let tools: Vec<Tool> = defs.iter().filter_map(Self::def_to_tool).collect();
         std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
-        async move {
-            let name = request.name.as_ref().to_owned();
-            let params = match request.arguments {
-                Some(map) => Value::Object(map),
-                None => serde_json::json!({}),
-            };
+    ) -> Result<CallToolResult, McpError> {
+        let name = request.name.as_ref().to_owned();
+        let params = match request.arguments {
+            Some(map) => Value::Object(map),
+            None => serde_json::json!({}),
+        };
 
-            match self.registry.execute(&name, params).await {
-                Ok(result) => {
-                    let raw_text = serde_json::to_string_pretty(&result)
-                        .unwrap_or_else(|_| result.to_string());
+        match self.registry.execute(&name, params).await {
+            Ok(result) => {
+                let raw_text =
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
 
-                    let compression = if name.starts_with("compress.") {
-                        None
+                let compression = if name.starts_with("compress.") {
+                    None
+                } else {
+                    let compressed = compress_content(
+                        &raw_text,
+                        None,
+                        CompressionConfig {
+                            min_bytes: MIN_BYTES,
+                            keep_head_lines: KEEP_HEAD_LINES,
+                            keep_tail_lines: KEEP_TAIL_LINES,
+                            max_array_items: MAX_ARRAY_ITEMS,
+                        },
+                    );
+                    if compressed.changed {
+                        Some(compressed)
                     } else {
-                        let compressed = compress_content(
-                            &raw_text,
-                            None,
-                            CompressionConfig {
-                                min_bytes: MIN_BYTES,
-                                keep_head_lines: KEEP_HEAD_LINES,
-                                keep_tail_lines: KEEP_TAIL_LINES,
-                                max_array_items: MAX_ARRAY_ITEMS,
-                            },
-                        );
-                        if compressed.changed {
-                            Some(compressed)
-                        } else {
-                            None
-                        }
-                    };
-
-                    let text = compression
-                        .as_ref()
-                        .map(|c| c.compressed.clone())
-                        .unwrap_or(raw_text);
-
-                    if let Some(ref compressed) = compression {
-                        if let Err(e) = record_compression_learning(
-                            &CompressionLearningSignal::from_result(
-                                "mcp.tools.call",
-                                &name,
-                                compressed,
-                            ),
-                        ) {
-                            warn!("compression learning recording failed for {name}: {e:?}");
-                        }
+                        None
                     }
+                };
 
-                    let mut cr = CallToolResult::success(vec![Content::text(text)]);
-                    cr.structured_content = Some(result);
-                    if let Some(c) = compression {
-                        let mut meta_map = serde_json::Map::new();
-                        meta_map.insert("compression".to_owned(), serde_json::json!({
+                let text = compression
+                    .as_ref()
+                    .map(|c| c.compressed.clone())
+                    .unwrap_or(raw_text);
+
+                if let Some(ref compressed) = compression {
+                    if let Err(e) =
+                        record_compression_learning(&CompressionLearningSignal::from_result(
+                            "mcp.tools.call",
+                            &name,
+                            compressed,
+                        ))
+                    {
+                        warn!("compression learning recording failed for {name}: {e:?}");
+                    }
+                }
+
+                let mut cr = CallToolResult::success(vec![Content::text(text)]);
+                cr.structured_content = Some(result);
+                if let Some(c) = compression {
+                    let mut meta_map = serde_json::Map::new();
+                    meta_map.insert(
+                        "compression".to_owned(),
+                        serde_json::json!({
                             "changed": c.changed,
                             "original_bytes": c.original_bytes,
                             "compressed_bytes": c.compressed_bytes,
@@ -141,17 +134,17 @@ impl ServerHandler for RuvosServerHandler {
                             "compression_ratio": c.compression_ratio,
                             "tokens_before": c.tokens_before,
                             "tokens_after": c.tokens_after,
-                        }));
-                        cr.meta = Some(rmcp::model::Meta(meta_map));
-                    }
-                    Ok(cr)
+                        }),
+                    );
+                    cr.meta = Some(rmcp::model::Meta(meta_map));
                 }
-                Err(err) => {
-                    let msg = err.message();
-                    let mut cr = CallToolResult::success(vec![Content::text(msg)]);
-                    cr.is_error = Some(true);
-                    Ok(cr)
-                }
+                Ok(cr)
+            }
+            Err(err) => {
+                let msg = err.message();
+                let mut cr = CallToolResult::success(vec![Content::text(msg)]);
+                cr.is_error = Some(true);
+                Ok(cr)
             }
         }
     }

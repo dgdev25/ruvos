@@ -59,12 +59,21 @@ pub fn budget_remaining(total: u64, spent: u64, ceiling: u64) -> BudgetResult {
     match total.checked_sub(spent) {
         Some(remaining) => {
             if remaining > ceiling {
-                BudgetResult { value: ceiling, capped: true }
+                BudgetResult {
+                    value: ceiling,
+                    capped: true,
+                }
             } else {
-                BudgetResult { value: remaining, capped: false }
+                BudgetResult {
+                    value: remaining,
+                    capped: false,
+                }
             }
         }
-        None => BudgetResult { value: 0, capped: false },
+        None => BudgetResult {
+            value: 0,
+            capped: false,
+        },
     }
 }
 
@@ -90,138 +99,42 @@ mod tests {
         NonZeroU64::new(v).unwrap()
     }
 
-    // --- safe_add ---
+    // ---- safe_add: happy path and boundaries --------------------------------
 
     #[test]
-    fn adds_positive_numbers() {
-        assert_eq!(safe_add(2, 3), Some(5));
+    fn add_basic_cases() {
+        assert_eq!(safe_add(2, 3), Some(5)); // positive + positive
+        assert_eq!(safe_add(-4, -6), Some(-10)); // both negative
+        assert_eq!(safe_add(10, -3), Some(7)); // mixed, positive result
+        assert_eq!(safe_add(-10, 3), Some(-7)); // mixed, negative result
+        assert_eq!(safe_add(0, 0), Some(0)); // double zero
+        assert_eq!(safe_add(0, 42), Some(42)); // zero identity left
+        assert_eq!(safe_add(42, 0), Some(42)); // zero identity right
     }
 
     #[test]
-    fn adds_negative_numbers() {
-        assert_eq!(safe_add(-4, -6), Some(-10));
+    fn add_boundary_cases() {
+        assert_eq!(safe_add(i64::MAX - 1, 1), Some(i64::MAX)); // exact upper bound
+        assert_eq!(safe_add(i64::MIN + 1, -1), Some(i64::MIN)); // exact lower bound
+        assert_eq!(safe_add(i64::MAX / 2, i64::MAX / 2), Some(i64::MAX - 1)); // large in-range
+        assert_eq!(safe_add(i64::MAX, i64::MIN), Some(-1)); // max + min cancel
+        assert_eq!(safe_add(i64::MAX, i64::MIN + 1), Some(0)); // near-perfect cancel
+        assert_eq!(safe_add(i64::MAX, 0), Some(i64::MAX)); // identity at max
+        assert_eq!(safe_add(i64::MIN, 0), Some(i64::MIN)); // identity at min
+        assert_eq!(safe_add(i64::MAX, -1), Some(i64::MAX - 1)); // one step below max
+        assert_eq!(safe_add(i64::MIN, 1), Some(i64::MIN + 1)); // one step above min
     }
 
     #[test]
-    fn adds_mixed_signs() {
-        assert_eq!(safe_add(10, -3), Some(7));
-    }
-
-    #[test]
-    fn add_mixed_signs_negative_result() {
-        assert_eq!(safe_add(-10, 3), Some(-7));
-    }
-
-    #[test]
-    fn adds_zeros() {
-        assert_eq!(safe_add(0, 0), Some(0));
-    }
-
-    #[test]
-    fn add_zero_plus_positive() {
-        assert_eq!(safe_add(0, 42), Some(42));
-    }
-
-    #[test]
-    fn add_zero_plus_negative() {
-        assert_eq!(safe_add(0, -42), Some(-42));
-    }
-
-    #[test]
-    fn add_positive_plus_zero() {
-        assert_eq!(safe_add(42, 0), Some(42));
-    }
-
-    #[test]
-    fn add_large_positives_within_range() {
-        assert_eq!(safe_add(i64::MAX / 2, i64::MAX / 2), Some(i64::MAX - 1));
-    }
-
-    #[test]
-    fn add_max_plus_zero() {
-        assert_eq!(safe_add(i64::MAX, 0), Some(i64::MAX));
-    }
-
-    #[test]
-    fn add_min_plus_zero() {
-        assert_eq!(safe_add(i64::MIN, 0), Some(i64::MIN));
-    }
-
-    #[test]
-    fn add_opposites_cancel_to_zero() {
-        assert_eq!(safe_add(i64::MAX, i64::MIN + 1), Some(0));
-    }
-
-    #[test]
-    fn add_result_equals_max() {
-        assert_eq!(safe_add(i64::MAX - 1, 1), Some(i64::MAX));
-    }
-
-    #[test]
-    fn add_result_equals_min() {
-        assert_eq!(safe_add(i64::MIN + 1, -1), Some(i64::MIN));
-    }
-
-    #[test]
-    fn add_commutative() {
-        let (a, b) = (123_456_789_i64, -987_654_321_i64);
-        assert_eq!(safe_add(a, b), safe_add(b, a));
-    }
-
-    #[test]
-    fn add_max_minus_one() {
-        assert_eq!(safe_add(i64::MAX, -1), Some(i64::MAX - 1));
-    }
-
-    #[test]
-    fn add_min_plus_one() {
-        assert_eq!(safe_add(i64::MIN, 1), Some(i64::MIN + 1));
-    }
-
-    #[test]
-    fn add_both_max_overflows() {
-        assert_eq!(safe_add(i64::MAX, i64::MAX), None);
-    }
-
-    #[test]
-    fn add_both_min_underflows() {
-        assert_eq!(safe_add(i64::MIN, i64::MIN), None);
-    }
-
-    #[test]
-    fn add_max_plus_min() {
-        assert_eq!(safe_add(i64::MAX, i64::MIN), Some(-1));
-    }
-
-    #[test]
-    fn add_near_cancellation_stays_safe() {
-        assert_eq!(safe_add(i64::MAX / 2 + 1, -(i64::MAX / 2)), Some(1));
-    }
-
-    #[test]
-    fn overflow_returns_none() {
-        assert_eq!(safe_add(i64::MAX, 1), None);
-    }
-
-    #[test]
-    fn underflow_returns_none() {
-        assert_eq!(safe_add(i64::MIN, -1), None);
-    }
-
-    #[test]
-    fn add_overflow_by_two() {
-        assert_eq!(safe_add(i64::MAX, 2), None);
-    }
-
-    #[test]
-    fn add_underflow_by_two() {
-        assert_eq!(safe_add(i64::MIN, -2), None);
-    }
-
-    #[test]
-    fn add_overflow_returns_none_not_wrapped() {
+    fn add_overflow_cases() {
+        assert_eq!(safe_add(i64::MAX, 1), None); // one past max
+        assert_eq!(safe_add(i64::MIN, -1), None); // one past min
+        assert_eq!(safe_add(i64::MAX, 2), None); // two past max
+        assert_eq!(safe_add(i64::MIN, -2), None); // two past min
+        assert_eq!(safe_add(i64::MAX, i64::MAX), None); // double max
+        assert_eq!(safe_add(i64::MIN, i64::MIN), None); // double min
+                                                        // no wrapping — overflow is None, not Some(i64::MIN)
         assert_ne!(safe_add(i64::MAX, 1), Some(i64::MIN));
-        assert_eq!(safe_add(i64::MAX, 1), None);
     }
 
     #[test]
@@ -233,43 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn add_i128_oracle_some_matches() {
-        let pairs = [
-            (0_i64, 0_i64),
-            (1, 2),
-            (-1, -2),
-            (i64::MAX / 2, i64::MAX / 2),
-            (i64::MAX - 1, 1),
-            (i64::MIN + 1, -1),
-        ];
-        for (a, b) in pairs {
-            let oracle = (a as i128) + (b as i128);
-            let result = safe_add(a, b);
-            assert!(result.is_some(), "expected Some for ({a}, {b})");
-            assert_eq!(result.unwrap() as i128, oracle);
-        }
-    }
-
-    #[test]
-    fn add_i128_oracle_none_matches() {
-        let pairs = [
-            (i64::MAX, 1_i64),
-            (i64::MIN, -1),
-            (i64::MAX, i64::MAX),
-            (i64::MIN, i64::MIN),
-            (i64::MAX, 2),
-            (i64::MIN, -2),
-        ];
-        for (a, b) in pairs {
-            let oracle = (a as i128) + (b as i128);
-            let in_range = oracle >= i64::MIN as i128 && oracle <= i64::MAX as i128;
-            assert!(!in_range, "test case ({a}, {b}) should overflow");
-            assert_eq!(safe_add(a, b), None);
-        }
-    }
-
-    #[test]
-    fn add_commutativity_sample_set() {
+    fn add_commutativity() {
         let pairs = [
             (0_i64, 0_i64),
             (1, -1),
@@ -278,159 +155,412 @@ mod tests {
             (i64::MAX, i64::MIN),
             (100, 200),
             (-50, 50),
+            (123_456_789, -987_654_321),
         ];
         for (a, b) in pairs {
-            assert_eq!(safe_add(a, b), safe_add(b, a), "commutativity failed for ({a}, {b})");
+            assert_eq!(safe_add(a, b), safe_add(b, a), "({a}, {b})");
         }
     }
 
-    // --- safe_sub ---
+    #[test]
+    fn add_i128_oracle() {
+        let cases: &[(i64, i64)] = &[
+            (0, 0),
+            (1, 2),
+            (-1, -2),
+            (i64::MAX / 2, i64::MAX / 2),
+            (i64::MAX - 1, 1),
+            (i64::MIN + 1, -1),
+            (i64::MAX, 1),
+            (i64::MIN, -1),
+            (i64::MAX, i64::MAX),
+            (i64::MIN, i64::MIN),
+            (i64::MAX, 2),
+            (i64::MIN, -2),
+        ];
+        for &(a, b) in cases {
+            let oracle = (a as i128) + (b as i128);
+            let in_range = oracle >= i64::MIN as i128 && oracle <= i64::MAX as i128;
+            if in_range {
+                assert_eq!(safe_add(a, b), Some(oracle as i64), "({a}+{b})");
+            } else {
+                assert_eq!(safe_add(a, b), None, "({a}+{b}) should overflow");
+            }
+        }
+    }
+
+    // ---- safe_sub -----------------------------------------------------------
 
     #[test]
-    fn sub_normal() {
-        assert_eq!(safe_sub(10, 3), Some(7));
+    fn sub_happy_path() {
+        assert_eq!(safe_sub(10, 3), Some(7)); // basic
+        assert_eq!(safe_sub(5, 5), Some(0)); // same value
+        assert_eq!(safe_sub(0, 0), Some(0)); // double zero
+        assert_eq!(safe_sub(5, -3), Some(8)); // subtract negative
+        assert_eq!(safe_sub(-5, -3), Some(-2)); // both negative
+        assert_eq!(safe_sub(-5, 3), Some(-8)); // larger magnitude
+        assert_eq!(safe_sub(i64::MAX, 1), Some(i64::MAX - 1)); // one below max
+        assert_eq!(safe_sub(i64::MIN, -1), Some(i64::MIN + 1)); // subtract -1 adds
+        assert_eq!(safe_sub(i64::MIN + 1, 1), Some(i64::MIN)); // exact lower bound
     }
 
     #[test]
-    fn sub_to_zero() {
-        assert_eq!(safe_sub(5, 5), Some(0));
+    fn sub_edge_cases() {
+        assert_eq!(safe_sub(42, 0), Some(42)); // identity
+        assert_eq!(safe_sub(i64::MAX, i64::MAX), Some(0)); // same large
+        assert_eq!(safe_sub(i64::MIN, i64::MIN), Some(0)); // same large negative
+                                                           // 0 - (MIN+1) = -(MIN+1) which fits because |MIN+1| = MAX
+        assert_eq!(safe_sub(0, i64::MIN + 1), Some(i64::MAX));
     }
 
     #[test]
-    fn sub_overflow_returns_none() {
-        assert_eq!(safe_sub(i64::MIN, 1), None);
-    }
-
-    // --- safe_mul ---
-
-    #[test]
-    fn mul_normal() {
-        assert_eq!(safe_mul(6, 7), Some(42));
+    fn sub_overflow_cases() {
+        assert_eq!(safe_sub(i64::MIN, 1), None); // one past min
+        assert_eq!(safe_sub(i64::MAX, -1), None); // add via sub overflows max
+        assert_eq!(safe_sub(i64::MAX, i64::MIN), None); // widest span overflows
+        assert_eq!(safe_sub(i64::MIN, i64::MAX), None); // negative span overflows
+        assert_eq!(safe_sub(0, i64::MIN), None); // 0 - MIN = 2^63, > MAX
     }
 
     #[test]
-    fn mul_by_zero() {
+    fn sub_i128_oracle() {
+        let cases: &[(i64, i64)] = &[
+            (10, 3),
+            (5, 5),
+            (0, 0),
+            (5, -3),
+            (-5, -3),
+            (i64::MAX, 1),
+            (i64::MIN, -1),
+            (i64::MAX, i64::MIN),
+            (0, i64::MIN),
+        ];
+        for &(a, b) in cases {
+            let oracle = (a as i128) - (b as i128);
+            let in_range = oracle >= i64::MIN as i128 && oracle <= i64::MAX as i128;
+            if in_range {
+                assert_eq!(safe_sub(a, b), Some(oracle as i64), "({a}-{b})");
+            } else {
+                assert_eq!(safe_sub(a, b), None, "({a}-{b}) should overflow");
+            }
+        }
+    }
+
+    // ---- safe_mul -----------------------------------------------------------
+
+    #[test]
+    fn mul_happy_path() {
+        assert_eq!(safe_mul(6, 7), Some(42)); // basic
+        assert_eq!(safe_mul(-3, 4), Some(-12)); // neg × pos
+        assert_eq!(safe_mul(-3, -4), Some(12)); // neg × neg = pos
+        assert_eq!(safe_mul(1, i64::MAX), Some(i64::MAX)); // identity left
+        assert_eq!(safe_mul(i64::MAX, 1), Some(i64::MAX)); // identity right
+        assert_eq!(safe_mul(-1, i64::MAX), Some(-i64::MAX)); // negate max (in range)
+        assert_eq!(safe_mul(2, i64::MAX / 2), Some(i64::MAX - 1)); // large in-range
+    }
+
+    #[test]
+    fn mul_zero_annihilator() {
+        assert_eq!(safe_mul(0, i64::MAX), Some(0));
         assert_eq!(safe_mul(i64::MAX, 0), Some(0));
+        assert_eq!(safe_mul(0, 0), Some(0));
+        assert_eq!(safe_mul(1, 1), Some(1));
+        assert_eq!(safe_mul(-1, 0), Some(0));
     }
 
     #[test]
-    fn mul_overflow_returns_none() {
-        assert_eq!(safe_mul(i64::MAX, 2), None);
+    fn mul_overflow_cases() {
+        assert_eq!(safe_mul(i64::MAX, 2), None); // double max
+        assert_eq!(safe_mul(i64::MIN, 2), None); // double min
+        assert_eq!(safe_mul(i64::MIN, -1), None); // negate MIN overflows (|MIN|>MAX)
+        assert_eq!(safe_mul(-1, i64::MIN), None); // commuted
+        assert_eq!(safe_mul(i64::MAX, i64::MAX), None); // square of max
     }
 
-    // --- checked_sub_u64 ---
+    #[test]
+    fn mul_i128_oracle() {
+        let cases: &[(i64, i64)] = &[
+            (6, 7),
+            (-3, 4),
+            (-3, -4),
+            (1, i64::MAX),
+            (-1, i64::MAX),
+            (2, i64::MAX / 2),
+            (0, i64::MAX),
+            (i64::MAX, 2),
+            (i64::MIN, -1),
+            (i64::MAX, i64::MAX),
+        ];
+        for &(a, b) in cases {
+            let oracle = (a as i128) * (b as i128);
+            let in_range = oracle >= i64::MIN as i128 && oracle <= i64::MAX as i128;
+            if in_range {
+                assert_eq!(safe_mul(a, b), Some(oracle as i64), "({a}*{b})");
+            } else {
+                assert_eq!(safe_mul(a, b), None, "({a}*{b}) should overflow");
+            }
+        }
+    }
+
+    // ---- checked_sub_u64 ----------------------------------------------------
 
     #[test]
-    fn u64_sub_normal() {
+    fn u64_sub_happy_path() {
         assert_eq!(checked_sub_u64(100, 40), Some(60));
+        assert_eq!(checked_sub_u64(5, 5), Some(0)); // exact zero
+        assert_eq!(checked_sub_u64(u64::MAX, 0), Some(u64::MAX)); // subtract zero
+        assert_eq!(checked_sub_u64(u64::MAX, u64::MAX), Some(0)); // max - max
+        assert_eq!(checked_sub_u64(u64::MAX, 1), Some(u64::MAX - 1)); // one below max
+        assert_eq!(checked_sub_u64(0, 0), Some(0)); // double zero
     }
 
     #[test]
-    fn u64_sub_exact_zero() {
-        assert_eq!(checked_sub_u64(5, 5), Some(0));
+    fn u64_sub_underflow_cases() {
+        assert_eq!(checked_sub_u64(3, 10), None); // spent > total
+        assert_eq!(checked_sub_u64(0, 1), None); // underflow from zero
+        assert_eq!(checked_sub_u64(0, u64::MAX), None); // maximum underflow
+        assert_eq!(checked_sub_u64(u64::MAX - 1, u64::MAX), None); // off by one
     }
 
-    #[test]
-    fn u64_sub_underflow_returns_none() {
-        assert_eq!(checked_sub_u64(3, 10), None);
-    }
-
-    // --- checked_mul_u64 ---
+    // ---- checked_mul_u64 ----------------------------------------------------
 
     #[test]
-    fn u64_mul_normal() {
+    fn u64_mul_happy_path() {
         assert_eq!(checked_mul_u64(8, 7), Some(56));
+        assert_eq!(checked_mul_u64(1, u64::MAX), Some(u64::MAX)); // identity left
+        assert_eq!(checked_mul_u64(u64::MAX, 1), Some(u64::MAX)); // identity right
+        assert_eq!(checked_mul_u64(2, u64::MAX / 2), Some(u64::MAX - 1)); // large in-range
+        assert_eq!(checked_mul_u64(0, u64::MAX), Some(0)); // zero annihilator
+        assert_eq!(checked_mul_u64(u64::MAX, 0), Some(0)); // commuted
+        assert_eq!(checked_mul_u64(0, 0), Some(0)); // double zero
     }
 
     #[test]
-    fn u64_mul_by_zero() {
-        assert_eq!(checked_mul_u64(u64::MAX, 0), Some(0));
-    }
-
-    #[test]
-    fn u64_mul_overflow_returns_none() {
+    fn u64_mul_overflow_cases() {
         assert_eq!(checked_mul_u64(u64::MAX, 2), None);
+        assert_eq!(checked_mul_u64(u64::MAX, u64::MAX), None);
+        // u64::MAX / 2 + 1 is the first value that doubles over MAX
+        assert_eq!(checked_mul_u64(2, u64::MAX / 2 + 1), None);
     }
 
-    // --- checked_div_u64 ---
+    // ---- checked_div_u64 ----------------------------------------------------
 
     #[test]
-    fn div_exact() {
-        assert_eq!(checked_div_u64(20, nz(4)), 5);
-    }
-
-    #[test]
-    fn div_truncates() {
-        assert_eq!(checked_div_u64(7, nz(2)), 3);
-    }
-
-    // --- budget_remaining ---
-
-    #[test]
-    fn budget_within_ceiling() {
-        let r = budget_remaining(1000, 300, 800);
-        assert_eq!(r, BudgetResult { value: 700, capped: false });
-    }
-
-    #[test]
-    fn budget_capped_at_ceiling() {
-        let r = budget_remaining(5000, 0, 800);
-        assert_eq!(r, BudgetResult { value: 800, capped: true });
+    fn div_cases() {
+        assert_eq!(checked_div_u64(20, nz(4)), 5); // exact
+        assert_eq!(checked_div_u64(7, nz(2)), 3); // truncates toward zero
+        assert_eq!(checked_div_u64(u64::MAX, nz(1)), u64::MAX); // identity (÷1)
+        assert_eq!(checked_div_u64(u64::MAX, nz(u64::MAX)), 1); // divide by itself
+        assert_eq!(checked_div_u64(0, nz(7)), 0); // zero numerator
+        assert_eq!(checked_div_u64(1, nz(u64::MAX)), 0); // denom > numer → 0
+        assert_eq!(checked_div_u64(u64::MAX, nz(2)), u64::MAX / 2); // large halved
+        assert_eq!(checked_div_u64(100, nz(100)), 1); // equal values
+        assert_eq!(checked_div_u64(100, nz(101)), 0); // denom one larger
     }
 
     #[test]
-    fn budget_spent_exceeds_total() {
-        let r = budget_remaining(100, 200, 800);
-        assert_eq!(r, BudgetResult { value: 0, capped: false });
+    fn div_zero_rejected_at_type_boundary() {
+        // NonZeroU64::new(0) returns None — division by zero is compile-time impossible
+        assert!(NonZeroU64::new(0).is_none());
+    }
+
+    // ---- budget_remaining ---------------------------------------------------
+
+    #[test]
+    fn budget_uncapped_cases() {
+        let r = |t, s, c| budget_remaining(t, s, c);
+        assert_eq!(
+            r(1000, 300, 800),
+            BudgetResult {
+                value: 700,
+                capped: false
+            }
+        ); // normal
+        assert_eq!(
+            r(1000, 999, 800),
+            BudgetResult {
+                value: 1,
+                capped: false
+            }
+        ); // one left
+        assert_eq!(
+            r(1000, 1000, 800),
+            BudgetResult {
+                value: 0,
+                capped: false
+            }
+        ); // fully spent
+        assert_eq!(
+            r(0, 0, 1000),
+            BudgetResult {
+                value: 0,
+                capped: false
+            }
+        ); // zero total
+           // remaining == ceiling uses `>` not `>=`, so NOT capped
+        assert_eq!(
+            r(1000, 200, 800),
+            BudgetResult {
+                value: 800,
+                capped: false
+            }
+        ); // exact ==
     }
 
     #[test]
-    fn budget_fully_spent() {
-        let r = budget_remaining(500, 500, 1000);
-        assert_eq!(r, BudgetResult { value: 0, capped: false });
+    fn budget_capped_cases() {
+        let r = |t, s, c| budget_remaining(t, s, c);
+        assert_eq!(
+            r(5000, 0, 800),
+            BudgetResult {
+                value: 800,
+                capped: true
+            }
+        ); // unspent > ceil
+        assert_eq!(
+            r(1000, 100, 500),
+            BudgetResult {
+                value: 500,
+                capped: true
+            }
+        ); // remaining > ceil
+        assert_eq!(
+            r(u64::MAX, 0, 1000),
+            BudgetResult {
+                value: 1000,
+                capped: true
+            }
+        ); // huge total
+        assert_eq!(
+            r(1000, 0, 0),
+            BudgetResult {
+                value: 0,
+                capped: true
+            }
+        ); // zero ceiling
     }
 
-    // --- scale_budget ---
-
     #[test]
-    fn scale_below_max() {
-        assert_eq!(scale_budget(100, 3, 1000), Some(300));
+    fn budget_underflow_saturation() {
+        let r = |t, s, c| budget_remaining(t, s, c);
+        // spent > total: saturates to 0, NOT capped
+        assert_eq!(
+            r(100, 200, 800),
+            BudgetResult {
+                value: 0,
+                capped: false
+            }
+        );
+        assert_eq!(
+            r(0, u64::MAX, 1000),
+            BudgetResult {
+                value: 0,
+                capped: false
+            }
+        ); // max underflow
+        assert_eq!(
+            r(1, 2, u64::MAX),
+            BudgetResult {
+                value: 0,
+                capped: false
+            }
+        ); // large ceiling
+        assert_eq!(
+            r(0, 0, 0),
+            BudgetResult {
+                value: 0,
+                capped: false
+            }
+        ); // all zeros
     }
 
     #[test]
-    fn scale_capped_at_max() {
-        assert_eq!(scale_budget(100, 20, 500), Some(500));
+    fn budget_result_is_copy_and_partial_eq() {
+        let b = budget_remaining(100, 50, 200);
+        let b2 = b; // Copy
+        assert_eq!(b, b2);
+    }
+
+    // ---- scale_budget -------------------------------------------------------
+
+    #[test]
+    fn scale_happy_path() {
+        assert_eq!(scale_budget(100, 3, 1000), Some(300)); // basic
+        assert_eq!(scale_budget(100, 1, 1000), Some(100)); // single agent
+        assert_eq!(scale_budget(1, u32::MAX, u64::MAX), Some(u32::MAX as u64)); // max agents
+        assert_eq!(scale_budget(100, 5, 500), Some(500)); // exact match at ceiling
     }
 
     #[test]
-    fn scale_overflow_returns_none() {
+    fn scale_capped_cases() {
+        assert_eq!(scale_budget(100, 20, 500), Some(500)); // scaled > max
+        assert_eq!(scale_budget(u64::MAX, 1, 1000), Some(1000)); // huge base, capped
+        assert_eq!(scale_budget(1000, 1, 500), Some(500)); // single agent > max
+    }
+
+    #[test]
+    fn scale_zero_cases() {
+        assert_eq!(scale_budget(100, 0, 1000), Some(0)); // zero agents
+        assert_eq!(scale_budget(0, 100, 1000), Some(0)); // zero base
+        assert_eq!(scale_budget(0, 0, 0), Some(0)); // all zeros
+    }
+
+    #[test]
+    fn scale_overflow_cases() {
         assert_eq!(scale_budget(u64::MAX, 2, u64::MAX), None);
+        assert_eq!(scale_budget(u64::MAX / 2 + 1, 2, u64::MAX), None);
+    }
+
+    // ---- ceil_div -----------------------------------------------------------
+
+    #[test]
+    fn ceil_div_exact_cases() {
+        assert_eq!(ceil_div(8, nz(4)), 2); // exact
+        assert_eq!(ceil_div(0, nz(7)), 0); // zero numerator
+        assert_eq!(ceil_div(u64::MAX, nz(1)), u64::MAX); // identity (÷1)
+        assert_eq!(ceil_div(100, nz(100)), 1); // equal values
+        assert_eq!(ceil_div(4, nz(2)), 2); // power of two
     }
 
     #[test]
-    fn scale_zero_agents() {
-        assert_eq!(scale_budget(100, 0, 1000), Some(0));
-    }
-
-    // --- ceil_div ---
-
-    #[test]
-    fn ceil_div_exact() {
-        assert_eq!(ceil_div(8, nz(4)), 2);
-    }
-
-    #[test]
-    fn ceil_div_rounds_up() {
-        assert_eq!(ceil_div(9, nz(4)), 3);
+    fn ceil_div_rounding_cases() {
+        assert_eq!(ceil_div(9, nz(4)), 3); // remainder → rounds up
+        assert_eq!(ceil_div(1, nz(1000)), 1); // tiny numerator, large denom
+        assert_eq!(ceil_div(1001, nz(1000)), 2); // one over boundary
+        assert_eq!(ceil_div(7, nz(3)), 3); // remainder 1
+                                           // u64::MAX is odd, so MAX/2 has remainder 1 → rounds up
+        assert_eq!(ceil_div(u64::MAX, nz(2)), u64::MAX / 2 + 1);
+        assert_eq!(ceil_div(3, nz(10)), 1); // numer < denom → 1
+        assert_eq!(ceil_div(1, nz(2)), 1); // smallest rounding case
     }
 
     #[test]
-    fn ceil_div_one() {
-        assert_eq!(ceil_div(1, nz(1000)), 1);
+    fn ceil_div_boundary_cases() {
+        assert_eq!(ceil_div(u64::MAX, nz(u64::MAX)), 1); // max/max = 1 exactly
+        assert_eq!(ceil_div(u64::MAX - 1, nz(u64::MAX)), 1); // just under max denom
     }
 
     #[test]
-    fn ceil_div_zero_numerator() {
-        assert_eq!(ceil_div(0, nz(7)), 0);
+    fn ceil_div_invariants() {
+        // ⌈a/b⌉ ≥ ⌊a/b⌋  and  ⌈a/b⌉ * b ≥ a
+        let cases: &[(u64, u64)] = &[
+            (0, 1),
+            (1, 1),
+            (7, 3),
+            (8, 4),
+            (9, 4),
+            (100, 7),
+            (u64::MAX, 1),
+            (u64::MAX, 2),
+            (u64::MAX, u64::MAX),
+        ];
+        for &(a, b) in cases {
+            let b_nz = nz(b);
+            let result = ceil_div(a, b_nz);
+            assert!(result >= a / b, "ceil >= floor failed for ({a},{b})");
+            // result * b might overflow for huge values; use saturating to check
+            let product = result.saturating_mul(b);
+            assert!(product >= a, "result*b >= a failed for ({a},{b})");
+        }
     }
 }

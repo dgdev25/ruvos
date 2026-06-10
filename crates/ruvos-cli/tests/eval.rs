@@ -2,10 +2,20 @@ use std::process::Command;
 
 // ── compress ──────────────────────────────────────────────────────────────────
 
+// redb is single-writer; concurrent subprocess tests share RUVOS_HOME and
+// corrupt each other's storage under `--jobs 4`. Give every test its own dir.
+fn isol_env(dir: &tempfile::TempDir) -> Vec<(String, String)> {
+    let home = dir.path().join("ruvos");
+    std::fs::create_dir_all(&home).expect("create RUVOS_HOME");
+    vec![("RUVOS_HOME".to_string(), home.to_str().unwrap().to_string())]
+}
+
 #[test]
 fn eval_compress_emits_json_report() {
+    let dir = tempfile::tempdir().expect("tempdir");
     let output = Command::new(env!("CARGO_BIN_EXE_ruvos"))
         .args(["eval", "compress"])
+        .envs(isol_env(&dir))
         .output()
         .expect("run ruvos eval compress");
 
@@ -57,8 +67,10 @@ fn eval_compress_can_compare_against_saved_report() {
 
 #[test]
 fn eval_orchestrate_handoff_emits_json_report() {
+    let dir = tempfile::tempdir().expect("tempdir");
     let output = Command::new(env!("CARGO_BIN_EXE_ruvos"))
         .args(["eval", "orchestrate-handoff"])
+        .envs(isol_env(&dir))
         .output()
         .expect("run ruvos eval orchestrate-handoff");
 
@@ -87,6 +99,7 @@ fn eval_orchestrate_handoff_write_and_compare() {
             "--write",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("write baseline");
     assert!(write_out.status.success(), "write failed");
@@ -99,6 +112,7 @@ fn eval_orchestrate_handoff_write_and_compare() {
             "--compare-to",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("compare");
     assert!(cmp_out.status.success(), "compare failed");
@@ -114,8 +128,10 @@ fn eval_orchestrate_handoff_write_and_compare() {
 
 #[test]
 fn eval_swarm_recovery_emits_json_report() {
+    let dir = tempfile::tempdir().expect("tempdir");
     let output = Command::new(env!("CARGO_BIN_EXE_ruvos"))
         .args(["eval", "swarm-recovery"])
+        .envs(isol_env(&dir))
         .output()
         .expect("run ruvos eval swarm-recovery");
 
@@ -143,6 +159,7 @@ fn eval_swarm_recovery_write_and_compare() {
             "--write",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("write baseline");
     assert!(write_out.status.success(), "write failed");
@@ -155,6 +172,7 @@ fn eval_swarm_recovery_write_and_compare() {
             "--compare-to",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("compare");
     assert!(cmp_out.status.success(), "compare failed");
@@ -169,8 +187,10 @@ fn eval_swarm_recovery_write_and_compare() {
 
 #[test]
 fn eval_skill_routing_emits_json_report() {
+    let dir = tempfile::tempdir().expect("tempdir");
     let output = Command::new(env!("CARGO_BIN_EXE_ruvos"))
         .args(["eval", "skill-routing"])
+        .envs(isol_env(&dir))
         .output()
         .expect("run ruvos eval skill-routing");
 
@@ -198,6 +218,7 @@ fn eval_skill_routing_write_and_compare() {
             "--write",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("write baseline");
     assert!(write_out.status.success(), "write failed");
@@ -210,6 +231,7 @@ fn eval_skill_routing_write_and_compare() {
             "--compare-to",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("compare");
     assert!(cmp_out.status.success(), "compare failed");
@@ -224,8 +246,10 @@ fn eval_skill_routing_write_and_compare() {
 
 #[test]
 fn eval_swarm_learning_emits_json_report() {
+    let dir = tempfile::tempdir().expect("tempdir");
     let output = Command::new(env!("CARGO_BIN_EXE_ruvos"))
         .args(["eval", "swarm-learning"])
+        .envs(isol_env(&dir))
         .output()
         .expect("run ruvos eval swarm-learning");
 
@@ -254,6 +278,7 @@ fn eval_swarm_learning_write_and_compare() {
             "--write",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("write baseline");
     assert!(write_out.status.success(), "write failed");
@@ -266,6 +291,7 @@ fn eval_swarm_learning_write_and_compare() {
             "--compare-to",
             baseline_path.to_str().unwrap(),
         ])
+        .envs(isol_env(&dir))
         .output()
         .expect("compare");
     assert!(cmp_out.status.success(), "compare failed");

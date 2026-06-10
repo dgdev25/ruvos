@@ -352,13 +352,26 @@ impl ToolHandler for IntelPatternStoreHandler {
                 })
                 .unwrap_or_default();
             let outcome = params["outcome"].as_str().unwrap_or_default().to_string();
-            let name = params.get("name").and_then(|v| v.as_str()).map(String::from);
-            let description = params.get("description").and_then(|v| v.as_str()).map(String::from);
-            let pattern_snippet = params.get("pattern").and_then(|v| v.as_str()).map(String::from);
+            let name = params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let description = params
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let pattern_snippet = params
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .map(String::from);
             let tags: Vec<String> = params
                 .get("tags")
                 .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|s| s.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let id = Uuid::new_v4().to_string();
 

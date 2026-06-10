@@ -412,9 +412,11 @@ impl ToolHandler for HooksPostHandler {
             let success = match obj.get("success") {
                 Some(Value::Bool(b)) => *b,
                 Some(Value::String(s)) => s == "true",
-                _ => return Err(crate::RuvosError::InvalidParams(
-                    "success must be a boolean (or string \"true\"/\"false\")".to_string(),
-                )),
+                _ => {
+                    return Err(crate::RuvosError::InvalidParams(
+                        "success must be a boolean (or string \"true\"/\"false\")".to_string(),
+                    ))
+                }
             };
 
             let message = obj
@@ -545,7 +547,10 @@ mod safety_tests {
             }))
             .await
             .unwrap();
-        assert!(r.get("aisp").is_none(), "AISP must be absent unless enabled");
+        assert!(
+            r.get("aisp").is_none(),
+            "AISP must be absent unless enabled"
+        );
     }
 
     #[tokio::test]
@@ -569,7 +574,9 @@ mod safety_tests {
             .await
             .unwrap();
 
-        let aisp = r.get("aisp").expect("AISP assessment must be attached when enabled");
+        let aisp = r
+            .get("aisp")
+            .expect("AISP assessment must be attached when enabled");
         assert!(aisp["tier"].is_string());
         assert!(aisp["aisp_spec"].is_string());
         assert_eq!(aisp["blocked"], false, "warn_only must not block");

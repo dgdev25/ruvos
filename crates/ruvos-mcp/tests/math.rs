@@ -52,7 +52,7 @@ fn mul_happy_path() {
     assert_eq!(safe_mul(-1, -1), Some(1));
     assert_eq!(safe_mul(-1, i64::MAX), Some(-i64::MAX));
     assert_eq!(safe_mul(2, i64::MAX / 2), Some(i64::MAX - 1));
-    assert_eq!(safe_mul(-2, i64::MIN / 2), Some(i64::MIN));
+    assert_eq!(safe_mul(2, i64::MIN / 2), Some(i64::MIN));
 }
 
 #[test]
@@ -138,31 +138,97 @@ fn div_matches_raw_division() {
 
 #[test]
 fn budget_happy_uncapped() {
-    assert_eq!(budget_remaining(0, 0, 0), BudgetResult { value: 0, capped: false });
-    assert_eq!(budget_remaining(100, 0, 200), BudgetResult { value: 100, capped: false });
-    assert_eq!(budget_remaining(100, 0, 100), BudgetResult { value: 100, capped: false });
+    assert_eq!(
+        budget_remaining(0, 0, 0),
+        BudgetResult {
+            value: 0,
+            capped: false
+        }
+    );
+    assert_eq!(
+        budget_remaining(100, 0, 200),
+        BudgetResult {
+            value: 100,
+            capped: false
+        }
+    );
+    assert_eq!(
+        budget_remaining(100, 0, 100),
+        BudgetResult {
+            value: 100,
+            capped: false
+        }
+    );
     assert_eq!(
         budget_remaining(u64::MAX, 0, u64::MAX),
-        BudgetResult { value: u64::MAX, capped: false },
+        BudgetResult {
+            value: u64::MAX,
+            capped: false
+        },
     );
-    assert_eq!(budget_remaining(1000, 1, 999), BudgetResult { value: 999, capped: false });
-    assert_eq!(budget_remaining(1000, 1, 1000), BudgetResult { value: 999, capped: false });
+    assert_eq!(
+        budget_remaining(1000, 1, 999),
+        BudgetResult {
+            value: 999,
+            capped: false
+        }
+    );
+    assert_eq!(
+        budget_remaining(1000, 1, 1000),
+        BudgetResult {
+            value: 999,
+            capped: false
+        }
+    );
 }
 
 #[test]
 fn budget_capped_cases() {
-    assert_eq!(budget_remaining(1000, 0, 500), BudgetResult { value: 500, capped: true });
-    assert_eq!(budget_remaining(1000, 0, 0), BudgetResult { value: 0, capped: true });
-    assert_eq!(budget_remaining(1000, 1, 998), BudgetResult { value: 998, capped: true });
+    assert_eq!(
+        budget_remaining(1000, 0, 500),
+        BudgetResult {
+            value: 500,
+            capped: true
+        }
+    );
+    assert_eq!(
+        budget_remaining(1000, 0, 0),
+        BudgetResult {
+            value: 0,
+            capped: true
+        }
+    );
+    assert_eq!(
+        budget_remaining(1000, 1, 998),
+        BudgetResult {
+            value: 998,
+            capped: true
+        }
+    );
 }
 
 #[test]
 fn budget_overspent() {
-    assert_eq!(budget_remaining(0, 1, 1000), BudgetResult { value: 0, capped: false });
-    assert_eq!(budget_remaining(50, u64::MAX, 9999), BudgetResult { value: 0, capped: false });
+    assert_eq!(
+        budget_remaining(0, 1, 1000),
+        BudgetResult {
+            value: 0,
+            capped: false
+        }
+    );
+    assert_eq!(
+        budget_remaining(50, u64::MAX, 9999),
+        BudgetResult {
+            value: 0,
+            capped: false
+        }
+    );
     assert_eq!(
         budget_remaining(u64::MAX - 1, u64::MAX, 1000),
-        BudgetResult { value: 0, capped: false },
+        BudgetResult {
+            value: 0,
+            capped: false
+        },
     );
 }
 
@@ -176,7 +242,10 @@ fn budget_capped_invariant() {
     ] {
         let r = budget_remaining(total, spent, ceiling);
         if r.capped {
-            assert_eq!(r.value, ceiling, "capped value≠ceiling ({total},{spent},{ceiling})");
+            assert_eq!(
+                r.value, ceiling,
+                "capped value≠ceiling ({total},{spent},{ceiling})"
+            );
         }
     }
 }
@@ -265,7 +334,10 @@ fn sub_agrees_with_add_negated() {
 
 #[test]
 fn budget_result_is_copy_and_debug() {
-    let r = BudgetResult { value: 42, capped: false };
+    let r = BudgetResult {
+        value: 42,
+        capped: false,
+    };
     let r2 = r;
     assert_eq!(r, r2);
     let _ = format!("{r:?}");

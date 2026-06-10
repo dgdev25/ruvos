@@ -255,7 +255,10 @@ mod tests {
             .tools
             .iter()
             .any(|tool| tool.name == "ruvos_orchestrate_run"));
-        assert!(manifest.tools.iter().any(|tool| tool.name == "ruvos_relay_send"));
+        assert!(manifest
+            .tools
+            .iter()
+            .any(|tool| tool.name == "ruvos_relay_send"));
     }
 
     #[test]

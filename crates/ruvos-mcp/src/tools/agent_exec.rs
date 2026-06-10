@@ -8,8 +8,8 @@
 //! within a swarm via ephemeral scratch slots scoped to a swarm ID.
 
 use crate::tools::handler::{ExecuteFuture, ToolHandler};
-use futures::future::join_all;
 use crate::Result;
+use futures::future::join_all;
 use ruvos_plugin_host::executor::PluginExecutor;
 use ruvos_plugin_host::types::{ExecutionRequest, ExecutionResult};
 use serde_json::{json, Value};
@@ -109,10 +109,7 @@ impl ToolHandler for AgentExecHandler {
 }
 
 async fn run_exec(params: Value) -> Result<Value> {
-    let ops = params["ops"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let ops = params["ops"].as_array().cloned().unwrap_or_default();
     let sandbox = params["sandbox"].as_bool().unwrap_or(false);
     let working_dir_override = params["working_dir"].as_str().map(PathBuf::from);
 
@@ -199,7 +196,9 @@ async fn run_exec(params: Value) -> Result<Value> {
         }
     }
 
-    let all_ok = results.iter().all(|r| r["status"].as_str() != Some("error"));
+    let all_ok = results
+        .iter()
+        .all(|r| r["status"].as_str() != Some("error"));
 
     // ADR-025: optional, project-agnostic post-write drift check. Fires once if
     // any successful write_file/patch_file touched a path matching the
@@ -232,9 +231,14 @@ async fn run_post_write_check(
     let contains = cfg.get("when_path_contains").and_then(|v| v.as_str())?;
     let ends_with = cfg.get("when_path_ends_with").and_then(|v| v.as_str());
     let command = cfg.get("command").and_then(|v| v.as_str())?;
-    let args: Vec<String> = cfg.get("args")
+    let args: Vec<String> = cfg
+        .get("args")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let cwd = cfg.get("cwd").and_then(|v| v.as_str()).map(PathBuf::from);
 
@@ -261,7 +265,11 @@ async fn run_post_write_check(
         cwd,
     };
     match executor.execute(&req).await {
-        Ok(ExecutionResult { status, stdout, stderr }) => {
+        Ok(ExecutionResult {
+            status,
+            stdout,
+            stderr,
+        }) => {
             let drift = status != 0;
             let mut v = json!({
                 "ran": true,
@@ -269,8 +277,15 @@ async fn run_post_write_check(
                 "exit_code": status,
             });
             if drift {
-                let msg = if !stderr.trim().is_empty() { stderr } else { stdout };
-                v["warning"] = Value::String(format!("contract drift detected (non-blocking): {}", msg.trim()));
+                let msg = if !stderr.trim().is_empty() {
+                    stderr
+                } else {
+                    stdout
+                };
+                v["warning"] = Value::String(format!(
+                    "contract drift detected (non-blocking): {}",
+                    msg.trim()
+                ));
             }
             Some(v)
         }
@@ -366,7 +381,11 @@ async fn execute_op(
             };
             let args: Vec<String> = op["args"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             let cwd = op["cwd"]
                 .as_str()
@@ -380,7 +399,11 @@ async fn execute_op(
                 cwd,
             };
             match executor.execute(&req).await {
-                Ok(ExecutionResult { status, stdout, stderr }) => json!({
+                Ok(ExecutionResult {
+                    status,
+                    stdout,
+                    stderr,
+                }) => json!({
                     "index": index,
                     "op": op_name,
                     "status": if status == 0 { "ok" } else { "error" },
@@ -406,7 +429,11 @@ async fn execute_op(
                 "add" => {
                     let paths: Vec<String> = op["paths"]
                         .as_array()
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
                         .unwrap_or_else(|| vec![".".to_string()]);
                     let mut a = vec!["add".to_string()];
                     a.extend(paths);
@@ -417,8 +444,8 @@ async fn execute_op(
                     vec!["commit".to_string(), "-m".to_string(), message.to_string()]
                 }
                 "status" => vec!["status".to_string(), "--short".to_string()],
-                "diff"   => vec!["diff".to_string()],
-                other    => return op_error(index, op_name, &format!("unknown git_op: {other}")),
+                "diff" => vec!["diff".to_string()],
+                other => return op_error(index, op_name, &format!("unknown git_op: {other}")),
             };
             let req = ExecutionRequest {
                 plugin_name: "agent_exec".to_string(),
@@ -427,7 +454,11 @@ async fn execute_op(
                 cwd,
             };
             match executor.execute(&req).await {
-                Ok(ExecutionResult { status, stdout, stderr }) => json!({
+                Ok(ExecutionResult {
+                    status,
+                    stdout,
+                    stderr,
+                }) => json!({
                     "index": index,
                     "op": op_name,
                     "git_op": git_op,
@@ -483,8 +514,7 @@ async fn execute_op(
             let swarm_id = op["swarm_id"].as_str().unwrap_or("default");
             let timeout_ms = op["timeout_ms"].as_u64().unwrap_or(10_000);
             let slot_path = slot_file_path(swarm_id, slot_name);
-            let deadline = std::time::Instant::now()
-                + std::time::Duration::from_millis(timeout_ms);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
             loop {
                 if slot_path.exists() {
                     match std::fs::read_to_string(&slot_path) {
@@ -557,7 +587,10 @@ async fn execute_op(
             let parent = full_path.parent().unwrap_or(std::path::Path::new("."));
             let tmp_path = parent.join(format!(
                 ".patch_tmp_{}_{}",
-                full_path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+                full_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file"),
                 std::process::id()
             ));
             if let Err(e) = std::fs::write(&tmp_path, &after) {
@@ -633,8 +666,8 @@ async fn execute_op(
             let subcommand = match op_name {
                 "cargo_check" => "check",
                 "cargo_build" => "build",
-                "cargo_test"  => "test",
-                _             => unreachable!(),
+                "cargo_test" => "test",
+                _ => unreachable!(),
             };
             let mut cargo_args: Vec<String> = vec![subcommand.to_string()];
             if let Some(pkg) = op["package"].as_str() {
@@ -665,7 +698,11 @@ async fn execute_op(
                 cwd,
             };
             match executor.execute(&req).await {
-                Ok(ExecutionResult { status, stdout, stderr }) => {
+                Ok(ExecutionResult {
+                    status,
+                    stdout,
+                    stderr,
+                }) => {
                     // Parse error/warning counts from cargo output.
                     let combined = format!("{stdout}\n{stderr}");
                     let errors = combined
@@ -678,7 +715,8 @@ async fn execute_op(
                         .count();
                     // For cargo_test: count passed/failed from "test result:" line.
                     let test_summary = if op_name == "cargo_test" {
-                        combined.lines()
+                        combined
+                            .lines()
                             .find(|l| l.contains("test result:"))
                             .map(String::from)
                     } else {
@@ -704,7 +742,11 @@ async fn execute_op(
             }
         }
 
-        "parallel_group" => op_error(index, "parallel_group", "parallel_group cannot be nested — use it at the top-level ops list only"),
+        "parallel_group" => op_error(
+            index,
+            "parallel_group",
+            "parallel_group cannot be nested — use it at the top-level ops list only",
+        ),
         other => op_error(index, other, &format!("unknown op: {other}")),
     }
 }
@@ -716,13 +758,17 @@ async fn run_parallel_group(
     index: usize,
     journal_dir: &std::path::Path,
 ) -> Value {
-    let child_ops: Vec<Value> = op["ops"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let child_ops: Vec<Value> = op["ops"].as_array().cloned().unwrap_or_default();
 
-    if child_ops.iter().any(|c| c["op"].as_str() == Some("parallel_group")) {
-        return op_error(index, "parallel_group", "nested parallel_group not permitted (depth limit = 1)");
+    if child_ops
+        .iter()
+        .any(|c| c["op"].as_str() == Some("parallel_group"))
+    {
+        return op_error(
+            index,
+            "parallel_group",
+            "nested parallel_group not permitted (depth limit = 1)",
+        );
     }
 
     if child_ops.is_empty() {
@@ -739,7 +785,8 @@ async fn run_parallel_group(
         let child_checkpoint = journal_dir.join(format!("{index}_{j}.json"));
         let _ = std::fs::write(
             &child_checkpoint,
-            json!({"op_index": format!("{index}_{j}"), "op": child_op, "status": "pending"}).to_string(),
+            json!({"op_index": format!("{index}_{j}"), "op": child_op, "status": "pending"})
+                .to_string(),
         );
     }
 
@@ -751,7 +798,11 @@ async fn run_parallel_group(
 
     for (j, child_result) in child_results.iter().enumerate() {
         let child_checkpoint = journal_dir.join(format!("{index}_{j}.json"));
-        let child_status = if child_result["status"].as_str() == Some("error") { "failed" } else { "completed" };
+        let child_status = if child_result["status"].as_str() == Some("error") {
+            "failed"
+        } else {
+            "completed"
+        };
         let _ = std::fs::write(
             &child_checkpoint,
             json!({
@@ -759,21 +810,26 @@ async fn run_parallel_group(
                 "op": &child_ops[j],
                 "status": child_status,
                 "result": child_result,
-            }).to_string(),
+            })
+            .to_string(),
         );
     }
 
-    let first_error: Option<String> = child_results.iter()
+    let first_error: Option<String> = child_results
+        .iter()
         .find(|r| r["status"].as_str() == Some("error"))
         .map(|r| {
-            r["error"].as_str()
+            r["error"]
+                .as_str()
                 .or_else(|| r["stderr"].as_str().filter(|s| !s.is_empty()))
                 .map(String::from)
-                .unwrap_or_else(|| format!(
-                    "child op '{}' failed with exit_code {}",
-                    r["op"].as_str().unwrap_or("unknown"),
-                    r["exit_code"].as_i64().unwrap_or(-1),
-                ))
+                .unwrap_or_else(|| {
+                    format!(
+                        "child op '{}' failed with exit_code {}",
+                        r["op"].as_str().unwrap_or("unknown"),
+                        r["exit_code"].as_i64().unwrap_or(-1),
+                    )
+                })
         });
     let all_ok = first_error.is_none();
     let child_count = child_results.len();
@@ -793,12 +849,19 @@ async fn run_parallel_group(
 
 /// Path to a named slot file: `~/.ruvos/swarms/{swarm_id}/slots/{slot_name}`.
 fn slot_file_path(swarm_id: &str, slot_name: &str) -> PathBuf {
-    crate::paths::data_root().join("swarms").join(swarm_id).join("slots").join(slot_name)
+    crate::paths::data_root()
+        .join("swarms")
+        .join(swarm_id)
+        .join("slots")
+        .join(slot_name)
 }
 
 /// Remove all slots for a swarm (call on swarm_complete).
 pub fn clear_swarm_slots(swarm_id: &str) -> std::io::Result<()> {
-    let dir = crate::paths::data_root().join("swarms").join(swarm_id).join("slots");
+    let dir = crate::paths::data_root()
+        .join("swarms")
+        .join(swarm_id)
+        .join("slots");
     if dir.exists() {
         std::fs::remove_dir_all(&dir)?;
     }
@@ -865,8 +928,10 @@ mod tests {
         assert_eq!(result["results"][1]["content"], "sandbox test");
         // Path written is inside a temp dir, not the cwd.
         let written_path = result["results"][0]["path"].as_str().unwrap();
-        assert!(written_path.contains(std::env::temp_dir().to_str().unwrap())
-            || written_path.contains("/tmp"));
+        assert!(
+            written_path.contains(std::env::temp_dir().to_str().unwrap())
+                || written_path.contains("/tmp")
+        );
     }
 
     #[tokio::test]
@@ -883,7 +948,10 @@ mod tests {
 
         assert_eq!(result["success"], true);
         assert_eq!(result["results"][0]["exit_code"], 0);
-        assert!(result["results"][0]["stdout"].as_str().unwrap().contains("hello world"));
+        assert!(result["results"][0]["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("hello world"));
     }
 
     #[tokio::test]
@@ -908,10 +976,11 @@ mod tests {
     async fn git_status_in_cwd() {
         let _g = isolate();
         // git status in the ruvos repo dir should succeed.
+        let cwd = std::env::current_dir().unwrap();
         let result = AgentExecHandler
             .execute(json!({
                 "ops": [
-                    { "op": "git_op", "git_op": "status", "cwd": "/home/lyle/dev/ruvos" }
+                    { "op": "git_op", "git_op": "status", "cwd": cwd.to_string_lossy() }
                 ]
             }))
             .await
@@ -970,7 +1039,10 @@ mod tests {
         assert_eq!(result["results"][0]["status"], "ok");
         assert_eq!(result["results"][0]["slot_name"], "coder-output");
         assert_eq!(result["results"][1]["status"], "ok");
-        assert_eq!(result["results"][1]["content"], "fn main() { println!(\"hello\"); }");
+        assert_eq!(
+            result["results"][1]["content"],
+            "fn main() { println!(\"hello\"); }"
+        );
         assert_eq!(result["results"][1]["agent_id"], "coder-agent");
     }
 
@@ -1045,7 +1117,10 @@ mod tests {
 
         assert_eq!(result["results"][0]["status"], "error");
         let content = std::fs::read_to_string(&file).unwrap();
-        assert_eq!(content, "fn foo() {}\n", "file must be unchanged on mismatch");
+        assert_eq!(
+            content, "fn foo() {}\n",
+            "file must be unchanged on mismatch"
+        );
     }
 
     #[tokio::test]
@@ -1079,7 +1154,10 @@ mod tests {
             .execute(json!({"ops": [{"op": "run_command", "cmd": "echo", "args": ["hi"]}]}))
             .await
             .unwrap();
-        assert!(result["journal_id"].as_str().is_some(), "journal_id must be present");
+        assert!(
+            result["journal_id"].as_str().is_some(),
+            "journal_id must be present"
+        );
         assert_eq!(result["skipped_completed"], 0);
     }
 
@@ -1140,7 +1218,10 @@ mod tests {
             .execute(json!({"ops": [{"op": "write_file", "path": file.to_str().unwrap(), "content": "v2"}]}))
             .await
             .unwrap();
-        assert_ne!(r1["journal_id"], r2["journal_id"], "each run must get a fresh journal_id");
+        assert_ne!(
+            r1["journal_id"], r2["journal_id"],
+            "each run must get a fresh journal_id"
+        );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "v2");
     }
 
@@ -1194,11 +1275,12 @@ mod tests {
     async fn cargo_check_returns_structured_output() {
         let _g = isolate();
         // Run cargo check on the ruvos-mcp crate itself — must already compile.
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
         let result = AgentExecHandler
             .execute(json!({
                 "ops": [{
                     "op": "cargo_check",
-                    "manifest_path": "/home/lyle/dev/ruvos/crates/ruvos-mcp/Cargo.toml"
+                    "manifest_path": manifest.to_string_lossy()
                 }]
             }))
             .await
@@ -1363,7 +1445,10 @@ mod tests {
         assert_eq!(result["success"], false);
         assert_eq!(result["results"][0]["status"], "error");
         assert!(result["results"][0]["first_error"].as_str().is_some());
-        assert!(good.exists(), "write_file child must complete even when another child fails");
+        assert!(
+            good.exists(),
+            "write_file child must complete even when another child fails"
+        );
     }
 
     #[tokio::test]
@@ -1383,7 +1468,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(result["results"][0]["status"], "error");
-        assert!(result["results"][0]["error"].as_str().unwrap_or("").contains("nested"));
+        assert!(result["results"][0]["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("nested"));
     }
 
     #[tokio::test]
@@ -1404,11 +1492,12 @@ mod tests {
     async fn cargo_test_returns_test_summary() {
         let _g = isolate();
         // Run a single fast test to verify the test_summary field is populated.
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
         let result = AgentExecHandler
             .execute(json!({
                 "ops": [{
                     "op": "cargo_test",
-                    "manifest_path": "/home/lyle/dev/ruvos/crates/ruvos-mcp/Cargo.toml",
+                    "manifest_path": manifest.to_string_lossy(),
                     "test_filter": "write_and_read_roundtrip"
                 }]
             }))
@@ -1420,6 +1509,9 @@ mod tests {
         assert_eq!(r["success"], true);
         // test_summary should contain "test result: ok" from cargo output.
         let summary = r["test_summary"].as_str().unwrap_or("");
-        assert!(summary.contains("test result:"), "expected test result line, got: {summary}");
+        assert!(
+            summary.contains("test result:"),
+            "expected test result line, got: {summary}"
+        );
     }
 }

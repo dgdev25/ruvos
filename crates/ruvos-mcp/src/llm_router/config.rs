@@ -72,7 +72,8 @@ impl RouterConfig {
     pub(super) fn from_json(v: &Value) -> Self {
         let mut cfg = Self::default();
         if let Some(arr) = v["routing"]["priority"].as_array() {
-            cfg.priority = arr.iter()
+            cfg.priority = arr
+                .iter()
                 .filter_map(|x| x.as_str().map(String::from))
                 .collect();
         }
@@ -81,17 +82,23 @@ impl RouterConfig {
         }
         if let Some(arr) = v["claude"]["extra_args"].as_array() {
             cfg.claude_extra_args = filter_extra_args(
-                arr.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect(),
             );
         }
         if let Some(arr) = v["gemini"]["extra_args"].as_array() {
             cfg.gemini_extra_args = filter_extra_args(
-                arr.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect(),
             );
         }
         if let Some(arr) = v["codex"]["extra_args"].as_array() {
             cfg.codex_extra_args = filter_extra_args(
-                arr.iter().filter_map(|x| x.as_str().map(String::from)).collect(),
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect(),
             );
         }
         if let Some(m) = v["openrouter"]["default_model"].as_str() {

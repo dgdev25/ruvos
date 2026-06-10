@@ -226,8 +226,14 @@ mod tests {
         };
         let a = assess("do the thing somehow", &cfg);
         // Low-density prose is below Platinum → blocked.
-        assert!(a.tier < Tier::Platinum, "vague prose should not reach Platinum");
-        assert!(a.blocked, "sub-threshold tier with warn_only=false must block");
+        assert!(
+            a.tier < Tier::Platinum,
+            "vague prose should not reach Platinum"
+        );
+        assert!(
+            a.blocked,
+            "sub-threshold tier with warn_only=false must block"
+        );
     }
 
     #[test]
@@ -239,6 +245,9 @@ mod tests {
             auto_convert: true,
         };
         let a = assess("do the thing somehow", &cfg);
-        assert!(!a.blocked, "warn_only must never block even below threshold");
+        assert!(
+            !a.blocked,
+            "warn_only must never block even below threshold"
+        );
     }
 }

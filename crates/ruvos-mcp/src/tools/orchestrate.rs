@@ -369,8 +369,14 @@ impl ToolHandler for OrchestrateRunHandler {
                 .unwrap_or("claude-haiku-4-5")
                 .to_string();
             let runner = params.get("runner").and_then(|v| v.as_str());
-            let execute = params.get("execute").and_then(|v| v.as_bool()).unwrap_or(false);
-            let continue_on_error = params.get("continue_on_error").and_then(|v| v.as_bool()).unwrap_or(false);
+            let execute = params
+                .get("execute")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let continue_on_error = params
+                .get("continue_on_error")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let label = params
                 .get("template")
                 .and_then(|v| v.as_str())
@@ -980,28 +986,54 @@ mod tests {
 
         // system_prompt is archetype-specific, not generic.
         let planner_sys = coord[0]["system_prompt"].as_str().unwrap();
-        assert!(planner_sys.contains("planner"), "planner system_prompt is role-specific");
+        assert!(
+            planner_sys.contains("planner"),
+            "planner system_prompt is role-specific"
+        );
         let coder_sys = coord[1]["system_prompt"].as_str().unwrap();
-        assert!(coder_sys.contains("engineer") || coder_sys.contains("code"), "coder system_prompt is role-specific");
+        assert!(
+            coder_sys.contains("engineer") || coder_sys.contains("code"),
+            "coder system_prompt is role-specific"
+        );
 
         // tool_plan is present on every step and contains ops for execution archetypes.
         for step in coord.iter() {
-            assert!(step["tool_plan"].is_array(), "tool_plan is an array at every step");
+            assert!(
+                step["tool_plan"].is_array(),
+                "tool_plan is an array at every step"
+            );
         }
         // planner and reviewer produce no file ops — empty plan.
-        assert_eq!(coord[0]["tool_plan"].as_array().unwrap().len(), 0, "planner has empty tool_plan");
-        assert_eq!(coord[3]["tool_plan"].as_array().unwrap().len(), 0, "reviewer has empty tool_plan");
+        assert_eq!(
+            coord[0]["tool_plan"].as_array().unwrap().len(),
+            0,
+            "planner has empty tool_plan"
+        );
+        assert_eq!(
+            coord[3]["tool_plan"].as_array().unwrap().len(),
+            0,
+            "reviewer has empty tool_plan"
+        );
         // coder produces write_file + run_command.
         let coder_plan = coord[1]["tool_plan"].as_array().unwrap();
-        assert!(coder_plan.len() >= 2, "coder tool_plan has at least write_file + run_command");
+        assert!(
+            coder_plan.len() >= 2,
+            "coder tool_plan has at least write_file + run_command"
+        );
         assert_eq!(coder_plan[0]["op"], "write_file");
         assert_eq!(coder_plan[1]["op"], "run_command");
         // tester produces write_file + run_command.
         let tester_plan = coord[2]["tool_plan"].as_array().unwrap();
-        assert!(tester_plan.len() >= 2, "tester tool_plan has at least write_file + run_command");
+        assert!(
+            tester_plan.len() >= 2,
+            "tester tool_plan has at least write_file + run_command"
+        );
         // inject_via updated to reference ruvos_agent_exec.
         let inject = coord[1]["inject_via"].as_str().unwrap();
-        assert!(inject.contains("ruvos_agent_exec"), "inject_via references ruvos_agent_exec");
+        assert!(
+            inject.contains("ruvos_agent_exec"),
+            "inject_via references ruvos_agent_exec"
+        );
     }
 
     #[tokio::test]

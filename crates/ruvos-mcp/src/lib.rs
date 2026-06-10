@@ -13,13 +13,16 @@
 //! - **compress** (1): run
 
 mod compress_learning;
-pub mod math;
 pub mod constants;
 pub mod daemon;
 pub mod error;
 pub mod eval;
+pub mod llm;
+pub mod llm_router;
+pub mod math;
 pub mod paths;
 pub mod protocol;
+pub mod rate_limiter;
 pub mod relay;
 pub mod runtime;
 pub mod safety;
@@ -28,9 +31,6 @@ pub mod server;
 pub mod server_rmcp;
 pub mod skills;
 pub mod store;
-pub mod llm;
-pub mod llm_router;
-pub mod rate_limiter;
 pub mod swarm;
 pub mod tools;
 

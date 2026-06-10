@@ -2,8 +2,8 @@
 
 pub mod agent;
 pub mod agent_exec;
-pub mod aisp_layer;
 pub mod agent_store;
+pub mod aisp_layer;
 pub mod compress;
 pub mod cve;
 pub mod echo;
@@ -480,8 +480,14 @@ mod integration_tests {
                 "ruvos_memory_store",
                 json!({"key": "k", "value": "v", "namespace": "test"}),
             ),
-            ("ruvos_memory_search", json!({"query": "v", "namespace": "test"})),
-            ("ruvos_memory_retrieve", json!({"key": "k", "namespace": "test"})),
+            (
+                "ruvos_memory_search",
+                json!({"query": "v", "namespace": "test"}),
+            ),
+            (
+                "ruvos_memory_retrieve",
+                json!({"key": "k", "namespace": "test"}),
+            ),
             ("ruvos_memory_list", json!({"namespace": "test"})),
             ("ruvos_session_create", json!({})),
             (
@@ -493,7 +499,10 @@ mod integration_tests {
                 json!({"archetype": "coder", "prompt": "test", "model": "claude-haiku-4-5"}),
             ),
             ("ruvos_agent_status", json!({})),
-            ("ruvos_hooks_route", json!({"task": "implement an endpoint"})),
+            (
+                "ruvos_hooks_route",
+                json!({"task": "implement an endpoint"}),
+            ),
             (
                 "ruvos_intel_pattern_store",
                 json!({"trajectory": ["a", "b"], "outcome": "ok"}),
@@ -560,7 +569,10 @@ mod integration_tests {
                 json!({"agent_id": "worker-1", "task_id": "task-1"}),
             ),
             ("ruvos_swarm_heartbeat", json!({"agent_id": "worker-1"})),
-            ("ruvos_swarm_message", json!({"to": "worker-1", "body": "ping"})),
+            (
+                "ruvos_swarm_message",
+                json!({"to": "worker-1", "body": "ping"}),
+            ),
             ("ruvos_swarm_complete", json!({"summary": "done"})),
             ("ruvos_swarm_fail", json!({"reason": "failed"})),
             ("ruvos_swarm_health", json!({})),
