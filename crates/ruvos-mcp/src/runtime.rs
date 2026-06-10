@@ -50,7 +50,7 @@ impl TaskNode {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskGraph {
-    nodes: HashMap<String, TaskNode>,
+    pub nodes: HashMap<String, TaskNode>,
 }
 
 impl TaskGraph {
@@ -118,6 +118,73 @@ impl TaskGraph {
 
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
+    }
+
+    /// Return `true` if adding an edge `task_id → dep_id` would create a cycle.
+    pub fn would_create_cycle(&self, task_id: &str, dep_id: &str) -> bool {
+        if task_id == dep_id {
+            return true;
+        }
+        let mut visited = HashSet::new();
+        let mut stack = vec![dep_id.to_string()];
+        while let Some(cur) = stack.pop() {
+            if cur == task_id {
+                return true;
+            }
+            if visited.contains(&cur) {
+                continue;
+            }
+            visited.insert(cur.clone());
+            if let Some(node) = self.nodes.get(&cur) {
+                stack.extend(node.depends_on.iter().cloned());
+            }
+        }
+        false
+    }
+
+    /// Dependencies of `task_id` that are not yet `Completed`.
+    pub fn blocked_by(&self, task_id: &str) -> Vec<String> {
+        self.nodes
+            .get(task_id)
+            .map(|node| {
+                node.depends_on
+                    .iter()
+                    .filter(|dep| {
+                        !matches!(
+                            self.nodes.get(dep.as_str()).map(|n| &n.state),
+                            Some(TaskState::Completed)
+                        )
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Mark all tasks that (directly or transitively) depend on `failed_task_id`
+    /// as `Failed`. Returns the IDs of newly-failed tasks.
+    pub fn propagate_failure(&mut self, failed_task_id: &str) -> Vec<String> {
+        let mut newly_failed = Vec::new();
+        let mut queue = vec![failed_task_id.to_string()];
+        while let Some(src) = queue.pop() {
+            let dependents: Vec<String> = self
+                .nodes
+                .values()
+                .filter(|n| {
+                    matches!(n.state, TaskState::Pending | TaskState::Blocked)
+                        && n.depends_on.iter().any(|d| d == &src)
+                })
+                .map(|n| n.id.clone())
+                .collect();
+            for dep in dependents {
+                if let Some(node) = self.nodes.get_mut(&dep) {
+                    node.state = TaskState::Failed;
+                }
+                newly_failed.push(dep.clone());
+                queue.push(dep);
+            }
+        }
+        newly_failed
     }
 }
 

@@ -36,6 +36,9 @@ pub struct SwarmState {
     pub max_agents: u32,
     pub status: String,
     pub members: Vec<SwarmMember>,
+    /// ADR-023: task dependency graph, persisted alongside swarm state.
+    #[serde(default)]
+    pub task_graph: crate::runtime::TaskGraph,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -617,6 +620,7 @@ mod tests {
                 assigned_tasks: vec![],
                 last_heartbeat: chrono::Utc::now().to_rfc3339(),
             }],
+            task_graph: Default::default(),
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -645,6 +649,7 @@ mod tests {
                 assigned_tasks: vec!["task-1".into()],
                 last_heartbeat: chrono::Utc::now().to_rfc3339(),
             }],
+            task_graph: Default::default(),
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -677,6 +682,7 @@ mod tests {
                 assigned_tasks: vec!["task-1".into()],
                 last_heartbeat: chrono::Utc::now().to_rfc3339(),
             }],
+            task_graph: Default::default(),
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };

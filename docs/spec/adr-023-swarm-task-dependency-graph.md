@@ -1,6 +1,6 @@
 # ADR-023: Task Dependency Graph in Swarm Coordination
 
-**Status:** Proposed  
+**Status:** Implemented  
 **Date:** 2026-06-09  
 **Gap:** #19 in gap-register.md
 

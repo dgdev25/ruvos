@@ -9,7 +9,7 @@ use crate::constants::{
     SWARM_CREATE_DEFAULT_MAX_AGENTS, SWARM_HYBRID_MAX_AGENTS_THRESHOLD,
     SWARM_HYBRID_MEMBER_THRESHOLD,
 };
-use crate::runtime::{publish_event, RuntimeEvent};
+use crate::runtime::{publish_event, RuntimeEvent, TaskNode, TaskState};
 use crate::tools::agent_store;
 use crate::{relay, swarm, Result, RuvosError};
 use serde_json::{json, Value};
@@ -516,6 +516,7 @@ impl ToolHandler for SwarmCreateHandler {
                 max_agents,
                 status: "active".to_string(),
                 members: members.clone(),
+                task_graph: Default::default(),
                 created_at: now.clone(),
                 updated_at: now,
             };
@@ -584,10 +585,41 @@ impl ToolHandler for SwarmStatusHandler {
                 task_id: None,
             });
 
+            // ADR-023: include per-task dependency view with blocked_by.
+            let task_graph_view: Vec<Value> = current
+                .as_ref()
+                .map(|state| {
+                    let mut tasks: Vec<Value> = state
+                        .task_graph
+                        .nodes
+                        .values()
+                        .map(|n| {
+                            let state_str = match n.state {
+                                TaskState::Pending => "pending",
+                                TaskState::Running => "running",
+                                TaskState::Blocked => "blocked",
+                                TaskState::Completed => "completed",
+                                TaskState::Failed => "failed",
+                            };
+                            let blocked_by = state.task_graph.blocked_by(&n.id);
+                            json!({
+                                "task_id": n.id,
+                                "state": state_str,
+                                "depends_on": n.depends_on,
+                                "blocked_by": blocked_by,
+                            })
+                        })
+                        .collect();
+                    tasks.sort_by_key(|v| v["task_id"].as_str().unwrap_or("").to_string());
+                    tasks
+                })
+                .unwrap_or_default();
+
             Ok(json!({
                 "found": found,
                 "swarm_id": swarm_id,
                 "swarm": if found { current } else { None },
+                "tasks": task_graph_view,
             }))
         })
     }
@@ -614,7 +646,12 @@ impl ToolHandler for SwarmAssignHandler {
                 "agent_id": { "type": "string" },
                 "task_id": { "type": "string" },
                 "swarm_id": { "type": "string" },
-                "description": { "type": "string" }
+                "description": { "type": "string" },
+                "depends_on": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Task IDs that must complete before this task can start (ADR-023)"
+                }
             },
             "additionalProperties": false
         })
@@ -637,8 +674,74 @@ impl ToolHandler for SwarmAssignHandler {
             let requested_swarm_id = params.get("swarm_id").and_then(|v| v.as_str());
             let agent_id = params["agent_id"].as_str().unwrap_or_default().to_string();
             let task_id = params["task_id"].as_str().unwrap_or_default().to_string();
+            let depends_on: Vec<String> = params
+                .get("depends_on")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
             let mut state = load_active_swarm(requested_swarm_id)?;
 
+            // ADR-023: register task in the swarm dependency graph.
+            if state.task_graph.task(&task_id).is_none() {
+                state.task_graph.add_task(TaskNode::new(&task_id, &task_id));
+            }
+            for dep in &depends_on {
+                if state.task_graph.task(dep).is_none() {
+                    return Err(RuvosError::InvalidParams(format!(
+                        "dependency '{dep}' is not registered in the swarm task graph"
+                    )));
+                }
+                if state.task_graph.would_create_cycle(&task_id, dep) {
+                    return Err(RuvosError::InvalidParams(format!(
+                        "adding '{task_id}' → '{dep}' would create a dependency cycle"
+                    )));
+                }
+                state.task_graph.add_dependency(&task_id, dep);
+            }
+
+            // Evaluate dependency readiness.
+            let blocked_by = state.task_graph.blocked_by(&task_id);
+            let any_dep_failed = blocked_by.iter().any(|dep| {
+                matches!(
+                    state.task_graph.task(dep).map(|n| &n.state),
+                    Some(TaskState::Failed)
+                )
+            });
+
+            if any_dep_failed {
+                state.task_graph.set_state(&task_id, TaskState::Failed);
+                let cascaded = state.task_graph.propagate_failure(&task_id);
+                state.updated_at = chrono::Utc::now().to_rfc3339();
+                let stored = swarm::store(state)?;
+                return Ok(json!({
+                    "status": "dependency_failed",
+                    "task_id": task_id,
+                    "blocked_by": blocked_by,
+                    "cascade_failed": cascaded,
+                    "swarm": stored,
+                }));
+            }
+
+            if !blocked_by.is_empty() {
+                // Dependencies not yet satisfied — register as blocked but do NOT
+                // yet add to member.assigned_tasks. Coordinator retries after deps complete.
+                state.task_graph.set_state(&task_id, TaskState::Blocked);
+                state.updated_at = chrono::Utc::now().to_rfc3339();
+                let stored = swarm::store(state)?;
+                return Ok(json!({
+                    "status": "queued",
+                    "task_id": task_id,
+                    "blocked_by": blocked_by,
+                    "swarm": stored,
+                }));
+            }
+
+            // All deps satisfied (or none) — assign normally.
+            state.task_graph.set_state(&task_id, TaskState::Running);
             let member = state
                 .members
                 .iter_mut()
@@ -646,12 +749,7 @@ impl ToolHandler for SwarmAssignHandler {
                 .ok_or_else(|| {
                     RuvosError::HandlerError(format!("unknown swarm member '{agent_id}'"))
                 })?;
-
-            if !member
-                .assigned_tasks
-                .iter()
-                .any(|assigned| assigned == &task_id)
-            {
+            if !member.assigned_tasks.iter().any(|t| t == &task_id) {
                 member.assigned_tasks.push(task_id.clone());
             }
             member.state = "assigned".to_string();
@@ -664,6 +762,7 @@ impl ToolHandler for SwarmAssignHandler {
                     "swarm_id": stored.id,
                     "agent_id": agent_id,
                     "task_id": task_id,
+                    "depends_on": depends_on,
                     "member_count": stored.members.len(),
                 }),
                 agent_id: None,
@@ -672,7 +771,8 @@ impl ToolHandler for SwarmAssignHandler {
 
             Ok(json!({
                 "status": "assigned",
-                "swarm": stored
+                "task_id": task_id,
+                "swarm": stored,
             }))
         })
     }
@@ -727,8 +827,28 @@ impl ToolHandler for SwarmHeartbeatHandler {
                 })?;
 
             member.last_heartbeat = now.clone();
-            if member.state == "idle" {
-                member.state = "active".to_string();
+            let hb_status = params.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            match hb_status {
+                "completed" => {
+                    member.state = "idle".to_string();
+                    let tasks: Vec<String> = member.assigned_tasks.clone();
+                    for task_id in &tasks {
+                        state.task_graph.set_state(task_id, TaskState::Completed);
+                    }
+                }
+                "failed" => {
+                    member.state = "idle".to_string();
+                    let tasks: Vec<String> = member.assigned_tasks.clone();
+                    for task_id in &tasks {
+                        state.task_graph.set_state(task_id, TaskState::Failed);
+                        state.task_graph.propagate_failure(task_id);
+                    }
+                }
+                _ => {
+                    if member.state == "idle" {
+                        member.state = "active".to_string();
+                    }
+                }
             }
             state.updated_at = now.clone();
             let stored = swarm::store(state)?;
@@ -1850,3 +1970,4 @@ mod tests {
             .is_err());
     }
 }
+

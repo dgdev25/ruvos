@@ -22,6 +22,9 @@ pub mod retrieval;
 pub mod session;
 pub mod swarm;
 
+#[cfg(test)]
+mod swarm_dep_tests;
+
 use serde::{Deserialize, Serialize};
 
 pub use handler::{ToolHandler, ToolRegistry};

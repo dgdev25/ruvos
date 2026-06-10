@@ -79,6 +79,7 @@ fn swarm_for(
         max_agents: max,
         status: "active".to_string(),
         members,
+        task_graph: Default::default(),
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: chrono::Utc::now().to_rfc3339(),
     }
