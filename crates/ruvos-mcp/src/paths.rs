@@ -114,6 +114,11 @@ pub fn skills_pack_file() -> PathBuf {
     data_root().join("skills.redb")
 }
 
+/// Path to the beads_rust issue tracker database.
+pub fn issues_db() -> PathBuf {
+    data_root().join("issues.db")
+}
+
 /// Ensure the data root exists, returning it.
 pub fn ensure_root() -> std::io::Result<PathBuf> {
     let root = data_root();

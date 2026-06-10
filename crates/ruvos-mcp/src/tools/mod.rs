@@ -9,6 +9,7 @@ pub mod cve;
 pub mod echo;
 pub mod embedding;
 pub mod gov;
+pub mod gov_issues;
 pub mod handler;
 pub mod hooks;
 pub mod hooks_route;
@@ -91,6 +92,14 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(gov::GovSwarmStatusHandler));
     registry.register(Box::new(gov::GovSwarmPolicyHandler));
     registry.register(Box::new(gov::GovSwarmHistoryHandler));
+
+    // gov_issues (6) — ADR-028
+    registry.register(Box::new(gov_issues::GovIssueCreateHandler));
+    registry.register(Box::new(gov_issues::GovIssueListHandler));
+    registry.register(Box::new(gov_issues::GovIssueShowHandler));
+    registry.register(Box::new(gov_issues::GovIssueCloseHandler));
+    registry.register(Box::new(gov_issues::GovIssueSearchHandler));
+    registry.register(Box::new(gov_issues::GovIssueDepHandler));
 
     // Register CVE lookup tool
     registry.register(Box::new(cve::GovCveLookupHandler));
@@ -255,7 +264,37 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Run a plugin command (shell exec via tokio)".to_string(),
             domain: "plugin".to_string(),
         },
-        // Gov (11)
+        // Gov (11) + gov_issues (6) = 17
+        ToolMetadata {
+            name: "ruvos_gov_issue_create".to_string(),
+            description: "Create a beads_rust issue in the ruvos data root".to_string(),
+            domain: "gov_issues".to_string(),
+        },
+        ToolMetadata {
+            name: "ruvos_gov_issue_list".to_string(),
+            description: "List issues with optional status/priority filters".to_string(),
+            domain: "gov_issues".to_string(),
+        },
+        ToolMetadata {
+            name: "ruvos_gov_issue_show".to_string(),
+            description: "Show full issue details and comment history".to_string(),
+            domain: "gov_issues".to_string(),
+        },
+        ToolMetadata {
+            name: "ruvos_gov_issue_close".to_string(),
+            description: "Close an issue with optional reason note".to_string(),
+            domain: "gov_issues".to_string(),
+        },
+        ToolMetadata {
+            name: "ruvos_gov_issue_search".to_string(),
+            description: "Full-text search across issues".to_string(),
+            domain: "gov_issues".to_string(),
+        },
+        ToolMetadata {
+            name: "ruvos_gov_issue_dep".to_string(),
+            description: "Add a dependency between two issues".to_string(),
+            domain: "gov_issues".to_string(),
+        },
         ToolMetadata {
             name: "ruvos_gov_witness_verify".to_string(),
             description: "Verify .rvf signature chain".to_string(),

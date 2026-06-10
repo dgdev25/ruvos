@@ -1,6 +1,6 @@
 # ADR-028: gov_issues Tool — beads_rust (`br`) CLI Integration
 
-**Status:** Proposed  
+**Status:** Implemented  
 **Date:** 2026-06-09 (rewritten after reading beads_rust repo)  
 **Source:** `/mnt/datadisk/repos/beads_rust` (`br`, ~20K lines Rust, MIT)
 
