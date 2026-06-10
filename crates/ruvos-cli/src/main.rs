@@ -18,11 +18,20 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new rUvOS project
+    /// Initialize a project: create/update CLAUDE.md with ruvos instructions
     Init {
-        /// Project name
+        /// Project name (defaults to current directory name)
         #[arg(short, long)]
         name: Option<String>,
+        /// Print what would change without writing anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Overwrite the managed block even if already up to date
+        #[arg(long)]
+        force: bool,
+        /// Skip creating the .ruvos/ data directory
+        #[arg(long)]
+        no_data_dir: bool,
     },
     /// Run a local health/invariant check.
     Doctor {
@@ -277,9 +286,13 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { name } => {
-            info!("Initializing rUvOS project: {:?}", name);
-            ruvos_cli::commands::init::init(name).await?;
+        Commands::Init {
+            name,
+            dry_run,
+            force,
+            no_data_dir,
+        } => {
+            ruvos_cli::commands::init::init(name, dry_run, force, no_data_dir).await?;
         }
         Commands::Doctor { json, strict } => {
             ruvos_cli::commands::doctor::doctor(json, strict).await?;
