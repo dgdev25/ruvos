@@ -74,6 +74,8 @@ fn swarm(
         status: "active".to_string(),
         members,
         task_graph: Default::default(),
+        sprint_id: None,
+        baseline_tests: None,
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: chrono::Utc::now().to_rfc3339(),
     }

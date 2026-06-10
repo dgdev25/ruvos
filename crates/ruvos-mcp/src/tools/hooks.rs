@@ -329,6 +329,10 @@ impl ToolHandler for HooksPostHandler {
                     "type": "object",
                     "description": "Optional additional metadata",
                     "additionalProperties": true
+                },
+                "flush_hooks": {
+                    "type": "boolean",
+                    "description": "Wait for hook to complete before returning (default false = async). Set true in tests."
                 }
             },
             "required": ["kind", "payload", "success"]
@@ -399,6 +403,12 @@ impl ToolHandler for HooksPostHandler {
                 .cloned()
                 .unwrap_or(Value::Object(Default::default()));
 
+            // ADR-029: async by default; flush_hooks=true forces synchronous execution.
+            let flush = obj
+                .get("flush_hooks")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
             publish_event(RuntimeEvent {
                 kind: "hooks.post.started".to_string(),
                 payload: json!({
@@ -434,6 +444,35 @@ impl ToolHandler for HooksPostHandler {
                 message,
                 metadata,
             };
+
+            if !flush {
+                // ADR-029: fire-and-forget via task queue — does not block MCP path.
+                let task_id_str = kind_str.to_string();
+                let queue = crate::task_queue::TaskQueue::new();
+                let task = crate::task_queue::QueuedTask::new(
+                    format!("hooks.post.{kind_str}"),
+                    move || {
+                        let d = dispatcher.clone();
+                        let hk = hook_kind;
+                        let pl = payload.clone();
+                        let oc = outcome.clone();
+                        async move {
+                            d.dispatch_post(hk, pl, oc)
+                                .await
+                                .map(|r| json!({"status": r.status}))
+                                .map_err(|e| e.to_string())
+                        }
+                    },
+                );
+                let queued_id = queue.enqueue(task);
+                publish_event(RuntimeEvent {
+                    kind: "hooks.post.queued".into(),
+                    payload: json!({"kind": task_id_str, "task_id": queued_id}),
+                    agent_id: None,
+                    task_id: None,
+                });
+                return Ok(json!({"status": "queued", "task_id": queued_id}));
+            }
 
             let response = dispatcher
                 .dispatch_post(hook_kind, payload, outcome)
@@ -515,7 +554,8 @@ mod safety_tests {
             .execute(serde_json::json!({
                 "kind": "task",
                 "payload": {},
-                "success": "true"
+                "success": "true",
+                "flush_hooks": true
             }))
             .await
             .unwrap();
@@ -529,11 +569,27 @@ mod safety_tests {
             .execute(serde_json::json!({
                 "kind": "task",
                 "payload": {},
-                "success": "false"
+                "success": "false",
+                "flush_hooks": true
             }))
             .await
             .unwrap();
         assert_eq!(r["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn post_default_is_async_queued() {
+        let _g = isolate();
+        let r = HooksPostHandler::new()
+            .execute(serde_json::json!({
+                "kind": "task",
+                "payload": {},
+                "success": true
+            }))
+            .await
+            .unwrap();
+        assert_eq!(r["status"], "queued", "default hooks_post must be non-blocking");
+        assert!(r["task_id"].as_str().is_some(), "queued response includes task_id");
     }
 
     #[tokio::test]

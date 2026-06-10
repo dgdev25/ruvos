@@ -10,6 +10,7 @@ pub mod echo;
 pub mod embedding;
 pub mod gov;
 pub mod gov_issues;
+pub mod gov_sprint;
 pub mod handler;
 pub mod hooks;
 pub mod hooks_route;
@@ -82,6 +83,7 @@ pub fn create_registry() -> ToolRegistry {
     registry.register(Box::new(plugin::PluginInvokeHandler::new()));
 
     // Register gov tools
+    registry.register(Box::new(gov_sprint::GovSprintSummaryHandler));
     registry.register(Box::new(gov::GovWitnessVerifyHandler));
     registry.register(Box::new(gov::GovHealthHandler));
     registry.register(Box::new(gov::GovEventsHandler));
@@ -264,7 +266,12 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
             description: "Run a plugin command (shell exec via tokio)".to_string(),
             domain: "plugin".to_string(),
         },
-        // Gov (11) + gov_issues (6) = 17
+        // Gov (11) + gov_issues (6) + gov_sprint (1) = 18
+        ToolMetadata {
+            name: "ruvos_gov_sprint_summary".to_string(),
+            description: "Aggregate sprint metrics from swarm state and event log".to_string(),
+            domain: "gov".to_string(),
+        },
         ToolMetadata {
             name: "ruvos_gov_issue_create".to_string(),
             description: "Create a beads_rust issue in the ruvos data root".to_string(),

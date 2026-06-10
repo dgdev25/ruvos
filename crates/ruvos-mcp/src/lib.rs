@@ -32,6 +32,7 @@ pub mod server_rmcp;
 pub mod skills;
 pub mod store;
 pub mod swarm;
+pub mod task_queue;
 pub mod tools;
 
 pub use error::{Result, RuvosError};

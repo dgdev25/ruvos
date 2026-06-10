@@ -39,6 +39,12 @@ pub struct SwarmState {
     /// ADR-023: task dependency graph, persisted alongside swarm state.
     #[serde(default)]
     pub task_graph: crate::runtime::TaskGraph,
+    /// ADR-024: optional sprint tag for gov_sprint_summary aggregation.
+    #[serde(default)]
+    pub sprint_id: Option<String>,
+    /// ADR-024: test count captured before the sprint began (for test_delta).
+    #[serde(default)]
+    pub baseline_tests: Option<u32>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -621,6 +627,8 @@ mod tests {
                 last_heartbeat: chrono::Utc::now().to_rfc3339(),
             }],
             task_graph: Default::default(),
+            sprint_id: None,
+            baseline_tests: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -650,6 +658,8 @@ mod tests {
                 last_heartbeat: chrono::Utc::now().to_rfc3339(),
             }],
             task_graph: Default::default(),
+            sprint_id: None,
+            baseline_tests: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };
@@ -683,6 +693,8 @@ mod tests {
                 last_heartbeat: chrono::Utc::now().to_rfc3339(),
             }],
             task_graph: Default::default(),
+            sprint_id: None,
+            baseline_tests: None,
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         };

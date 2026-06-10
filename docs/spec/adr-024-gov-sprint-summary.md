@@ -1,6 +1,6 @@
 # ADR-024: gov_sprint_summary Tool
 
-**Status:** Proposed  
+**Status:** Implemented  
 **Date:** 2026-06-09  
 **Gap:** #20 in gap-register.md
 

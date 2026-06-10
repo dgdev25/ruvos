@@ -1,6 +1,6 @@
 # ADR-029: apalis as the Background Task Queue
 
-**Status:** Proposed  
+**Status:** Implemented  
 **Date:** 2026-06-09  
 **Source:** github.com/geofmureithi/apalis (MIT, 1,200 stars, active)
 
