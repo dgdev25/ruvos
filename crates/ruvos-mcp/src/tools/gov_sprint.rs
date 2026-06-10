@@ -77,9 +77,7 @@ impl ToolHandler for GovSprintSummaryHandler {
                     let completed = tg
                         .nodes
                         .values()
-                        .filter(|n| {
-                            matches!(n.state, crate::runtime::TaskState::Completed)
-                        })
+                        .filter(|n| matches!(n.state, crate::runtime::TaskState::Completed))
                         .count() as u32;
                     let failed = tg
                         .nodes
@@ -112,7 +110,9 @@ impl ToolHandler for GovSprintSummaryHandler {
 
             // Test delta.
             let test_delta = match (baseline_tests, final_tests) {
-                (Some(b), Some(f)) => json!({"before": b, "after": f, "added": (f as i64 - b as i64)}),
+                (Some(b), Some(f)) => {
+                    json!({"before": b, "after": f, "added": (f as i64 - b as i64)})
+                }
                 (Some(b), None) => json!({"before": b, "after": null, "added": null}),
                 _ => json!(null),
             };
@@ -120,7 +120,11 @@ impl ToolHandler for GovSprintSummaryHandler {
             // Recent git commits (best-effort; empty list if git unavailable).
             let commits = git_log_oneline(10).await;
 
-            let status = if sprint_swarm.is_some() { "ok" } else { "sprint_not_found" };
+            let status = if sprint_swarm.is_some() {
+                "ok"
+            } else {
+                "sprint_not_found"
+            };
 
             Ok(json!({
                 "status": status,
@@ -214,8 +218,8 @@ mod tests {
         let _g = isolate();
 
         // Create a swarm with sprint_id via the handler.
-        use crate::tools::swarm::SwarmCreateHandler;
         use crate::tools::handler::ToolHandler as TH;
+        use crate::tools::swarm::SwarmCreateHandler;
         SwarmCreateHandler
             .execute(json!({
                 "objective": "test sprint",

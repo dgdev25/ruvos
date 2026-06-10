@@ -4,6 +4,7 @@ pub mod agent;
 pub mod agent_exec;
 pub mod agent_store;
 pub mod aisp_layer;
+pub mod auto_swarm;
 pub mod compress;
 pub mod cve;
 pub mod echo;

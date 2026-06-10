@@ -452,10 +452,12 @@ impl ToolHandler for SwarmCreateHandler {
             "type": "object",
             "required": ["objective"],
             "properties": {
-                "objective": { "type": "string", "description": "The swarm's goal or mission" },
-                "topology": { "type": "string", "enum": ["hierarchical", "mesh", "hybrid", "adaptive"], "description": "Swarm communication topology" },
-                "swarm_id": { "type": "string", "description": "Optional custom swarm ID" },
-                "max_agents": { "type": "integer" }
+                "objective":      { "type": "string", "description": "The swarm's goal or mission" },
+                "topology":       { "type": "string", "enum": ["hierarchical", "mesh", "hybrid", "adaptive"], "description": "Swarm communication topology" },
+                "swarm_id":       { "type": "string", "description": "Optional custom swarm ID" },
+                "max_agents":     { "type": "integer" },
+                "sprint_id":      { "type": "string", "description": "ADR-024: tag for gov_sprint_summary aggregation" },
+                "baseline_tests": { "type": "integer", "description": "ADR-024: test count before this sprint (for test_delta)" }
             },
             "additionalProperties": false
         })
@@ -508,6 +510,15 @@ impl ToolHandler for SwarmCreateHandler {
             }
 
             let now = chrono::Utc::now().to_rfc3339();
+            let sprint_id = params
+                .get("sprint_id")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let baseline_tests = params
+                .get("baseline_tests")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
+
             let state = swarm::SwarmState {
                 id: swarm_id.clone(),
                 objective: objective.clone(),
@@ -517,6 +528,8 @@ impl ToolHandler for SwarmCreateHandler {
                 status: "active".to_string(),
                 members: members.clone(),
                 task_graph: Default::default(),
+                sprint_id,
+                baseline_tests,
                 created_at: now.clone(),
                 updated_at: now,
             };
@@ -1970,4 +1983,3 @@ mod tests {
             .is_err());
     }
 }
-

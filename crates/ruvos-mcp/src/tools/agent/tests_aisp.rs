@@ -55,7 +55,10 @@ async fn aisp_assessment_present_when_enabled() {
         .unwrap();
     assert_eq!(r["status"], "completed");
     let aisp = &r["aisp"];
-    assert!(aisp.is_object(), "aisp assessment must be present when enabled");
+    assert!(
+        aisp.is_object(),
+        "aisp assessment must be present when enabled"
+    );
     assert!(aisp["tier"].is_string());
     assert!(aisp["delta"].is_number());
 }
@@ -118,7 +121,10 @@ async fn aisp_hard_gate_blocks_vague_prose() {
         .unwrap();
     assert_eq!(r["status"], "blocked");
     assert_eq!(r["reason"], "aisp_quality_gate");
-    assert!(r["aisp"].is_object(), "blocked response must include assessment");
+    assert!(
+        r["aisp"].is_object(),
+        "blocked response must include assessment"
+    );
     assert!(r["aisp"]["tier"].is_string());
 }
 

@@ -36,9 +36,7 @@ async fn run_br(args: &[&str]) -> Result<Value> {
     let child = match spawn {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(br_not_found()),
-        Err(e) => {
-            return Err(RuvosError::HandlerError(format!("br spawn failed: {e}")))
-        }
+        Err(e) => return Err(RuvosError::HandlerError(format!("br spawn failed: {e}"))),
     };
 
     let output = child
@@ -314,7 +312,10 @@ impl ToolHandler for GovIssueDepHandler {
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
             let id = params["issue_id"].as_str().unwrap_or_default().to_string();
-            let dep = params["depends_on"].as_str().unwrap_or_default().to_string();
+            let dep = params["depends_on"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
             let mut args: Vec<String> = vec!["dep".into(), "add".into(), id, dep];
             if let Some(t) = params["dep_type"].as_str() {
                 args.extend(["--type".into(), t.into()]);
@@ -341,11 +342,19 @@ mod tests {
 
     #[test]
     fn handlers_registered_with_correct_name_and_domain() {
-        check("ruvos_gov_issue_create", "gov_issues", &GovIssueCreateHandler);
+        check(
+            "ruvos_gov_issue_create",
+            "gov_issues",
+            &GovIssueCreateHandler,
+        );
         check("ruvos_gov_issue_list", "gov_issues", &GovIssueListHandler);
         check("ruvos_gov_issue_show", "gov_issues", &GovIssueShowHandler);
         check("ruvos_gov_issue_close", "gov_issues", &GovIssueCloseHandler);
-        check("ruvos_gov_issue_search", "gov_issues", &GovIssueSearchHandler);
+        check(
+            "ruvos_gov_issue_search",
+            "gov_issues",
+            &GovIssueSearchHandler,
+        );
         check("ruvos_gov_issue_dep", "gov_issues", &GovIssueDepHandler);
     }
 
@@ -355,16 +364,26 @@ mod tests {
         assert!(GovIssueShowHandler.validate(&json!({})).is_err());
         assert!(GovIssueCloseHandler.validate(&json!({})).is_err());
         assert!(GovIssueSearchHandler.validate(&json!({})).is_err());
-        assert!(GovIssueDepHandler.validate(&json!({"issue_id": "bd-1"})).is_err());
+        assert!(GovIssueDepHandler
+            .validate(&json!({"issue_id": "bd-1"}))
+            .is_err());
     }
 
     #[test]
     fn validate_accepts_valid_params() {
-        assert!(GovIssueCreateHandler.validate(&json!({"title": "foo"})).is_ok());
+        assert!(GovIssueCreateHandler
+            .validate(&json!({"title": "foo"}))
+            .is_ok());
         assert!(GovIssueListHandler.validate(&json!({})).is_ok());
-        assert!(GovIssueShowHandler.validate(&json!({"issue_id": "bd-1"})).is_ok());
-        assert!(GovIssueCloseHandler.validate(&json!({"issue_id": "bd-1"})).is_ok());
-        assert!(GovIssueSearchHandler.validate(&json!({"query": "login"})).is_ok());
+        assert!(GovIssueShowHandler
+            .validate(&json!({"issue_id": "bd-1"}))
+            .is_ok());
+        assert!(GovIssueCloseHandler
+            .validate(&json!({"issue_id": "bd-1"}))
+            .is_ok());
+        assert!(GovIssueSearchHandler
+            .validate(&json!({"query": "login"}))
+            .is_ok());
         assert!(GovIssueDepHandler
             .validate(&json!({"issue_id": "bd-1", "depends_on": "bd-2"}))
             .is_ok());

@@ -32,7 +32,8 @@ const MAX_RETRIES: u32 = 3;
 pub struct QueuedTask {
     pub id: String,
     pub label: String,
-    pub work: Arc<dyn Fn() -> futures::future::BoxFuture<'static, Result<Value, String>> + Send + Sync>,
+    pub work:
+        Arc<dyn Fn() -> futures::future::BoxFuture<'static, Result<Value, String>> + Send + Sync>,
 }
 
 impl QueuedTask {
@@ -106,7 +107,8 @@ impl TaskQueue {
             let result = run_with_retry(&task).await;
             let _ = tx.send(result);
         });
-        rx.await.unwrap_or_else(|_| Err("task channel dropped".into()))
+        rx.await
+            .unwrap_or_else(|_| Err("task channel dropped".into()))
     }
 }
 
@@ -138,7 +140,11 @@ mod tests {
             let c = c.clone();
             async move {
                 let n = c.fetch_add(1, Ordering::SeqCst);
-                if n < 2 { Err("transient".into()) } else { Ok(json!({"retried": n})) }
+                if n < 2 {
+                    Err("transient".into())
+                } else {
+                    Ok(json!({"retried": n}))
+                }
             }
         });
         let result = q.enqueue_and_wait(task).await.unwrap();

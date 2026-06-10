@@ -66,6 +66,10 @@ impl ToolHandler for HooksPreHandler {
                     "type": "object",
                     "description": "Event payload object",
                     "additionalProperties": true
+                },
+                "auto_swarm": {
+                    "type": "boolean",
+                    "description": "Auto-create a swarm when the task is complex (default true). Set false to suppress."
                 }
             },
             "required": ["kind", "payload"]
@@ -179,6 +183,26 @@ impl ToolHandler for HooksPreHandler {
                             if blocked {
                                 map.insert("status".to_string(), json!("blocked"));
                             }
+                        }
+                    }
+                }
+            }
+
+            // ADR-035: auto-swarm creation for complex task pre-hooks.
+            // Enabled by default; pass `auto_swarm: false` to suppress.
+            if matches!(hook_kind, HookKind::Task) {
+                let want_auto = obj
+                    .get("auto_swarm")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+                if want_auto {
+                    let prose = Self::extract_task_text(&payload);
+                    let explicit_sprint = payload.get("sprint_id").and_then(|v| v.as_str());
+                    let result = crate::tools::auto_swarm::maybe_create(&prose, explicit_sprint);
+                    let fragment = crate::tools::auto_swarm::to_json(&result);
+                    if let Value::Object(ref mut map) = out {
+                        if let Value::Object(frag_map) = fragment {
+                            map.extend(frag_map);
                         }
                     }
                 }
@@ -588,8 +612,14 @@ mod safety_tests {
             }))
             .await
             .unwrap();
-        assert_eq!(r["status"], "queued", "default hooks_post must be non-blocking");
-        assert!(r["task_id"].as_str().is_some(), "queued response includes task_id");
+        assert_eq!(
+            r["status"], "queued",
+            "default hooks_post must be non-blocking"
+        );
+        assert!(
+            r["task_id"].as_str().is_some(),
+            "queued response includes task_id"
+        );
     }
 
     #[tokio::test]

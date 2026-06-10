@@ -528,6 +528,6 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests_orch;
-#[cfg(test)]
 mod tests_aisp;
+#[cfg(test)]
+mod tests_orch;

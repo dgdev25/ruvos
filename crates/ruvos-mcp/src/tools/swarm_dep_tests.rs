@@ -67,7 +67,10 @@ async fn assign_with_all_deps_completed_assigns_immediately() {
         }))
         .await
         .unwrap();
-    assert_eq!(r["status"], "assigned", "all deps completed → assign immediately");
+    assert_eq!(
+        r["status"], "assigned",
+        "all deps completed → assign immediately"
+    );
 }
 
 // ── unsatisfied dependencies ──────────────────────────────────────────────────
@@ -189,7 +192,10 @@ async fn heartbeat_failed_cascades_to_waiting_dependents() {
         .iter()
         .find(|t| t["task_id"] == "implement")
         .expect("implement must appear in tasks");
-    assert_eq!(implement["state"], "failed", "cascade must propagate failure");
+    assert_eq!(
+        implement["state"], "failed",
+        "cascade must propagate failure"
+    );
 }
 
 // ── cycle detection ───────────────────────────────────────────────────────────
