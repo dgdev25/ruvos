@@ -84,8 +84,9 @@ pub(super) fn build_artifact(
     prompt: &str,
     output_schema: Option<&Value>,
 ) -> String {
+    let is_orch = parse_orch_prompt(archetype, prompt).is_some();
     let mut out = build_artifact_body(archetype, prompt);
-    if output_schema.is_some() {
+    if output_schema.is_some() && !is_orch {
         out.push_str("\n\n## Structured Output\n\n```json\n{}\n```\n");
     }
     out

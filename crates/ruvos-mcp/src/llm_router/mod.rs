@@ -92,7 +92,14 @@ mod tests {
     #[test]
     fn detect_finds_claude_when_in_path() {
         if which_exe("claude").is_some() {
-            let router = CliRouter::detect().expect("claude is in PATH, detect must succeed");
+            // Use detect_with_config to bypass the RUVOS_DISABLE_CLI_ROUTER flag
+            // that other tests may have set permanently for the process.
+            let cfg = RouterConfig {
+                priority: vec!["claude".into()],
+                ..Default::default()
+            };
+            let router =
+                CliRouter::detect_with_config(cfg).expect("claude is in PATH, detect must succeed");
             assert_eq!(router.provider, LlmProvider::ClaudeCli);
         }
     }
