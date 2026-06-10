@@ -78,6 +78,24 @@ impl ToolHandler for AgentSpawnHandler {
             let archetype = params["archetype"].as_str().unwrap_or_default().to_string();
             let base_prompt = params["prompt"].as_str().unwrap_or_default().to_string();
             let model = params["model"].as_str().unwrap_or_default().to_string();
+
+            // ADR-034 phase 2: enrich the prompt with AISP notation before dispatch.
+            let (effective_base, aisp_json) = {
+                let enriched = crate::tools::aisp_layer::enrich(
+                    &base_prompt,
+                    &crate::tools::aisp_layer::AispConfig::load(),
+                );
+                if enriched.assessment.as_ref().is_some_and(|a| a.blocked) {
+                    let a = enriched.assessment.expect("blocked implies Some");
+                    return Ok(json!({
+                        "status": "blocked",
+                        "reason": "aisp_quality_gate",
+                        "aisp": a.to_json(),
+                    }));
+                }
+                let j = enriched.assessment.map(|a| a.to_json());
+                (enriched.effective_prompt, j)
+            };
             let traits: Vec<String> = params
                 .get("traits")
                 .and_then(|v| v.as_array())
@@ -114,11 +132,11 @@ impl ToolHandler for AgentSpawnHandler {
             };
             let prompt = if let Some(bundle) = &skill_bundle {
                 format!(
-                    "{base_prompt}\n\n{}\n",
+                    "{effective_base}\n\n{}\n",
                     bundle.render_prompt_section().trim_end()
                 )
             } else {
-                base_prompt.clone()
+                effective_base.clone()
             };
             let selected_skills = skill_bundle.clone();
 
@@ -233,7 +251,8 @@ impl ToolHandler for AgentSpawnHandler {
                 "result": outcome.result,
                 "selected_skills": selected_skills,
                 "stream": stream,
-                "structured_output": structured_output
+                "structured_output": structured_output,
+                "aisp": aisp_json
             }))
         })
     }

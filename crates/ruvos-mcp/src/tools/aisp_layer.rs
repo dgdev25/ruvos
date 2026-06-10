@@ -125,6 +125,42 @@ impl AispAssessment {
     }
 }
 
+/// Result of enriching a prompt with the AISP layer for `agent_spawn`.
+pub struct AispEnrichResult {
+    /// Prompt to pass to `run_task`: AISP-prefixed when enabled, unchanged otherwise.
+    pub effective_prompt: String,
+    /// Present when AISP was enabled; `None` when disabled.
+    pub assessment: Option<AispAssessment>,
+}
+
+/// Apply the AISP layer to `prose` for use in `agent_spawn` (ADR-034 phase 2).
+///
+/// - Disabled → original prompt unchanged, no assessment.
+/// - Enabled, not blocked → prepends `⟦Λ:Task⟧\n{aisp_spec}\n⟦/Λ⟧\n\n` to the prompt.
+/// - Enabled, blocked → original prompt returned; caller checks `assessment.blocked`.
+pub fn enrich(prose: &str, cfg: &AispConfig) -> AispEnrichResult {
+    if !cfg.enabled {
+        return AispEnrichResult {
+            effective_prompt: prose.to_string(),
+            assessment: None,
+        };
+    }
+    let assessment = assess(prose, cfg);
+    let effective_prompt = if assessment.blocked {
+        prose.to_string()
+    } else {
+        format!(
+            "⟦Λ:Task⟧\n{}\n⟦/Λ⟧\n\n{}",
+            assessment.aisp_spec.trim(),
+            prose
+        )
+    };
+    AispEnrichResult {
+        effective_prompt,
+        assessment: Some(assessment),
+    }
+}
+
 /// Convert `prose` to AISP, validate the result, and apply the configured gate.
 ///
 /// When `cfg.auto_convert` is false, the prose is treated as already-AISP and
