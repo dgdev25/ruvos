@@ -139,16 +139,16 @@ You:  Use rUvOS to build a POST /users endpoint with validation, and remember
       the design as we go.
 
 Claude:
-  → ruvos_session_create   { name: "users-endpoint" }
-  → ruvos_memory_store     { key: "spec", value: "POST /users, zod validation, …" }
-  → orchestrate.run  { template: "feature", task: "POST /users with validation" }
+  → ruvos_session_create    { name: "users-endpoint" }
+  → ruvos_memory_store      { key: "spec", value: "POST /users, zod validation, …" }
+  → ruvos_orchestrate_run   { template: "feature", task: "POST /users with validation" }
         planner → coder → tester → reviewer   (each leaves a real artifact)
 
 [next day]
 You:  Resume my rUvOS session for the users endpoint.
 Claude:
-  → session.resume   { session_id: "…" }   # context restored from signed .rvf
-  → ruvos_memory_search    { query: "users endpoint design" }
+  → ruvos_session_resume    { session_id: "…" }   # context restored from signed .rvf
+  → ruvos_memory_search     { query: "users endpoint design" }
 ```
 
 ---
@@ -184,89 +184,132 @@ ruvos cve scan --prod-only --offline --min-severity medium /path/to/project
 
 ---
 
-<details>
-<summary>📚 Feature reference — every tool domain, by example</summary>
+## 📚 Complete Feature Reference
 
-Wrap any call with the transport boilerplate:
+Two surfaces: **CLI commands** you run in a terminal, and **MCP tools** Claude Code calls for you once the server is connected. Both drive the same persistent state under `$RUVOS_HOME` (default `./.ruvos`).
+
+### Part 1 — CLI commands (`ruvos <command>`)
+
+Run `ruvos <command> --help` for the full flag list of any command.
+
+| Command | What it does | Example |
+|---------|--------------|---------|
+| `init` | Create/update `CLAUDE.md` with the ruvos managed block + the `.ruvos/` data dir | `ruvos init --name my-project` |
+| `init --hooks` | Also write `.claude/settings.json` hook bindings so the 8 hooks fire mechanically (ADR-038) | `ruvos init --hooks` |
+| `mcp serve` | Start the JSON-RPC MCP server on stdio (this is what Claude Code connects to) | `claude mcp add ruvos -- ruvos mcp serve` |
+| `status` | Read-only live system view: health, swarm, agents, events, relays (ADR-039) | `ruvos status` · `ruvos status --json` |
+| `cve scan` | Scan a project's lockfiles for vulnerable deps via OSV/CVE | `ruvos cve scan --fail-on high .` |
+| `hook <kind>` | Dispatch a lifecycle hook event from the harness (reads JSON on stdin) | `echo '{}' \| ruvos hook edit --phase pre` |
+| `plugin install` | Fetch, checksum-verify, and unpack a plugin tarball (ADR-040) | `ruvos plugin install demo --from ./demo.tar.gz` |
+| `compress` | Compress stdin/a file using the frozen baseline algorithm | `cat big.log \| ruvos compress --kind log` |
+| `contracts` | Generate or verify the canonical tool/archetype/hook manifest | `ruvos contracts check docs/contracts/contract-manifest.json` |
+| `doctor` | Local health/invariant check (substrate, persisted counts, safety score) | `ruvos doctor --strict` |
+| `eval` | Run the compression regression suite with optional baselines | `ruvos eval compress --compare-to reports/baseline.json` |
+| `skills` | Audit a skills corpus and build a portable redb skills pack | `ruvos skills audit --corpus-root <path>` |
+| `daemon watch` | Persistent relay-inbox listener that dispatches tasks to `agent_exec` | `ruvos daemon watch --poll-ms 100` |
+
+### Part 2 — MCP tools (60 tools, called by Claude Code)
+
+In normal use you never type these — you ask in plain language and Claude Code picks the tool. To call one directly for testing, wrap it with the transport boilerplate:
 
 ```bash
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
   '<the call line below>' \
 | ruvos mcp serve
 ```
 
-### `memory` — persistent semantic memory + knowledge graph
+> **Tool names are `ruvos_<domain>_<action>`** (e.g. `ruvos_memory_store`). Copy them verbatim — there is no dot-notation alias.
 
-Hybrid retrieval (dense HNSW + BM25, fused), MMR diversity, recency weighting, temporal knowledge graph, and a feedback loop. Survives restarts.
+### `memory` (4) — persistent semantic memory + knowledge graph
+
+Hybrid retrieval (dense HNSW + BM25, fused), MMR diversity, recency weighting, temporal knowledge graph, and a feedback loop. Survives restarts (persisted to `$RUVOS_HOME/memory.json`).
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_memory_store` | Insert/update an entry with tags | `{"key":"db","value":"postgres via pgbouncer","namespace":"proj","tags":["infra"]}` |
+| `ruvos_memory_search` | Hybrid semantic + lexical search (optional `filter_tags`) | `{"query":"database connection","namespace":"proj","top_k":5}` |
+| `ruvos_memory_retrieve` | Fetch one entry by key | `{"key":"db","namespace":"proj"}` |
+| `ruvos_memory_list` | List a namespace with filters | `{"namespace":"proj"}` |
 
 ```jsonc
-// store a fact
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_memory_store","arguments":{"key":"db","value":"postgres pooling via pgbouncer","namespace":"proj","tags":["infra"]}}}
-
-// recall by meaning
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_memory_search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}}
-
-// tag-filtered search (ACORN predicate-aware HNSW)
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ruvos_memory_search","arguments":{"query":"database","namespace":"proj","filter_tags":["decision"]}}}
-
-// fetch one entry / list namespace
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"memory.retrieve","arguments":{"key":"db","namespace":"proj"}}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"memory.list","arguments":{"namespace":"proj"}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ruvos_memory_retrieve","arguments":{"key":"db","namespace":"proj"}}}
 ```
 
-### `session` — resumable, signed work contexts
-
-```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_session_create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"session.resume","arguments":{"session_id":"6305…"}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"session.fork","arguments":{"source_session_id":"6305…"}}}
-```
+### `session` (3) — resumable, signed work contexts
 
 Sessions are signed `.rvf` containers (HMAC-SHA256 + SHAKE-256 witness chain). Forking creates a COW branch with cryptographic lineage proof.
 
-### `agent` — spawn, track, and message agents
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_session_create` | Start a session, persist as `.rvf` | `{"name":"users-endpoint","state":{"branch":"feat/users"}}` |
+| `ruvos_session_resume` | Restore a session by id | `{"session_id":"6305…"}` |
+| `ruvos_session_fork` | COW-branch a session for parallel work | `{"source_session_id":"6305…"}` |
 
 ```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"agent.spawn","arguments":{"archetype":"coder","prompt":"write POST /users","model":"claude-haiku-4-5","traits":["backend"]}}}
-// → { "agent_id":"7ed0…", "status":"completed", "success":true, "artifact_path":"…" }
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"agent.status","arguments":{}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"agent.message","arguments":{"agent_id":"7ed0…","message":"also add pagination"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_session_create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_session_resume","arguments":{"session_id":"6305…"}}}
 ```
 
-**12 archetypes:** `coder` · `reviewer` · `tester` · `researcher` · `architect` · `planner` · `security` · `perf` · `devops` · `data` · `docs` · `coordinator`
+### `agent` (4) — spawn, track, message, and execute
 
-**9 composable traits:** `backend` · `frontend` · `mobile` · `cloud` · `db` · `ml` · `tdd` · `domain` · `audit`
+**12 archetypes:** `coder` · `reviewer` · `tester` · `researcher` · `architect` · `planner` · `security` · `perf` · `devops` · `data` · `docs` · `coordinator` — **9 composable traits:** `backend` · `frontend` · `mobile` · `cloud` · `db` · `ml` · `tdd` · `domain` · `audit`
 
-### `hooks` — safety, routing, learning
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_agent_spawn` | Spawn a host agent | `{"archetype":"coder","prompt":"write POST /users","model":"claude-haiku-4-5","traits":["backend"]}` |
+| `ruvos_agent_status` | List running agents + states | `{}` |
+| `ruvos_agent_message` | Send a message to a named agent | `{"agent_id":"7ed0…","message":"also add pagination"}` |
+| `ruvos_agent_exec` | Execution bridge — write files, run commands, git ops (see below) | `{"ops":[{"op":"run_command","cmd":"cargo","args":["test"]}]}` |
 
 ```jsonc
-// pre-hook: risk assessment before a shell command
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hooks.pre","arguments":{"kind":"command","payload":{"command":"rm -rf /important"}}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_agent_spawn","arguments":{"archetype":"coder","prompt":"write POST /users","model":"claude-haiku-4-5","traits":["backend"]}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_agent_status","arguments":{}}}
+```
+
+### `hooks` (3) — safety, routing, learning
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_hooks_pre` | Pre-action risk assessment (`task`/`edit`/`command`) | `{"kind":"command","payload":{"command":"rm -rf /important"}}` |
+| `ruvos_hooks_route` | Recommend archetype + model tier for a task | `{"task":"audit auth for injection"}` |
+| `ruvos_hooks_post` | Record outcome → SONA learning | `{"kind":"task","payload":{},"success":true}` |
+
+```jsonc
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_hooks_pre","arguments":{"kind":"command","payload":{"command":"rm -rf /important"}}}}
 // → { "blocked":true, "safety":{ "passed":false, "violations":[…] } }
-
-// route a task to the right archetype + model tier
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"hooks.route","arguments":{"task":"audit auth for injection"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_hooks_route","arguments":{"task":"audit auth for injection"}}}
 // → { "archetype":"security", "model":"claude-opus-4-8", "tier":3, "confidence":0.91 }
-
-// post-hook: record outcome for SONA learning
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"hooks.post","arguments":{"kind":"task","payload":{},"success":true}}}
 ```
 
-### `intel` — SONA trajectory learning
+### `intel` (5) — SONA trajectory + intent learning
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_intel_pattern_store` | Store a trajectory + outcome | `{"trajectory":["read schema","write migration"],"outcome":"success"}` |
+| `ruvos_intel_pattern_search` | Find similar past trajectories | `{"query":"database migration","top_k":5}` |
+| `ruvos_intel_intent_store` | Persist a durable goal/preference | `{"kind":"goal","text":"always use TS strict mode","tags":["project-default"]}` |
+| `ruvos_intel_intent_search` | Search durable goals/preferences | `{"query":"typescript","kind":"goal"}` |
+| `ruvos_intel_repo_inspect` | Snapshot repo health: hotspots, test gaps | `{"path":"."}` |
 
 ```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"intel.pattern_store","arguments":{"trajectory":["read schema","write migration"],"outcome":"success"}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"intel.pattern_search","arguments":{"query":"database migration","top_k":5}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"intel.intent_store","arguments":{"goal":"always use TypeScript strict mode","context":"project default"}}}
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"intel.repo_inspect","arguments":{"path":"."}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_intel_pattern_store","arguments":{"trajectory":["read schema","write migration"],"outcome":"success"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_intel_repo_inspect","arguments":{"path":"."}}}
 ```
 
-### `plugin` — discover and run plugins
+### `plugin` (2) — discover and run plugins
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_plugin_list` | Installed plugins + skills (discovered from disk) | `{}` |
+| `ruvos_plugin_invoke` | Run a plugin command via its frontmatter `exec` entrypoint | `{"plugin_name":"my-plugin","command":"build","args":["--release"]}` |
 
 ```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plugin.list","arguments":{}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"plugin.invoke","arguments":{"plugin_name":"my-plugin","command":"build","args":["--release"]}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_plugin_list","arguments":{}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_plugin_invoke","arguments":{"plugin_name":"my-plugin","command":"build","args":["--release"]}}}
 ```
 
 **Plugin layout** (drop into `.ruvos/plugins/<name>/` or `~/.ruvos/plugins/<name>/`):
@@ -290,25 +333,50 @@ A `.sha256` sidecar next to the tarball is **required**; an HMAC-SHA256 `.sig` s
 tar -czf demo.tar.gz -C plugin-dir . && sha256sum demo.tar.gz > demo.tar.gz.sha256
 ```
 
-### `gov` — health, CVE scanning, audit
+### `gov` (12) — health, CVE scanning, audit, swarm governance
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_gov_health` | Doctor/status across substrate, hosts, MCP, daemon | `{}` |
+| `ruvos_gov_cve_lookup` | Scan a project for vulnerable deps via OSV/CVE | `{"project_path":"/path","format":"json","min_severity":"high"}` |
+| `ruvos_gov_witness_verify` | Verify a `.rvf` signature chain | `{"rvf_path":".ruvos/rvf/6305….rvf"}` |
+| `ruvos_gov_events` | Query the signed audit/event log | `{"event_type":"agent.spawned","limit":20}` |
+| `ruvos_gov_replay` | Replay a session/task trace from events | `{"session_id":"6305…"}` |
+| `ruvos_gov_report` | Governance report with quality/benchmark signals | `{}` |
+| `ruvos_gov_sprint_summary` | Aggregate sprint metrics from swarm + events | `{"sprint_id":"sprint-7"}` |
+| `ruvos_gov_swarm_recommendation` | Recommend swarm topology for a task | `{"objective":"ship auth","members":[{"agent_id":"w1","role":"coder"}]}` |
+| `ruvos_gov_swarm_plan` | Concrete swarm role/phase plan | `{"objective":"ship auth","members":[…]}` |
+| `ruvos_gov_swarm_status` | Active swarm summary + suggested plan | `{}` |
+| `ruvos_gov_swarm_policy` | Inspect learned swarm policy entries | `{}` |
+| `ruvos_gov_swarm_history` | Recent swarm runs + learning outcomes | `{"limit":5}` |
 
 ```jsonc
-// system health
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"gov.health","arguments":{}}}
-// → { "status":"ok", "tool_count":52, "persisted":{…}, "safety":{"score":1.0} }
-
-// verify a session container's witness chain
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gov.witness_verify","arguments":{"rvf_path":".ruvos/rvf/6305….rvf"}}}
-
-// query audit log
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}}
-
-// scan a project for CVEs
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ruvos_gov_cve_lookup","arguments":{"project_path":"/path/to/project","format":"json","min_severity":"high"}}}
-// → { "status":"clean"|"vulnerable", "finding_count":N, "highest_severity":"…", "fix_count":N, "output":"…" }
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_gov_health","arguments":{}}}
+// → { "status":"ok", "tool_count":60, "persisted":{…}, "safety":{"score":1.0} }
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_gov_cve_lookup","arguments":{"project_path":"/path/to/project","format":"json","min_severity":"high"}}}
+// → { "status":"clean"|"vulnerable", "finding_count":N, "highest_severity":"…", "fix_count":N }
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ruvos_gov_events","arguments":{"event_type":"agent.spawned","limit":20}}}
 ```
 
-### `relay` — cross-instance coordination
+### `gov` issues (6) — built-in issue tracker (beads_rust)
+
+A lightweight issue tracker persisted in `$RUVOS_HOME`, with dependency edges between issues.
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_gov_issue_create` | Create an issue | `{"title":"flaky parallel tests","priority":"high"}` |
+| `ruvos_gov_issue_list` | List issues with status/priority filters | `{"status":"open","priority":"high"}` |
+| `ruvos_gov_issue_show` | Full issue details + comment history | `{"id":"bd-12"}` |
+| `ruvos_gov_issue_close` | Close an issue with an optional reason | `{"id":"bd-12","reason":"fixed in c95f3a6"}` |
+| `ruvos_gov_issue_search` | Full-text search across issues | `{"query":"ENOENT"}` |
+| `ruvos_gov_issue_dep` | Add a dependency between two issues | `{"from":"bd-12","to":"bd-9"}` |
+
+```jsonc
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_gov_issue_create","arguments":{"title":"flaky parallel tests","priority":"high"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_gov_issue_list","arguments":{"status":"open"}}}
+```
+
+### `relay` (6) — cross-instance coordination
 
 Two rUvOS instances sharing one `RUVOS_HOME` discover and message each other via plain JSON file mailboxes (no daemon, no port). Every coordination action is recorded in the signed audit log.
 
@@ -398,49 +466,60 @@ rUvOS system status
 
 ### `orchestrate` — planned multi-agent pipelines
 
-A GOAP (A\*) planner computes the archetype sequence from a template or a goal + capabilities. Optional `max_retries` loops a failed step back for bounded rework.
+A GOAP (A\*) planner computes the archetype sequence from a template or a goal + capabilities. Optional `max_retries` loops a failed step back for bounded rework. **Templates:** `feature` · `bugfix` · `refactor` · `security` · `sparc`.
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_orchestrate_run` | Run a planned multi-agent pipeline (template- or goal-driven) | `{"template":"feature","task":"build POST /users"}` |
 
 ```jsonc
-// template-driven
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"orchestrate.run","arguments":{"template":"feature","task":"build POST /users"}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_orchestrate_run","arguments":{"template":"feature","task":"build POST /users"}}}
 // → { "status":"completed", "planned":true, "plan_cost":4.0, "steps":["planner","coder","tester","reviewer"] }
-
-// goal-driven (no template)
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"orchestrate.run","arguments":{"task":"harden auth","goal":{"secured":true,"tested":true}}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_orchestrate_run","arguments":{"task":"harden auth","goal":{"secured":true,"tested":true}}}}
 // → { "template":"custom", "planned":true, "steps":["security","coder","tester"] }
 ```
 
-**Templates:** `feature` · `bugfix` · `refactor` · `security` · `sparc`
+### `compress` (1) — context compression
 
-### `compress` — context compression
+Trims large JSON, log, code, and text payloads before they re-enter context. When `session_id` is provided, the original is stored in the signed `.rvf` session; the returned `original_ref` is later retrievable via `{"retrieve_ref":"<ref>"}`.
 
-```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"compress.run","arguments":{"content":"…large payload…","kind":"auto","session_id":"6305…"}}}
-```
-
-Trims large JSON, log, code, and text payloads before they re-enter context. When `session_id` is provided, the original is stored in the signed `.rvf` session for later recovery. For regression testing:
-
-```bash
-ruvos eval compress
-ruvos eval compress --write reports/baseline.json
-ruvos eval compress --compare-to reports/baseline.json
-```
-
-### `swarm` — multi-agent topology
-
-13 tools covering the full swarm lifecycle:
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_compress_run` | Compress text/JSON/code/logs, return a retrieval ref | `{"content":"…large payload…","kind":"auto","session_id":"6305…"}` |
 
 ```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"swarm.create","arguments":{"objective":"ship auth","topology":"hierarchical","members":[{"agent_id":"w1","role":"coder"}]}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"swarm.status","arguments":{}}}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"swarm.assign","arguments":{"agent_id":"w1","task_id":"t1"}}}
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"swarm.health","arguments":{}}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"swarm.metrics","arguments":{}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_compress_run","arguments":{"content":"…large payload…","kind":"auto","session_id":"6305…"}}}
+// retrieve the original later
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_compress_run","arguments":{"retrieve_ref":"a1b2c3…"}}}
 ```
 
-**Full tool list:** `swarm.create` · `swarm.status` · `swarm.assign` · `swarm.heartbeat` · `swarm.message` · `swarm.complete` · `swarm.fail` · `swarm.health` · `swarm.rebalance` · `swarm.join` · `swarm.leave` · `swarm.report` · `swarm.metrics`
+Regression testing from the CLI: `ruvos eval compress [--write reports/baseline.json | --compare-to reports/baseline.json]`.
 
-</details>
+### `swarm` (13) — multi-agent topology lifecycle
+
+Durable swarms with topology (`hierarchical`/`mesh`/`hybrid`/`adaptive`), members, heartbeats, and learned policy. State is cross-process locked and atomically persisted.
+
+| Tool | What it does | Example arguments |
+|------|--------------|-------------------|
+| `ruvos_swarm_create` | Create a swarm with topology, roles, objective | `{"objective":"ship auth","topology":"hierarchical","members":[{"agent_id":"w1","role":"coder"}]}` |
+| `ruvos_swarm_status` | Inspect membership and progress | `{}` |
+| `ruvos_swarm_assign` | Assign a task to a member | `{"agent_id":"w1","task_id":"t1"}` |
+| `ruvos_swarm_heartbeat` | Refresh a member's liveness | `{"agent_id":"w1"}` |
+| `ruvos_swarm_message` | Message a member or broadcast | `{"to":"w1","body":"ping"}` |
+| `ruvos_swarm_complete` | Mark the swarm completed | `{"summary":"shipped"}` |
+| `ruvos_swarm_fail` | Mark the swarm failed | `{"reason":"blocked"}` |
+| `ruvos_swarm_health` | Liveness, utilization, freshness | `{}` |
+| `ruvos_swarm_rebalance` | Move tasks off stale members | `{}` |
+| `ruvos_swarm_join` | Add/reactivate a member | `{"agent_id":"w2"}` |
+| `ruvos_swarm_leave` | Mark a member as left | `{"agent_id":"w1","force":true}` |
+| `ruvos_swarm_report` | Summary with recent activity | `{}` |
+| `ruvos_swarm_metrics` | Numeric health + throughput metrics | `{}` |
+
+```jsonc
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_swarm_create","arguments":{"objective":"ship auth","topology":"hierarchical","members":[{"agent_id":"w1","role":"coder"}]}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_swarm_assign","arguments":{"agent_id":"w1","task_id":"t1"}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ruvos_swarm_status","arguments":{}}}
+```
 
 ---
 
@@ -478,7 +557,7 @@ $RUVOS_HOME/
 
 | Crate | LOC | Purpose |
 |-------|-----|---------|
-| `ruvos-cli` | 2,472 | clap-based binary: 15 subcommands |
+| `ruvos-cli` | 2,472 | clap-based binary: 13 subcommands |
 | `ruvos-mcp` | 16,269 | JSON-RPC 2.0 MCP server + 60 tool handlers |
 | `ruvos-host` | 415 | `CliHost` trait + Claude Code / Codex CLI adapters |
 | `ruvos-plugin-host` | 565 | Plugin discovery (markdown + TOML), shell exec |
@@ -487,7 +566,7 @@ $RUVOS_HOME/
 | `ruvos-cve-lite` | 2,032 | CVE/OSV scanner: parsers, client, cache, offline DB |
 | `ruvos-compress` | 1,261 | Content compression + regression eval |
 
-Plus **22 RuVector substrate crates** (HNSW, SONA, GOAP, redb store, `.rvf` crypto, RuLake, swarm transport, memory graph, skills pack, safety, and more) — 30 crates total, all building cleanly with zero warnings.
+Plus **15 RuVector substrate crates** (HNSW, SONA, GOAP, redb store, `.rvf` crypto, RuLake, swarm transport, memory graph, skills pack, safety, and more) — 23 workspace members total, all building cleanly with zero warnings. (Substrate crates with no member consumers were dropped from the build; their sources remain in `substrate/`.)
 
 ### MCP transport
 
@@ -508,7 +587,7 @@ Plus **22 RuVector substrate crates** (HNSW, SONA, GOAP, redb store, `.rvf` cryp
 
 ## 🩺 Status
 
-**`v4.0.0-rc.1` — production-grade.** 60 MCP tools across 11 domains (including `ruvos_agent_exec`), 180 tests passing in ruvos-mcp, zero compiler/clippy warnings across the entire 30-crate workspace (standing zero-defect policy).
+**`v4.0.0-rc.1` — production-grade.** 60 MCP tools, 455 tests passing in ruvos-mcp, zero compiler/clippy warnings across the entire 23-crate workspace, and a deterministically green `cargo test --workspace` (standing zero-defect policy).
 
 **Honest scope notes:**
 - Vector ranking uses TF cosine similarity + HNSW + RuLake (real, working algorithms); neural embeddings are feature-hashing today — a provider API can be swapped in behind the same interface.
@@ -516,7 +595,6 @@ Plus **22 RuVector substrate crates** (HNSW, SONA, GOAP, redb store, `.rvf` cryp
 - The agent **runner** is optional; without `RUVOS_AGENT_RUNNER` set, agents produce real artifacts and report success by default.
 - Gemini CLI adapter: architecture ready (same `CliHost` trait), implementation deferred.
 - Local LLM inference (`ruvllm`): excluded from workspace (pulls candle/hf-hub), deferred to v2 per the no-local-inference decision.
-- Two tests in `ruvos-cli` fail on a naming convention mismatch (test expects dot notation `orchestrate.run`; registry stores `ruvos_orchestrate_run`). The tools themselves work correctly — it's a test expectation, not an implementation gap.
 
 ---
 
