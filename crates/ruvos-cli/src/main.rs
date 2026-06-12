@@ -106,6 +106,11 @@ enum Commands {
         #[arg(long, default_value = "pre")]
         phase: String,
     },
+    /// Show live system state: health, swarm, agents, events, relays (read-only)
+    Status {
+        #[arg(long, help = "Emit raw JSON instead of the human view")]
+        json: bool,
+    },
     /// Relay daemon — persistent bus listener for the agent execution bridge.
     Daemon {
         #[command(subcommand)]
@@ -422,6 +427,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Hook { kind, phase } => {
             ruvos_cli::commands::hook::run_from_stdin(&kind, &phase).await?;
         }
+        Commands::Status { json } => ruvos_cli::commands::status::run(json).await?,
         Commands::Daemon { command } => match command {
             DaemonCommand::Watch { agent_id, poll_ms } => {
                 info!("Starting relay daemon (agent_id={agent_id}, poll_ms={poll_ms})");

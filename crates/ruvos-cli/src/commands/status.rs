@@ -29,6 +29,17 @@ pub async fn collect_status() -> Result<Value> {
     }))
 }
 
+/// Entry point for `ruvos status`: collect, then print human or JSON view.
+pub async fn run(json: bool) -> Result<()> {
+    let v = collect_status().await?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&v)?);
+    } else {
+        print!("{}", render_status(&v));
+    }
+    Ok(())
+}
+
 fn section_line(out: &mut String, title: &str) {
     out.push_str(&format!("\n── {title} ──────────────────────────────\n"));
 }
