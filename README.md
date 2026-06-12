@@ -354,6 +354,36 @@ Send tasks from any Claude Code session:
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_memory_retrieve","arguments":{"key":"daemon/results/build-1","namespace":"daemon"}}}
 ```
 
+### `ruvos status` — live system view
+
+A read-only, human-facing snapshot of everything the MCP tools know: health, active swarm + members, agents, recent events, relay instances. Pure presentation over the same handlers the MCP tools use, so the CLI and MCP can never disagree (ADR-039). Add `--json` for the raw merged JSON.
+
+```bash
+ruvos status          # human view
+ruvos status --json   # raw merged JSON for scripting
+```
+
+```text
+rUvOS system status
+
+── Health ──────────────────────────────
+  status: ok  version: 4.0.0-rc.1  pid: 12345  tools: 60
+  data root: /home/you/.ruvos
+  persisted: 2 session(s), 7 memory entr(ies), 1 agent(s), 0 intel pattern(s)
+
+── Swarm ──────────────────────────────
+  no active swarm
+
+── Agents ──────────────────────────────
+  none
+
+── Recent events ──────────────────────────────
+  2026-06-12T09:09:38Z  agent.status.listed  agent: -
+
+── Relay instances ──────────────────────────────
+  none
+```
+
 ### `orchestrate` — planned multi-agent pipelines
 
 A GOAP (A\*) planner computes the archetype sequence from a template or a goal + capabilities. Optional `max_retries` loops a failed step back for bounded rework.
