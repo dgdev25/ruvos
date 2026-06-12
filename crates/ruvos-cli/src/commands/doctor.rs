@@ -165,8 +165,12 @@ pub async fn doctor(json_output: bool, strict: bool) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn inspect_returns_manifest_alignment() {
+    #[tokio::test]
+    async fn inspect_returns_manifest_alignment() {
+        // Serialize RUVOS_HOME mutation with the other env-mutating tests;
+        // without it, a parallel test repointing RUVOS_HOME makes try_store()
+        // observe a busy store and store_busy flakes true.
+        let _guard = crate::commands::ruvos_home_lock().await;
         let root = std::env::temp_dir().join(format!("ruvos-doctor-{}", std::process::id()));
         std::fs::create_dir_all(&root).expect("temp root");
         std::env::set_var("RUVOS_HOME", &root);
