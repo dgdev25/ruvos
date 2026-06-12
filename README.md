@@ -39,7 +39,7 @@ It's **one static Rust binary**: no Node.js, no background service, no external 
 - 🧠 **Memory that lasts** — store facts and recall them by *meaning*. Hybrid search (dense HNSW + BM25 keywords) with a temporal knowledge graph and a feedback loop that learns which results were useful.
 - 💾 **Resumable, signed sessions** — each work context is a signed `.rvf` file you can return to days later; `fork` branches one before a risky change with full cryptographic lineage.
 - 👥 **A team of agents** — spawn 12 specialist archetypes (coder, tester, security, …); a GOAP A\* planner computes the pipeline for your goal, and failed steps retry or stop.
-- 🔍 **CVE / vulnerability scanning** — scan any JS/TS project for known vulnerabilities via the OSV database; outputs JSON, SARIF 2.1.0 (GitHub Code Scanning), or a terminal table. Offline mode uses a local SQLite advisory database.
+- 🔍 **CVE / vulnerability scanning** — scan any JS/TS or Rust project for known vulnerabilities via the OSV database; outputs JSON, SARIF 2.1.0 (GitHub Code Scanning), or a terminal table. Offline mode uses a local SQLite advisory database.
 - 🛡️ **Safety + provenance built in** — risky actions are risk-checked before they run, and every action lands in a signed audit log you can verify.
 - 📡 **Multi-terminal coordination** — independent Claude Code instances discover and message each other through plain files; no daemon, no port, no database. The optional `ruvos daemon watch` relay listener processes tasks dispatched from the relay bus and stores results back into memory.
 - ⚡ **Agent execution bridge** (ADR-015) — `ruvos_agent_exec` closes the "markdown-only" gap: agents can now write files, run shell commands, and perform git operations directly, with optional OS-level sandbox isolation.
@@ -155,7 +155,7 @@ Claude:
 
 ## 🔍 CVE Scanning
 
-rUvOS ships a first-class vulnerability scanner for JS/TS projects — callable from Claude Code via the `ruvos_gov_cve_lookup` MCP tool, or directly from the CLI:
+rUvOS ships a first-class vulnerability scanner for JS/TS and Rust projects (package-lock.json, pnpm-lock.yaml, yarn.lock, Cargo.lock) — callable from Claude Code via the `ruvos_gov_cve_lookup` MCP tool, or directly from the CLI:
 
 ```bash
 # Terminal output (default — sorted by severity)
@@ -174,7 +174,7 @@ ruvos cve scan --fail-on high /path/to/project
 ruvos cve scan --prod-only --offline --min-severity medium /path/to/project
 ```
 
-**Supported lockfiles:** `package-lock.json` (npm v1/v2/v3), `npm-shrinkwrap.json`, `pnpm-lock.yaml` (v5/v6/v9), `yarn.lock` (v1 + Berry/v2+).
+**Supported lockfiles:** `package-lock.json` (npm v1/v2/v3), `npm-shrinkwrap.json`, `pnpm-lock.yaml` (v5/v6/v9), `yarn.lock` (v1 + Berry/v2+), `Cargo.lock` (crates.io ecosystem; direct deps classified from `Cargo.toml`).
 
 **Data sources:**
 - Online: [OSV API](https://osv.dev) batch queries, results cached at `$RUVOS_HOME/cve/osv-cache.json` (30-min TTL)
