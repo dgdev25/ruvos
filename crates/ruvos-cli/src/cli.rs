@@ -107,12 +107,29 @@ pub enum Commands {
         #[command(subcommand)]
         command: DaemonCommand,
     },
+    /// Plugin management
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommand,
+    },
 }
 
 #[derive(Subcommand)]
 pub enum McpCommand {
     /// Serve the MCP server
     Serve,
+}
+
+#[derive(Subcommand)]
+pub enum PluginCommand {
+    /// Fetch, verify (sha256 + optional HMAC), and install a plugin tarball
+    Install {
+        /// Plugin name (directory name under ./.ruvos/plugins/)
+        name: String,
+        /// Tarball source: local path or https URL (expects .sha256 sidecar)
+        #[arg(long)]
+        from: String,
+    },
 }
 
 #[derive(Subcommand)]

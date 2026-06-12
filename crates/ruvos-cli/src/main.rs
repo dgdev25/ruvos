@@ -6,8 +6,8 @@ mod cli;
 
 use clap::Parser;
 use cli::{
-    Commands, ContractsCommand, CveCommand, DaemonCommand, EvalCommand, McpCommand, SkillsCommand,
-    SkillsPackCommand,
+    Commands, ContractsCommand, CveCommand, DaemonCommand, EvalCommand, McpCommand, PluginCommand,
+    SkillsCommand, SkillsPackCommand,
 };
 use tracing::info;
 
@@ -200,6 +200,12 @@ async fn main() -> anyhow::Result<()> {
                     cache_path: if no_cache { None } else { Some(cache_path) },
                 })
                 .await?;
+            }
+        },
+        Commands::Plugin { command } => match command {
+            PluginCommand::Install { name, from } => {
+                let dest_root = std::path::PathBuf::from("./.ruvos/plugins");
+                ruvos_cli::commands::plugin::run_install(&name, &from, &dest_root).await?;
             }
         },
     }
