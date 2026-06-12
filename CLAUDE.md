@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**rUvOS** (formerly Ruflo v4) is a Rust-native agent orchestration system being merged into the RuVector workspace. It's a ruthless rewrite of Ruflo from 631k TypeScript LOC + 323 MCP tools + 60+ agent types down to ~30k Rust LOC with 20 core tools and 12 agent archetypes.
+**rUvOS** (formerly Ruflo v4) is a Rust-native agent orchestration system being merged into the RuVector workspace. It's a ruthless rewrite of Ruflo from 631k TypeScript LOC + 323 MCP tools + 60+ agent types down to a lean Rust workspace with an ADR-gated tool surface (60 tools as of ADR-036; see docs/contracts/contract-manifest.json) and 12 agent archetypes.
 
 **Core positioning:** RuVector is the self-learning vector + graph + local-AI substrate. rUvOS is the agent orchestration layer that runs on top of it. Single static binary (`ruvos`), zero Node.js runtime required.
 
@@ -15,15 +15,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Crate | Budget | Purpose | Key files |
 |-------|--------|---------|-----------|
 | `ruvos-cli` | ≤8k LOC | clap-based CLI shell (`ruvos init`, `ruvos mcp`, `ruvos agent`) | — |
-| `ruvos-mcp` | ≤6k LOC | JSON-RPC MCP server over stdio + the 20 tool handlers (memory, session, agent, hooks, intel, plugin, gov, workflow) | — |
+| `ruvos-mcp` | ≤26k LOC (ADR-037) | JSON-RPC MCP server over stdio + the manifest tool handlers (memory, session, agent, hooks, intel, plugin, gov, relay, swarm, orchestrate, compress) | — |
 | `ruvos-host` | ≤6k LOC | `CliHost` trait + Claude + Codex adapters, output normalizer for multi-CLI orchestration | — |
 | `ruvos-plugin-host` | ≤4k LOC | Plugin discovery (markdown + YAML frontmatter), manifest parsing, shell command execution | — |
 | `ruvos-hooks` | ≤3k LOC | 8 hooks (pre/post task, edit, command, session) + SONA learning integration | — |
 | `ruvos-session` | ≤3k LOC | `.rvf` container write/read, fork (COW-branch), signature verification via `rvf-crypto` | — |
 
-**Total: ≤30k LOC of new Rust.** Everything else is `use ruvector_*;` or `use sona::*;` or `use rvf::*;`.
+**LOC budgets re-baselined in ADR-037 (`docs/spec/adr-037-governance-rebaseline.md`).** Everything else is `use ruvector_*;` or `use sona::*;` or `use rvf::*;`.
 
-### The 20 v1 MCP Tools (and 12 Agent Archetypes)
+### MCP Tools (and 12 Agent Archetypes)
+
+**The live tool surface is `docs/contracts/contract-manifest.json`** (60 tools as of ADR-036; regenerate with `just contracts-generate`). The original v1 baseline, kept for orientation:
 
 **Tools (by domain):**
 - `memory.*` (4) — search, store, retrieve, list with MMR + recency

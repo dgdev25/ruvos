@@ -6,7 +6,7 @@ use ruvos_mcp::serve as mcp_serve;
 pub async fn serve() -> anyhow::Result<()> {
     // Initialize and run the MCP server.
     // - Connects to stdin/stdout
-    // - Registers all 24 tools (memory, session, agent, hooks, intel, plugin, gov, relay, orchestrate)
+    // - Registers every tool in the contract manifest (see tool_registry())
     // - Enters JSON-RPC dispatch loop
     mcp_serve().await
 }

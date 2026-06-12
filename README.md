@@ -6,7 +6,7 @@
   <img alt="version" src="https://img.shields.io/badge/version-4.0.0--rc.1-14b8a6">
   <img alt="built with Rust" src="https://img.shields.io/badge/built%20with-Rust-d9772a?logo=rust&logoColor=white">
   <img alt="protocol MCP" src="https://img.shields.io/badge/protocol-MCP-3b82f6">
-  <img alt="53 MCP tools" src="https://img.shields.io/badge/MCP%20tools-53-2ac3de">
+  <img alt="60 MCP tools" src="https://img.shields.io/badge/MCP%20tools-60-2ac3de">
   <img alt="no Node" src="https://img.shields.io/badge/no%20Node-pure%20Rust-3fb950">
   <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
@@ -67,7 +67,7 @@ claude mcp list           # ruvos: ✓ Connected
 ruvos --version           # ruvos 4.0.0-rc.1
 ```
 
-That's it — all 52 rUvOS tools are now available to Claude Code in every project.
+That's it — all 60 rUvOS tools are now available to Claude Code in every project.
 
 <details>
 <summary>What <code>setup.sh</code> does (10 steps, all idempotent)</summary>
@@ -84,7 +84,7 @@ That's it — all 52 rUvOS tools are now available to Claude Code in every proje
    - `PostToolUse` → post-hook (SONA learning, trajectory store)
    - `Stop` → session checkpoint (`.rvf` fork)
 9. Register rUvOS with Codex CLI (`~/.codex/config.json`) if installed
-10. Smoke-test: binary version + MCP round-trip (expects ≥52 tools)
+10. Smoke-test: binary version + MCP round-trip (expects ≥60 tools)
 
 **Leaves alone:** `claude-flow` / `ruv-swarm` MCP servers and any Ruflo Claude Code plugins — they coexist fine (different namespaces, processes, data dirs).
 
@@ -109,7 +109,7 @@ claude mcp list   # ruvos: ✓ Connected
 
 ## 🧭 How it works
 
-**You don't type commands or keywords.** Once the MCP server is connected, Claude Code sees the 52 tools and decides which to call from what you ask. The loop:
+**You don't type commands or keywords.** Once the MCP server is connected, Claude Code sees the 60 tools and decides which to call from what you ask. The loop:
 
 <p align="center">
   <img src="assets/how-it-works.svg" alt="The loop: you ask in plain language → recall relevant past decisions → a planner computes the agent pipeline → agents run (failures retry or stop) → outcomes are learned, which sharpens the next recall and plan." width="100%">
@@ -139,8 +139,8 @@ You:  Use rUvOS to build a POST /users endpoint with validation, and remember
       the design as we go.
 
 Claude:
-  → session.create   { name: "users-endpoint" }
-  → memory.store     { key: "spec", value: "POST /users, zod validation, …" }
+  → ruvos_session_create   { name: "users-endpoint" }
+  → ruvos_memory_store     { key: "spec", value: "POST /users, zod validation, …" }
   → orchestrate.run  { template: "feature", task: "POST /users with validation" }
         planner → coder → tester → reviewer   (each leaves a real artifact)
 
@@ -148,14 +148,14 @@ Claude:
 You:  Resume my rUvOS session for the users endpoint.
 Claude:
   → session.resume   { session_id: "…" }   # context restored from signed .rvf
-  → memory.search    { query: "users endpoint design" }
+  → ruvos_memory_search    { query: "users endpoint design" }
 ```
 
 ---
 
 ## 🔍 CVE Scanning
 
-rUvOS ships a first-class vulnerability scanner for JS/TS projects — callable from Claude Code via the `gov.cve_lookup` MCP tool, or directly from the CLI:
+rUvOS ships a first-class vulnerability scanner for JS/TS projects — callable from Claude Code via the `ruvos_gov_cve_lookup` MCP tool, or directly from the CLI:
 
 ```bash
 # Terminal output (default — sorted by severity)
@@ -202,13 +202,13 @@ Hybrid retrieval (dense HNSW + BM25, fused), MMR diversity, recency weighting, t
 
 ```jsonc
 // store a fact
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory.store","arguments":{"key":"db","value":"postgres pooling via pgbouncer","namespace":"proj","tags":["infra"]}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_memory_store","arguments":{"key":"db","value":"postgres pooling via pgbouncer","namespace":"proj","tags":["infra"]}}}
 
 // recall by meaning
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ruvos_memory_search","arguments":{"query":"database connection","namespace":"proj","top_k":5}}}
 
 // tag-filtered search (ACORN predicate-aware HNSW)
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"memory.search","arguments":{"query":"database","namespace":"proj","filter_tags":["decision"]}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ruvos_memory_search","arguments":{"query":"database","namespace":"proj","filter_tags":["decision"]}}}
 
 // fetch one entry / list namespace
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"memory.retrieve","arguments":{"key":"db","namespace":"proj"}}}
@@ -218,7 +218,7 @@ Hybrid retrieval (dense HNSW + BM25, fused), MMR diversity, recency weighting, t
 ### `session` — resumable, signed work contexts
 
 ```jsonc
-{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"session.create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}}
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ruvos_session_create","arguments":{"name":"users-endpoint","state":{"branch":"feat/users"}}}}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"session.resume","arguments":{"session_id":"6305…"}}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"session.fork","arguments":{"source_session_id":"6305…"}}}
 ```
@@ -292,7 +292,7 @@ Sessions are signed `.rvf` containers (HMAC-SHA256 + SHAKE-256 witness chain). F
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"gov.events","arguments":{"event_type":"agent.spawned","limit":20}}}
 
 // scan a project for CVEs
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"gov.cve_lookup","arguments":{"project_path":"/path/to/project","format":"json","min_severity":"high"}}}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"ruvos_gov_cve_lookup","arguments":{"project_path":"/path/to/project","format":"json","min_severity":"high"}}}
 // → { "status":"clean"|"vulnerable", "finding_count":N, "highest_severity":"…", "fix_count":N, "output":"…" }
 ```
 
@@ -407,7 +407,7 @@ ruvos eval compress --compare-to reports/baseline.json
 rUvOS is two layers in one binary: a thin **orchestration shell** (8 Rust crates, ~24k LOC) on top of the **RuVector kernel + substrate** (pure-Rust vector search, learning, graph, crypto, planning, and coordination).
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Two layers. Top: rUvOS orchestration shell — ruvos-cli, ruvos-mcp (52 tools), ruvos-host (CLI adapters), plugin-host, ruvos-hooks, ruvos-session, ruvos-cve-lite, ruvos-compress. Bottom: RuVector substrate — HNSW/RaBitQ/ACORN, SONA, knowledge graph, GOAP A*, DAG retry, redb, .rvf witness, safety, DTW stream analysis, swarm transport." width="100%">
+  <img src="assets/architecture.svg" alt="Two layers. Top: rUvOS orchestration shell — ruvos-cli, ruvos-mcp (60 tools), ruvos-host (CLI adapters), plugin-host, ruvos-hooks, ruvos-session, ruvos-cve-lite, ruvos-compress. Bottom: RuVector substrate — HNSW/RaBitQ/ACORN, SONA, knowledge graph, GOAP A*, DAG retry, redb, .rvf witness, safety, DTW stream analysis, swarm transport." width="100%">
 </p>
 
 **Disk is the source of truth.** All state persists under `$RUVOS_HOME` (default `./.ruvos`) — `redb` is the fast working store, `.rvf` containers are signed tamper-evident snapshots, and `memory.json` / `intel.json` / `agents.json` are the durable JSON stores readable across processes.
@@ -437,7 +437,7 @@ $RUVOS_HOME/
 | Crate | LOC | Purpose |
 |-------|-----|---------|
 | `ruvos-cli` | 2,472 | clap-based binary: 15 subcommands |
-| `ruvos-mcp` | 16,269 | JSON-RPC 2.0 MCP server + 52 tool handlers |
+| `ruvos-mcp` | 16,269 | JSON-RPC 2.0 MCP server + 60 tool handlers |
 | `ruvos-host` | 415 | `CliHost` trait + Claude Code / Codex CLI adapters |
 | `ruvos-plugin-host` | 565 | Plugin discovery (markdown + TOML), shell exec |
 | `ruvos-hooks` | 373 | 8 hook kinds + SONA bridge |
@@ -466,7 +466,7 @@ Plus **22 RuVector substrate crates** (HNSW, SONA, GOAP, redb store, `.rvf` cryp
 
 ## 🩺 Status
 
-**`v4.0.0-rc.1` — production-grade.** 53 MCP tools across 12 domains (including `ruvos_agent_exec`), 180 tests passing in ruvos-mcp, zero compiler/clippy warnings across the entire 30-crate workspace (standing zero-defect policy).
+**`v4.0.0-rc.1` — production-grade.** 60 MCP tools across 11 domains (including `ruvos_agent_exec`), 180 tests passing in ruvos-mcp, zero compiler/clippy warnings across the entire 30-crate workspace (standing zero-defect policy).
 
 **Honest scope notes:**
 - Vector ranking uses TF cosine similarity + HNSW + RuLake (real, working algorithms); neural embeddings are feature-hashing today — a provider API can be swapped in behind the same interface.
