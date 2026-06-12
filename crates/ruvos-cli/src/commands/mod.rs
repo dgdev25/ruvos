@@ -10,6 +10,7 @@ pub mod init;
 pub mod init_hooks;
 pub mod mcp;
 pub mod skills;
+pub mod status;
 
 /// Test-only: serialize tests that touch the process-global `RUVOS_HOME`
 /// env var (it is read by `ruvos_mcp::paths::data_root()` at call time, so
