@@ -29,6 +29,10 @@ sha2 = "0.10"
 hex = "0.4"
 uuid = { version = "1.10", features = ["v4", "serde"] }
 ruvos-cve-lite = { path = "../ruvos-cve-lite" }
+ruvos-plugin-host = { path = "../ruvos-plugin-host" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
+tar = "0.4"
+flate2 = "1.0"

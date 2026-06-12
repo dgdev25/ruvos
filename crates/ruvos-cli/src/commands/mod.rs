@@ -9,6 +9,7 @@ pub mod hook;
 pub mod init;
 pub mod init_hooks;
 pub mod mcp;
+pub mod plugin;
 pub mod skills;
 pub mod status;
 
