@@ -198,8 +198,9 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         ToolMetadata {
             name: "ruvos_agent_exec".to_string(),
             description: "Execute a list of typed ops (write_file/read_file/run_command/git_op) \
-                          directly in ruvos — closes Gaps 1-3. sandbox:true runs ops in a fresh \
-                          temp dir for OS-level isolation."
+                          directly in ruvos — closes Gaps 1-3. sandbox:true contains file ops to \
+                          a fresh temp dir (relative paths only; ../ escapes rejected). \
+                          run_command is NOT OS-isolated."
                 .to_string(),
             domain: "agent".to_string(),
         },

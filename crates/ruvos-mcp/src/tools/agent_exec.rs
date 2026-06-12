@@ -1,8 +1,10 @@
 //! Agent execution bridge — closes Gaps 1-3 (file write, shell exec, git).
 //!
 //! `ruvos_agent_exec` accepts a list of typed `ExecOp`s and runs them using
-//! `PluginExecutor` (tokio::process::Command).  With `sandbox: true` every op
-//! runs inside a fresh temp directory so nothing touches the host tree.
+//! `PluginExecutor` (tokio::process::Command).  With `sandbox: true` file ops
+//! are contained to a fresh temp directory: absolute paths and `..` escapes
+//! are rejected.  `run_command` executes real processes and is NOT OS-isolated
+//! — only its working directory is contained.
 //!
 //! ADR-017: `write_slot` / `read_slot` ops enable cross-agent file handoff
 //! within a swarm via ephemeral scratch slots scoped to a swarm ID.
@@ -67,7 +69,7 @@ impl ToolHandler for AgentExecHandler {
                 },
                 "sandbox": {
                     "type": "boolean",
-                    "description": "Run all ops inside a fresh temp directory (OS-level isolation)"
+                    "description": "Contain file ops to a fresh temp directory: paths must be relative; absolute paths and ../ escapes are rejected. NOTE: run_command executes real processes and is NOT OS-isolated — only its working directory is contained."
                 },
                 "working_dir": {
                     "type": "string",
@@ -166,9 +168,9 @@ async fn run_exec(params: Value) -> Result<Value> {
         );
 
         let result = if op_name == "parallel_group" {
-            run_parallel_group(&executor, op, base_cwd.as_deref(), i, &journal_dir).await
+            run_parallel_group(&executor, op, base_cwd.as_deref(), sandbox, i, &journal_dir).await
         } else {
-            execute_op(&executor, op, base_cwd.as_deref(), i).await
+            execute_op(&executor, op, base_cwd.as_deref(), sandbox, i).await
         };
         let status = if result["status"].as_str() == Some("error") {
             "failed"
@@ -296,6 +298,65 @@ async fn run_post_write_check(
     }
 }
 
+/// Resolve a caller-supplied path against the base directory.
+///
+/// In sandbox mode the result must stay inside `base`: absolute paths are
+/// rejected and `..` components may never traverse above the sandbox root
+/// (checked lexically so it also works for not-yet-existing files).
+fn resolve_path(
+    base_cwd: Option<&std::path::Path>,
+    path_str: &str,
+    sandbox: bool,
+) -> std::result::Result<PathBuf, String> {
+    use std::path::Component;
+    let p = std::path::Path::new(path_str);
+    let Some(base) = base_cwd else {
+        return Ok(p.to_path_buf());
+    };
+    if !sandbox {
+        return Ok(base.join(p));
+    }
+    if p.is_absolute() {
+        return Err(format!(
+            "sandbox violation: absolute path '{path_str}' not permitted (use a relative path)"
+        ));
+    }
+    let mut depth: i64 = 0;
+    for comp in p.components() {
+        match comp {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {}
+            Component::ParentDir => {
+                depth -= 1;
+                if depth < 0 {
+                    return Err(format!(
+                        "sandbox violation: path '{path_str}' escapes the sandbox directory"
+                    ));
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "sandbox violation: path '{path_str}' contains a non-relative component"
+                ))
+            }
+        }
+    }
+    Ok(base.join(p))
+}
+
+/// Resolve the working directory for a command op. In sandbox mode a
+/// caller-supplied `cwd` must stay inside the sandbox.
+fn resolve_cwd(
+    op: &Value,
+    base_cwd: Option<&std::path::Path>,
+    sandbox: bool,
+) -> std::result::Result<Option<PathBuf>, String> {
+    match op["cwd"].as_str() {
+        Some(cwd) => resolve_path(base_cwd, cwd, sandbox).map(Some),
+        None => Ok(base_cwd.map(|p| p.to_path_buf())),
+    }
+}
+
 /// Remove exec-journal directories older than 24 hours.
 fn purge_stale_journals() {
     let journal_root = crate::paths::data_root().join("exec-journal");
@@ -319,6 +380,7 @@ async fn execute_op(
     executor: &PluginExecutor,
     op: &Value,
     base_cwd: Option<&std::path::Path>,
+    sandbox: bool,
     index: usize,
 ) -> Value {
     let op_name = op["op"].as_str().unwrap_or("unknown");
@@ -330,10 +392,9 @@ async fn execute_op(
                 None => return op_error(index, op_name, "missing path"),
             };
             let content = op["content"].as_str().unwrap_or("");
-            let full_path: PathBuf = if let Some(base) = base_cwd {
-                base.join(path_str)
-            } else {
-                PathBuf::from(path_str)
+            let full_path: PathBuf = match resolve_path(base_cwd, path_str, sandbox) {
+                Ok(p) => p,
+                Err(e) => return op_error(index, op_name, &e),
             };
             if let Some(parent) = full_path.parent() {
                 if let Err(e) = std::fs::create_dir_all(parent) {
@@ -357,10 +418,9 @@ async fn execute_op(
                 Some(p) => p,
                 None => return op_error(index, op_name, "missing path"),
             };
-            let full_path: PathBuf = if let Some(base) = base_cwd {
-                base.join(path_str)
-            } else {
-                PathBuf::from(path_str)
+            let full_path: PathBuf = match resolve_path(base_cwd, path_str, sandbox) {
+                Ok(p) => p,
+                Err(e) => return op_error(index, op_name, &e),
             };
             match std::fs::read_to_string(&full_path) {
                 Ok(content) => json!({
@@ -387,10 +447,10 @@ async fn execute_op(
                         .collect()
                 })
                 .unwrap_or_default();
-            let cwd = op["cwd"]
-                .as_str()
-                .map(PathBuf::from)
-                .or_else(|| base_cwd.map(|p| p.to_path_buf()));
+            let cwd = match resolve_cwd(op, base_cwd, sandbox) {
+                Ok(c) => c,
+                Err(e) => return op_error(index, op_name, &e),
+            };
 
             let req = ExecutionRequest {
                 plugin_name: "agent_exec".to_string(),
@@ -420,10 +480,10 @@ async fn execute_op(
                 Some(g) => g,
                 None => return op_error(index, op_name, "missing git_op (add|commit|status|diff)"),
             };
-            let cwd = op["cwd"]
-                .as_str()
-                .map(PathBuf::from)
-                .or_else(|| base_cwd.map(|p| p.to_path_buf()));
+            let cwd = match resolve_cwd(op, base_cwd, sandbox) {
+                Ok(c) => c,
+                Err(e) => return op_error(index, op_name, &e),
+            };
 
             let cmd_args = match git_op {
                 "add" => {
@@ -558,10 +618,9 @@ async fn execute_op(
             };
             let new = op["new"].as_str().unwrap_or("");
             let expected = op["expected_replacements"].as_u64().unwrap_or(1) as usize;
-            let full_path: PathBuf = if let Some(base) = base_cwd {
-                base.join(path_str)
-            } else {
-                PathBuf::from(path_str)
+            let full_path: PathBuf = match resolve_path(base_cwd, path_str, sandbox) {
+                Ok(p) => p,
+                Err(e) => return op_error(index, op_name, &e),
             };
             let before = match std::fs::read_to_string(&full_path) {
                 Ok(s) => s,
@@ -626,8 +685,12 @@ async fn execute_op(
                 Some(d) => d,
                 None => return op_error(index, op_name, "missing dest"),
             };
+            // src may point at the host tree (read-only); dest is contained.
             let src_path = PathBuf::from(src);
-            let dest_path = PathBuf::from(dest);
+            let dest_path = match resolve_path(base_cwd, dest, sandbox) {
+                Ok(p) => p,
+                Err(e) => return op_error(index, op_name, &e),
+            };
             // Atomic install: cp to dest.tmp then rename.
             // This avoids "text file busy" when the destination binary is running.
             let tmp_path = dest_path.with_extension(format!("tmp_{}", std::process::id()));
@@ -687,10 +750,10 @@ async fn execute_op(
                     cargo_args.push(filter.to_string());
                 }
             }
-            let cwd = op["cwd"]
-                .as_str()
-                .map(PathBuf::from)
-                .or_else(|| base_cwd.map(|p| p.to_path_buf()));
+            let cwd = match resolve_cwd(op, base_cwd, sandbox) {
+                Ok(c) => c,
+                Err(e) => return op_error(index, op_name, &e),
+            };
             let req = ExecutionRequest {
                 plugin_name: "agent_exec".to_string(),
                 command: "cargo".to_string(),
@@ -755,6 +818,7 @@ async fn run_parallel_group(
     executor: &PluginExecutor,
     op: &Value,
     base_cwd: Option<&std::path::Path>,
+    sandbox: bool,
     index: usize,
     journal_dir: &std::path::Path,
 ) -> Value {
@@ -792,7 +856,7 @@ async fn run_parallel_group(
 
     let mut child_futs = Vec::with_capacity(child_ops.len());
     for (j, child_op) in child_ops.iter().enumerate() {
-        child_futs.push(execute_op(executor, child_op, base_cwd, j));
+        child_futs.push(execute_op(executor, child_op, base_cwd, sandbox, j));
     }
     let child_results = join_all(child_futs).await;
 
@@ -932,6 +996,88 @@ mod tests {
             written_path.contains(std::env::temp_dir().to_str().unwrap())
                 || written_path.contains("/tmp")
         );
+    }
+
+    #[tokio::test]
+    async fn sandbox_rejects_absolute_path() {
+        let _g = isolate();
+        let target = std::env::temp_dir().join("ruvos_sandbox_escape_test.txt");
+        let _ = std::fs::remove_file(&target);
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": target.to_str().unwrap(), "content": "escaped" },
+                ],
+                "sandbox": true
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], false);
+        assert!(result["results"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("sandbox violation"));
+        assert!(!target.exists(), "absolute path escaped the sandbox");
+    }
+
+    #[tokio::test]
+    async fn sandbox_rejects_parent_traversal() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": "a/../../escape.txt", "content": "escaped" },
+                ],
+                "sandbox": true
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], false);
+        assert!(result["results"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("escapes the sandbox"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_rejects_absolute_cwd_for_commands() {
+        let _g = isolate();
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "run_command", "cmd": "echo", "args": ["x"], "cwd": "/" },
+                ],
+                "sandbox": true
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], false);
+        assert!(result["results"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("sandbox violation"));
+    }
+
+    #[tokio::test]
+    async fn sandbox_allows_internal_parent_traversal() {
+        let _g = isolate();
+        // a/b/../c.txt stays inside the sandbox and must be permitted.
+        let result = AgentExecHandler
+            .execute(json!({
+                "ops": [
+                    { "op": "write_file", "path": "a/b/../c.txt", "content": "ok" },
+                    { "op": "read_file",  "path": "a/c.txt" },
+                ],
+                "sandbox": true
+            }))
+            .await
+            .unwrap();
+
+        assert_eq!(result["success"], true);
+        assert_eq!(result["results"][1]["content"], "ok");
     }
 
     #[tokio::test]
