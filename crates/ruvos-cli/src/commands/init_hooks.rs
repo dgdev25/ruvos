@@ -45,7 +45,8 @@ pub fn write_hook_bindings(settings_path: &Path, binary: &str) -> Result<()> {
     let mut root: Value = match std::fs::read_to_string(settings_path) {
         Ok(raw) => serde_json::from_str(&raw)
             .with_context(|| format!("{} is not valid JSON", settings_path.display()))?,
-        Err(_) => json!({}),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({}),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", settings_path.display())),
     };
 
     let hooks = root
@@ -81,10 +82,10 @@ pub fn write_hook_bindings(settings_path: &Path, binary: &str) -> Result<()> {
         arr.push(entry);
     }
 
-    if let Some(parent) = settings_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(settings_path, serde_json::to_string_pretty(&root)?)?;
+    ruvos_mcp::paths::atomic_write(
+        settings_path,
+        serde_json::to_string_pretty(&root)?.as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -142,5 +143,36 @@ mod tests {
         assert!(ruvos_entries >= 1);
         // idempotent: exactly one copy of each ruvos entry
         assert_eq!(pre.len(), 1 + ruvos_entries);
+    }
+
+    #[test]
+    fn invalid_json_errors_and_is_not_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".claude/settings.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{ not json").unwrap();
+
+        let err = write_hook_bindings(&path, "ruvos");
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("not valid JSON"));
+        // the broken file must be left byte-identical
+        assert_eq!(std::fs::read(&path).unwrap(), b"{ not json");
+    }
+
+    #[test]
+    fn wrong_type_hooks_field_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".claude/settings.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = r#"{"hooks": "oops"}"#;
+        std::fs::write(&path, original).unwrap();
+
+        let err = write_hook_bindings(&path, "ruvos");
+        assert!(err.is_err());
+        assert!(err
+            .unwrap_err()
+            .to_string()
+            .contains("hooks must be an object"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     }
 }

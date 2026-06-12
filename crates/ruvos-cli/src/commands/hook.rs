@@ -11,6 +11,21 @@ use ruvos_mcp::tools::handler::ToolHandler;
 use ruvos_mcp::tools::hooks::{HooksPostHandler, HooksPreHandler};
 use serde_json::{json, Value};
 
+/// Derive post-hook success: explicit top-level `success` wins; otherwise
+/// Claude Code PostToolUse events carry `tool_response.is_error`; default true.
+fn derive_success(event: &Value) -> bool {
+    event
+        .get("success")
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            event
+                .pointer("/tool_response/is_error")
+                .and_then(Value::as_bool)
+                .map(|e| !e)
+        })
+        .unwrap_or(true)
+}
+
 pub async fn run_hook(kind: &str, phase: &str, event: Value) -> Result<Value> {
     if !matches!(kind, "task" | "edit" | "command" | "session") {
         bail!("unknown hook kind '{kind}' (task|edit|command|session)");
@@ -22,13 +37,12 @@ pub async fn run_hook(kind: &str, phase: &str, event: Value) -> Result<Value> {
                 .await
         }
         "post" => {
+            let success = derive_success(&event);
             HooksPostHandler::new()
                 .execute(json!({
                     "kind": kind,
                     "payload": event,
-                    // The harness doesn't carry success; default true and let
-                    // the payload's exit/error fields inform learning.
-                    "success": event.get("success").and_then(|v| v.as_bool()).unwrap_or(true),
+                    "success": success,
                 }))
                 .await
         }
@@ -68,6 +82,26 @@ mod tests {
         .await
         .unwrap();
         assert!(out.get("status").is_some());
+    }
+
+    #[test]
+    fn derive_success_explicit_false() {
+        assert!(!derive_success(&serde_json::json!({"success": false})));
+    }
+
+    #[test]
+    fn derive_success_from_tool_response_is_error() {
+        assert!(!derive_success(
+            &serde_json::json!({"tool_response": {"is_error": true}})
+        ));
+        assert!(derive_success(
+            &serde_json::json!({"tool_response": {"is_error": false}})
+        ));
+    }
+
+    #[test]
+    fn derive_success_defaults_true() {
+        assert!(derive_success(&serde_json::json!({})));
     }
 
     #[tokio::test]
