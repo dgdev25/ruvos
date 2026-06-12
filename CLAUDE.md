@@ -128,11 +128,11 @@ Notes learned the hard way:
 
 **Enforced at CI time:**
 
-1. **File size limit: all `.rs` files ≤ 500 lines.** Custom `--max-lines 500` check in CI. No exceptions. (Reason: the current codebase has files like `commands/hooks.ts` with 5,331 LOC — this is the contract to prevent that.)
+1. **File size limit: all `.rs` files ≤ 500 lines, ratcheted (ADR-037).** Enforced by `scripts/check-max-lines.sh` in CI and `just ci`. 15 pre-existing violators are grandfathered at their 2026-06-12 line counts — they may shrink but never grow; new files get no exceptions. (Reason: v3 had files like `commands/hooks.ts` with 5,331 LOC — this is the contract to prevent that.)
 
-2. **Crate budget: ≤30k LOC of new Rust total.** If a crate exceeds its per-crate budget, it's a smell that you're not using RuVector's substrate.
+2. **Crate budgets (re-baselined in ADR-037).** ruvos-mcp is hard-capped at 26k LOC; the other crates keep their original budgets. Growth must come from substrate delegation or new ADR-gated crates, not accretion.
 
-3. **One tool domain per scope.** If a tool isn't in the 20-tool list, it requires an ADR explaining which tool it replaces or what domain gap it fills. No "sneaking in" tools during phases.
+3. **One tool domain per scope.** The binding tool surface is `docs/contracts/contract-manifest.json` (60 tools as of ADR-036; stopping budget 80 ever). Any new tool requires an ADR explaining which tool it replaces or what domain gap it fills, plus a manifest regeneration (`just contracts-generate`). No "sneaking in" tools during phases.
 
 4. **Plugin inventory:** 11 survivors out of 51 total. Provisional keep list in scope-ledger.md §5. Any plugin not on the list is deleted (not deferred).
 

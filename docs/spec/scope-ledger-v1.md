@@ -86,7 +86,9 @@ Naming: **`<domain>.<verb>`** (dotted, lowercase). One namespace per domain. No 
 |---|---|---|---|
 | 20 | `workflow.run` | Execute an orchestration template (`feature` / `bugfix` / `refactor` / `security`) — tri-mode `<host>:<archetype>:<task>` | `ruflo-host` + `ruflo-hooks` |
 
-**Total: 20 tools.** Stopping budget: 80 ever. Any new tool requires an ADR documenting which existing tool it's replacing or what domain gap it fills.
+**Total: 20 tools (v1 baseline).** Stopping budget: 80 ever. Any new tool requires an ADR documenting which existing tool it's replacing or what domain gap it fills.
+
+> **Live registry (ADR-037):** the list above is the historical v1 baseline. The binding, machine-checked source of truth for the *current* tool surface is `docs/contracts/contract-manifest.json` (60 tools as of ADR-036, each added via ADR-001…036; regenerate with `just contracts-generate`, verify with `just contracts-check`).
 
 ### What's deleted vs the current 323
 

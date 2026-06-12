@@ -30,4 +30,7 @@ contracts-check:
 smoke:
     cargo test -p ruvos-mcp --test integration_test -- --nocapture
 
-ci: fmt clippy test doctor contracts-check smoke
+max-lines:
+    ./scripts/check-max-lines.sh
+
+ci: fmt clippy test doctor contracts-check max-lines smoke

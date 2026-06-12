@@ -58,5 +58,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo run -p ruvos-cli -- contracts check docs/contracts/contract-manifest.json
+      - run: ./scripts/check-max-lines.sh
       - run: RUVOS_HOME="$RUNNER_TEMP/ruvos" cargo run -p ruvos-cli -- doctor --strict
       - run: cargo test -p ruvos-mcp --test integration_test -- --nocapture
