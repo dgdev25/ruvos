@@ -32,6 +32,10 @@ enum Commands {
         /// Skip creating the .ruvos/ data directory
         #[arg(long)]
         no_data_dir: bool,
+        /// Also write .claude/settings.json hook bindings (PreToolUse/PostToolUse/
+        /// SessionStart/Stop -> ruvos hook) so hooks fire mechanically
+        #[arg(long)]
+        hooks: bool,
     },
     /// Run a local health/invariant check.
     Doctor {
@@ -299,8 +303,9 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             force,
             no_data_dir,
+            hooks,
         } => {
-            ruvos_cli::commands::init::init(name, dry_run, force, no_data_dir).await?;
+            ruvos_cli::commands::init::init(name, dry_run, force, no_data_dir, hooks).await?;
         }
         Commands::Doctor { json, strict } => {
             ruvos_cli::commands::doctor::doctor(json, strict).await?;

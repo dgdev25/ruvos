@@ -98,6 +98,7 @@ pub async fn init(
     dry_run: bool,
     force: bool,
     no_data_dir: bool,
+    hooks: bool,
 ) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let project_name = name.unwrap_or_else(|| {
@@ -145,6 +146,21 @@ pub async fn init(
     } else {
         false
     };
+
+    // --- optional harness hook wiring ---
+    if hooks {
+        let settings = cwd.join(".claude/settings.json");
+        if dry_run {
+            println!(
+                "[dry-run] Would merge ruvos hook bindings into {}",
+                settings.display()
+            );
+        } else {
+            crate::commands::init_hooks::write_hook_bindings(&settings, "ruvos")?;
+            println!("✓ Hook bindings written to {}", settings.display());
+            println!("  (restart Claude Code or run /hooks to reload)");
+        }
+    }
 
     // --- language hint ---
     if let Some(hint) = kind.hint() {
