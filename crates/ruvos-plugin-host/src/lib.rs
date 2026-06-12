@@ -9,6 +9,7 @@
 pub mod discover;
 pub mod error;
 pub mod executor;
+pub mod install;
 pub mod manifest;
 pub mod parser;
 pub mod types;
