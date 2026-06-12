@@ -20,8 +20,59 @@ struct Cli {
     command: Commands,
 }
 
+/// Parse `KEY=VALUE` pairs from `.env` file contents.
+///
+/// Minimal, dependency-free: supports `KEY=VALUE`, an optional `export ` prefix,
+/// `#` comments, blank lines, and matching single/double quotes around the
+/// value. Returns pairs in file order; application order (and skipping already-set
+/// vars) is the caller's job.
+fn parse_dotenv(content: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some((key, val)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        let val = val.trim();
+        let val = val
+            .strip_prefix('"')
+            .and_then(|v| v.strip_suffix('"'))
+            .or_else(|| val.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+            .unwrap_or(val);
+        out.push((key.to_string(), val.to_string()));
+    }
+    out
+}
+
+/// Load `.env` from the current directory into the process environment.
+/// Real environment variables always win — `.env` only fills in what's unset —
+/// so secrets exported by the shell or the MCP launcher take precedence.
+fn load_dotenv() {
+    let Ok(content) = std::fs::read_to_string(".env") else {
+        return;
+    };
+    for (key, val) in parse_dotenv(&content) {
+        if std::env::var_os(&key).is_none() {
+            std::env::set_var(key, val);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Load .env before anything reads the environment (e.g. OPENROUTER_API_KEY
+    // for the LLM router, RUST_LOG for tracing). Safe here: single-threaded
+    // startup, before any tokio worker or tracing subscriber exists.
+    load_dotenv();
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -230,5 +281,43 @@ async fn wait_for_shutdown_signal() {
         tokio::signal::ctrl_c()
             .await
             .expect("failed to listen for ctrl-c");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_dotenv;
+
+    #[test]
+    fn parses_pairs_comments_quotes_and_export() {
+        let env = r#"
+# a comment
+OPENROUTER_API_KEY=sk-or-abc123
+export RUVOS_OPENROUTER_MODEL="anthropic/claude-sonnet-4-6"
+QUOTED='single quoted'
+  SPACED = value with spaces
+
+NOEQ_LINE_IGNORED
+=novalue_key_ignored
+"#;
+        let pairs = parse_dotenv(env);
+        assert_eq!(
+            pairs,
+            vec![
+                ("OPENROUTER_API_KEY".to_string(), "sk-or-abc123".to_string()),
+                (
+                    "RUVOS_OPENROUTER_MODEL".to_string(),
+                    "anthropic/claude-sonnet-4-6".to_string()
+                ),
+                ("QUOTED".to_string(), "single quoted".to_string()),
+                ("SPACED".to_string(), "value with spaces".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_input_yields_no_pairs() {
+        assert!(parse_dotenv("").is_empty());
+        assert!(parse_dotenv("\n# only a comment\n").is_empty());
     }
 }
