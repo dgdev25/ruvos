@@ -231,11 +231,39 @@ pub fn check(path: PathBuf) -> anyhow::Result<()> {
         std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     if normalize_json(&rendered)? != normalize_json(&actual)? {
         anyhow::bail!(
-            "contract manifest drift detected: {} does not match the live registry",
+            "contract manifest drift detected: {} does not match the live registry\n{}\
+             run `ruvos contracts generate --write {}` to regenerate",
+            path.display(),
+            describe_drift(&expected, &actual),
             path.display()
         );
     }
     Ok(())
+}
+
+/// Human-readable summary of which tools were added/removed relative to the
+/// on-disk manifest, so drift failures don't require manual diffing.
+fn describe_drift(expected: &ContractManifest, actual_raw: &str) -> String {
+    let Ok(actual) = serde_json::from_str::<ContractManifest>(actual_raw) else {
+        return "  (on-disk manifest is not parseable as a ContractManifest)\n".to_string();
+    };
+    let expected_names: std::collections::BTreeSet<&str> =
+        expected.tools.iter().map(|t| t.name.as_str()).collect();
+    let actual_names: std::collections::BTreeSet<&str> =
+        actual.tools.iter().map(|t| t.name.as_str()).collect();
+    let mut out = String::new();
+    for name in expected_names.difference(&actual_names) {
+        out.push_str(&format!(
+            "  + {name} (in live registry, missing from manifest)\n"
+        ));
+    }
+    for name in actual_names.difference(&expected_names) {
+        out.push_str(&format!("  - {name} (in manifest, not in live registry)\n"));
+    }
+    if out.is_empty() {
+        out.push_str("  (tool names match; metadata, archetypes, hooks, or templates differ)\n");
+    }
+    out
 }
 
 fn normalize_json(raw: &str) -> anyhow::Result<String> {

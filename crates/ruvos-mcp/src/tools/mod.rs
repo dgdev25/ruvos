@@ -40,12 +40,18 @@ pub struct ToolMetadata {
     pub domain: String,
 }
 
-/// Create a new registry with all core tools + test tools registered.
+/// Create a new registry with all public tools registered.
+///
+/// The `ruvos_echo_test` tool is only registered in unit tests or when
+/// `RUVOS_ENABLE_TEST_TOOLS` is set — it must never appear in a production
+/// `tools/list`, and it is deliberately absent from `tool_registry()` and the
+/// contract manifest.
 pub fn create_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
-    // Register test tool
-    registry.register(Box::new(echo::EchoHandler));
+    if cfg!(test) || std::env::var("RUVOS_ENABLE_TEST_TOOLS").is_ok() {
+        registry.register(Box::new(echo::EchoHandler));
+    }
 
     // Register compression tools
     registry.register(Box::new(compress::CompressRunHandler));
@@ -493,8 +499,27 @@ mod integration_tests {
     #[test]
     fn test_full_registry_creation() {
         let registry = create_registry();
-        // All public tools plus the registry's test echo tool.
+        // All public tools plus the test echo tool (registered under cfg!(test)).
         assert_eq!(registry.tool_count(), public_tool_count() + 1);
+    }
+
+    /// The registered handlers and the hand-maintained `tool_registry()`
+    /// metadata must describe the same tool surface — a handler added without
+    /// metadata (or vice versa) is invisible to the contract system.
+    #[test]
+    fn handler_registry_matches_tool_metadata() {
+        let registry = create_registry();
+        let mut handlers: Vec<String> = registry
+            .list_tools()
+            .into_iter()
+            .filter(|n| n != "ruvos_echo_test")
+            .collect();
+        handlers.sort();
+        let metadata: Vec<String> = tool_registry().into_iter().map(|t| t.name).collect();
+        assert_eq!(
+            handlers, metadata,
+            "create_registry() handlers and tool_registry() metadata have drifted"
+        );
     }
 
     #[test]

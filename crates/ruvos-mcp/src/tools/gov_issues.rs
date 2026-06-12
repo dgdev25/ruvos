@@ -72,10 +72,10 @@ pub struct GovIssueCreateHandler;
 
 impl ToolHandler for GovIssueCreateHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_issue_create"
+        "issue_create"
     }
     fn domain(&self) -> &'static str {
-        "gov_issues"
+        "gov"
     }
     fn schema(&self) -> Value {
         json!({
@@ -126,10 +126,10 @@ pub struct GovIssueListHandler;
 
 impl ToolHandler for GovIssueListHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_issue_list"
+        "issue_list"
     }
     fn domain(&self) -> &'static str {
-        "gov_issues"
+        "gov"
     }
     fn schema(&self) -> Value {
         json!({
@@ -170,10 +170,10 @@ pub struct GovIssueShowHandler;
 
 impl ToolHandler for GovIssueShowHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_issue_show"
+        "issue_show"
     }
     fn domain(&self) -> &'static str {
-        "gov_issues"
+        "gov"
     }
     fn schema(&self) -> Value {
         json!({
@@ -206,10 +206,10 @@ pub struct GovIssueCloseHandler;
 
 impl ToolHandler for GovIssueCloseHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_issue_close"
+        "issue_close"
     }
     fn domain(&self) -> &'static str {
-        "gov_issues"
+        "gov"
     }
     fn schema(&self) -> Value {
         json!({
@@ -248,10 +248,10 @@ pub struct GovIssueSearchHandler;
 
 impl ToolHandler for GovIssueSearchHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_issue_search"
+        "issue_search"
     }
     fn domain(&self) -> &'static str {
-        "gov_issues"
+        "gov"
     }
     fn schema(&self) -> Value {
         json!({
@@ -284,10 +284,10 @@ pub struct GovIssueDepHandler;
 
 impl ToolHandler for GovIssueDepHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_issue_dep"
+        "issue_dep"
     }
     fn domain(&self) -> &'static str {
-        "gov_issues"
+        "gov"
     }
     fn schema(&self) -> Value {
         json!({
@@ -342,20 +342,12 @@ mod tests {
 
     #[test]
     fn handlers_registered_with_correct_name_and_domain() {
-        check(
-            "ruvos_gov_issue_create",
-            "gov_issues",
-            &GovIssueCreateHandler,
-        );
-        check("ruvos_gov_issue_list", "gov_issues", &GovIssueListHandler);
-        check("ruvos_gov_issue_show", "gov_issues", &GovIssueShowHandler);
-        check("ruvos_gov_issue_close", "gov_issues", &GovIssueCloseHandler);
-        check(
-            "ruvos_gov_issue_search",
-            "gov_issues",
-            &GovIssueSearchHandler,
-        );
-        check("ruvos_gov_issue_dep", "gov_issues", &GovIssueDepHandler);
+        check("issue_create", "gov", &GovIssueCreateHandler);
+        check("issue_list", "gov", &GovIssueListHandler);
+        check("issue_show", "gov", &GovIssueShowHandler);
+        check("issue_close", "gov", &GovIssueCloseHandler);
+        check("issue_search", "gov", &GovIssueSearchHandler);
+        check("issue_dep", "gov", &GovIssueDepHandler);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
   "version": "4.0.0-rc.1",
-  "tool_count": 53,
+  "tool_count": 60,
   "tools": [
     {
       "name": "ruvos_agent_exec",
@@ -43,6 +43,36 @@
       "description": "Doctor / status across substrate, hosts, MCP, daemon"
     },
     {
+      "name": "ruvos_gov_issue_close",
+      "domain": "gov_issues",
+      "description": "Close an issue with optional reason note"
+    },
+    {
+      "name": "ruvos_gov_issue_create",
+      "domain": "gov_issues",
+      "description": "Create a beads_rust issue in the ruvos data root"
+    },
+    {
+      "name": "ruvos_gov_issue_dep",
+      "domain": "gov_issues",
+      "description": "Add a dependency between two issues"
+    },
+    {
+      "name": "ruvos_gov_issue_list",
+      "domain": "gov_issues",
+      "description": "List issues with optional status/priority filters"
+    },
+    {
+      "name": "ruvos_gov_issue_search",
+      "domain": "gov_issues",
+      "description": "Full-text search across issues"
+    },
+    {
+      "name": "ruvos_gov_issue_show",
+      "domain": "gov_issues",
+      "description": "Show full issue details and comment history"
+    },
+    {
       "name": "ruvos_gov_replay",
       "domain": "gov",
       "description": "Replay a session or task trace from events and artifacts"
@@ -51,6 +81,11 @@
       "name": "ruvos_gov_report",
       "domain": "gov",
       "description": "Generate a governance report with quality and benchmark signals"
+    },
+    {
+      "name": "ruvos_gov_sprint_summary",
+      "domain": "gov",
+      "description": "Aggregate sprint metrics from swarm state and event log"
     },
     {
       "name": "ruvos_gov_swarm_history",

@@ -85,10 +85,7 @@ mod tests {
 
     #[test]
     fn parse_severity_accepts_valid_values() {
-        assert_eq!(
-            parse_severity("high", "--fail-on").unwrap(),
-            Severity::High
-        );
+        assert_eq!(parse_severity("high", "--fail-on").unwrap(), Severity::High);
     }
 
     #[test]

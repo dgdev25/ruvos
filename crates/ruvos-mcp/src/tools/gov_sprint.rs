@@ -19,7 +19,7 @@ pub struct GovSprintSummaryHandler;
 
 impl ToolHandler for GovSprintSummaryHandler {
     fn name(&self) -> &'static str {
-        "ruvos_gov_sprint_summary"
+        "sprint_summary"
     }
     fn domain(&self) -> &'static str {
         "gov"
