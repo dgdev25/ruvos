@@ -271,7 +271,8 @@ pub fn tool_registry() -> Vec<ToolMetadata> {
         },
         ToolMetadata {
             name: "ruvos_plugin_invoke".to_string(),
-            description: "Run a plugin command (shell exec via tokio)".to_string(),
+            description: "Run a plugin command via its frontmatter-declared exec entrypoint"
+                .to_string(),
             domain: "plugin".to_string(),
         },
         // Gov (11) + gov_issues (6) + gov_sprint (1) = 18

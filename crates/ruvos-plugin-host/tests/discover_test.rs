@@ -83,3 +83,49 @@ This is a test agent.
         "A test agent for discovery"
     );
 }
+
+#[test]
+fn test_discover_command_with_exec_entrypoint() {
+    let temp_dir = TempDir::new().expect("create temp dir");
+    let (plugin_dir, _manifest) = create_test_plugin_dir(&temp_dir, "cmd-plugin");
+
+    let commands_dir = plugin_dir.join("commands");
+    fs::create_dir_all(&commands_dir).expect("create commands dir");
+
+    let with_exec = r#"---
+name: "greet"
+description: "Echo a greeting"
+exec: "echo"
+args:
+  - "hello"
+---
+# greet
+"#;
+    fs::write(commands_dir.join("greet.md"), with_exec).expect("write command file");
+
+    let without_exec = r#"---
+name: "noop"
+description: "Declares no entrypoint"
+---
+# noop
+"#;
+    fs::write(commands_dir.join("noop.md"), without_exec).expect("write command file");
+
+    let discoverer = PluginDiscoverer;
+    let plugins = discoverer
+        .discover_in_directory(temp_dir.path())
+        .expect("discovery failed");
+
+    assert_eq!(plugins.len(), 1);
+    let mut commands = plugins[0].commands.clone();
+    commands.sort_by(|a, b| a.name.cmp(&b.name));
+    assert_eq!(commands.len(), 2);
+
+    assert_eq!(commands[0].name, "greet");
+    assert_eq!(commands[0].exec.as_deref(), Some("echo"));
+    assert_eq!(commands[0].exec_args, vec!["hello".to_string()]);
+
+    assert_eq!(commands[1].name, "noop");
+    assert_eq!(commands[1].exec, None);
+    assert!(commands[1].exec_args.is_empty());
+}

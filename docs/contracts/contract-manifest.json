@@ -185,7 +185,7 @@
     {
       "name": "ruvos_plugin_invoke",
       "domain": "plugin",
-      "description": "Run a plugin command (shell exec via tokio)"
+      "description": "Run a plugin command via its frontmatter-declared exec entrypoint"
     },
     {
       "name": "ruvos_plugin_list",

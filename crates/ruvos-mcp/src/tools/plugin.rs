@@ -65,8 +65,8 @@ impl ToolHandler for PluginListHandler {
                 }
             }
 
-            // 3. $RUFLO_HOME/plugins/
-            if let Ok(ruvos_home) = std::env::var("RUFLO_HOME") {
+            // 3. $RUVOS_HOME/plugins/
+            if let Ok(ruvos_home) = std::env::var("RUVOS_HOME") {
                 let ruvos_plugins = Path::new(&ruvos_home).join("plugins");
                 if let Ok(plugins) = discoverer.discover_in_directory(&ruvos_plugins) {
                     all_plugins.extend(plugins);
@@ -180,22 +180,40 @@ impl ToolHandler for PluginInvokeHandler {
                 })
                 .unwrap_or_default();
 
-            // Security: Validate command exists in plugin manifest before execution
-            let plugin_found = validate_command_in_plugin(&plugin_name, &command).await;
-            if let Err(e) = plugin_found {
+            // Security: resolve the command to its plugin-declared entrypoint.
+            // The caller-supplied command name only selects a command *defined
+            // by the plugin* — what executes is the `exec:` declared in the
+            // command's frontmatter, never a $PATH binary named by the caller.
+            let (plugin_dir, cmd_meta) = match find_plugin_command(&plugin_name, &command).await {
+                Ok(found) => found,
+                Err(e) => {
+                    return Ok(json!({
+                        "status": 1,
+                        "stdout": "",
+                        "stderr": e.message(),
+                    }))
+                }
+            };
+            let Some(exec) = cmd_meta.exec else {
                 return Ok(json!({
                     "status": 1,
                     "stdout": "",
-                    "stderr": e.message(),
+                    "stderr": format!(
+                        "Command '{}' in plugin '{}' does not declare an 'exec' entrypoint in \
+                         its frontmatter and cannot be invoked",
+                        command, plugin_name
+                    ),
                 }));
-            }
+            };
+            let mut full_args = cmd_meta.exec_args;
+            full_args.extend(args);
 
             let executor = create_executor();
             let request = ExecutionRequest {
                 plugin_name,
-                command,
-                args,
-                cwd: None,
+                command: exec,
+                args: full_args,
+                cwd: Some(plugin_dir),
             };
 
             match executor.execute(&request).await {
@@ -214,9 +232,15 @@ impl ToolHandler for PluginInvokeHandler {
     }
 }
 
-/// Validates that a command exists in a plugin's manifest.
-/// Searches in standard plugin locations and returns an error if not found.
-async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<()> {
+/// Find a plugin command across the standard search paths and return the
+/// plugin directory plus the command's declared metadata.
+async fn find_plugin_command(
+    plugin_name: &str,
+    command: &str,
+) -> Result<(
+    std::path::PathBuf,
+    ruvos_plugin_host::types::CommandMetadata,
+)> {
     let discoverer = create_discoverer();
 
     // Locations to search for plugins
@@ -230,7 +254,7 @@ async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<
             }
         },
         {
-            if let Ok(ruvos_home) = std::env::var("RUFLO_HOME") {
+            if let Ok(ruvos_home) = std::env::var("RUVOS_HOME") {
                 Path::new(&ruvos_home).join("plugins")
             } else {
                 Path::new("./.ruvos/plugins").to_path_buf()
@@ -241,24 +265,17 @@ async fn validate_command_in_plugin(plugin_name: &str, command: &str) -> Result<
     for path in search_paths {
         if let Ok(plugins) = discoverer.discover_in_directory(&path) {
             if let Some(plugin) = plugins.iter().find(|p| p.name == plugin_name) {
-                // Found the plugin, now check if command is in its commands list
-                if plugin
-                    .commands
-                    .iter()
-                    .any(|cmd_meta| cmd_meta.name == command)
-                {
-                    return Ok(());
-                } else {
-                    // Plugin found but command not in manifest
-                    let available_commands: Vec<&str> =
-                        plugin.commands.iter().map(|c| c.name.as_str()).collect();
-                    return Err(RuvosError::ValidationError(format!(
-                        "Command '{}' not found in plugin '{}'. Available commands: {}",
-                        command,
-                        plugin_name,
-                        available_commands.join(", ")
-                    )));
+                if let Some(cmd_meta) = plugin.commands.iter().find(|c| c.name == command) {
+                    return Ok((plugin.path.clone(), cmd_meta.clone()));
                 }
+                let available_commands: Vec<&str> =
+                    plugin.commands.iter().map(|c| c.name.as_str()).collect();
+                return Err(RuvosError::ValidationError(format!(
+                    "Command '{}' not found in plugin '{}'. Available commands: {}",
+                    command,
+                    plugin_name,
+                    available_commands.join(", ")
+                )));
             }
         }
     }

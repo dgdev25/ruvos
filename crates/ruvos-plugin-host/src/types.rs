@@ -60,6 +60,15 @@ pub struct SkillMetadata {
 pub struct CommandMetadata {
     pub name: String,
     pub description: String,
+    /// Executable the command runs, declared in the command markdown's
+    /// frontmatter (`exec:`). Commands without a declared entrypoint cannot
+    /// be invoked — the markdown name alone never selects a $PATH binary.
+    #[serde(default)]
+    pub exec: Option<String>,
+    /// Fixed leading arguments declared in frontmatter (`args:`); caller
+    /// arguments are appended after these.
+    #[serde(default)]
+    pub exec_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

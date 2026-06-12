@@ -88,15 +88,50 @@ impl PluginDiscoverer {
             })
     }
 
-    /// Load command metadata from the commands/ directory.
+    /// Load command metadata from the commands/ directory, including the
+    /// declared `exec` entrypoint and fixed `args` from frontmatter.
     fn load_commands(&self, plugin_dir: &Path) -> Result<Vec<CommandMetadata>> {
-        self.load_metadata_from_dir(plugin_dir, "commands")
-            .and_then(|items| {
-                items
-                    .into_iter()
-                    .map(|(name, description)| Ok(CommandMetadata { name, description }))
-                    .collect()
-            })
+        let commands_dir = plugin_dir.join("commands");
+        if !commands_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let mut commands = Vec::new();
+        for entry in fs::read_dir(&commands_dir).map_err(PluginError::Io)? {
+            let entry = entry.map_err(PluginError::Io)?;
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                continue;
+            }
+            let Ok(content) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(meta) = parse_frontmatter(&content) else {
+                continue;
+            };
+            let exec = meta
+                .metadata
+                .get("exec")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let exec_args = meta
+                .metadata
+                .get("args")
+                .and_then(|v| v.as_sequence())
+                .map(|seq| {
+                    seq.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            commands.push(CommandMetadata {
+                name: meta.name,
+                description: meta.description,
+                exec,
+                exec_args,
+            });
+        }
+        Ok(commands)
     }
 
     /// Load metadata from a subdirectory containing markdown files with frontmatter.
