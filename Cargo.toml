@@ -1,10 +1,15 @@
 [workspace]
 resolver = "2"
-# Integrated workspace: 6 rUvOS crates + curated RuVector substrate.
-# Held back (NOT members, intentionally): runtime-target crates that need special
-# toolchains (rvf-wasm, rvf-solver-wasm, rvf-ebpf, rvf-node, rvf-kernel), the local
-# LLM serving runtime (ruvllm — pulls candle/hf-hub; deferred to v2 per the v1
-# no-local-inference decision), and rvf-adapters (a folder of external-system adapters).
+# Integrated workspace: rUvOS crates + the substrate crates they actually consume.
+# Held back (NOT members, intentionally):
+# - runtime-target crates needing special toolchains (rvf-wasm, rvf-solver-wasm,
+#   rvf-ebpf, rvf-node, rvf-kernel), ruvllm (candle/hf-hub; deferred to v2),
+#   rvf-adapters (external-system adapters)
+# - crates with no member consumers, removed from CI per the audit of 2026-06-12
+#   (delete-not-defer; re-add when a member actually depends on them):
+#   mcp-brain, ruvector-cluster, ruvector-math, ruvector-raft,
+#   ruvector-replication, ruvector-router-core, rvf-federation, rvf-index,
+#   rvf-cli, rvf-import, rvf-quant, rvf-runtime, rvf-manifest, rvf-wire
 members = [
     "crates/ruvos-compress",
     "crates/ruvos-cve-lite",
@@ -14,22 +19,13 @@ members = [
     "crates/ruvos-plugin-host",
     "crates/ruvos-hooks",
     "crates/ruvos-session",
-    # 9 Essential RuVector crates (Phases 2-5)
-    "substrate/mcp-brain",
+    # Vector substrate
     "substrate/ruvector-core",
-    "substrate/ruvector-math",
     "substrate/sona",
-    "substrate/rvf-types",
-    "substrate/rvf-wire",
-    "substrate/rvf-manifest",
-    "substrate/rvf-crypto",
-    "substrate/rvf-cli",
-    # 9 Optional RuVector crates (Phase 5+)
     "substrate/ruvector-rabitq",
-    "substrate/rvf-quant",
-    "substrate/rvf-index",
-    "substrate/rvf-runtime",
-    "substrate/rvf-import",
+    # .rvf container types + signing (consumed by ruvos-session / ruvos-store)
+    "substrate/rvf-types",
+    "substrate/rvf-crypto",
     # Integrated from rUvnet ecosystem (self-contained, zero external refs)
     "substrate/rulake",
     "substrate/ruv-swarm-transport",
@@ -43,14 +39,6 @@ members = [
     "substrate/ruvos-store",
     # Predicate-agnostic filtered HNSW (ACORN) — native, no external inference
     "substrate/ruvector-acorn",
-    # Vector DB + neural routing inference engine (native)
-    "substrate/ruvector-router-core",
-    # Distributed clustering / consensus / replication (native, tokio-based)
-    "substrate/ruvector-cluster",
-    "substrate/ruvector-raft",
-    "substrate/ruvector-replication",
-    # Federated transfer learning — PII strip + differential privacy (native)
-    "substrate/rvf-federation",
     # Goal-Oriented Action Planning (A*) — extracted from ARCADIA (ADR-004)
     "substrate/ruvos-goap",
     # Lean conditional-edge DAG executor — modeled on graph-flow (ADR-007)
