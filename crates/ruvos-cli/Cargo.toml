@@ -7,6 +7,17 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[lib]
+# The lib has zero doc examples. Running its (empty) doctest harness under a
+# combined `cargo test --workspace` invocation trips a cargo workspace-doctest
+# bug: rustdoc resolves ruvos-mcp's transitive deps from the shared target
+# deps/ dir, picks a cfg(test) variant, and fails with E0463 on ruvos_mcp —
+# even though the rlib exists and `cargo test --workspace --doc` passes alone.
+# ruvos-cli is the only ruvos-mcp dependent, so disabling its empty doctest
+# harness makes `cargo test --workspace` clean. Re-enable if real doctests are
+# added here.
+doctest = false
+
 [[bin]]
 name = "ruvos"
 path = "src/main.rs"
