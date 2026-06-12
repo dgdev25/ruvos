@@ -7,6 +7,7 @@ pub mod doctor;
 pub mod eval;
 pub mod hook;
 pub mod init;
+pub mod init_hooks;
 pub mod mcp;
 pub mod skills;
 
