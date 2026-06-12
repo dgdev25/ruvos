@@ -20,6 +20,10 @@ ruvos_hooks_pre  kind=task  payload={"prompt": "<your task description>"}
 Use the returned `swarm_id` for all subsequent `ruvos_swarm_assign` calls.
 Pass `auto_swarm: false` for single-file fixes.
 
+If `.claude/settings.json` hook bindings are installed (`ruvos init --hooks`),
+edit/command/session pre/post hooks fire automatically — do not call them
+manually. Task hooks (`ruvos_hooks_pre kind=task`) must still be called.
+
 | Situation | Tool |
 |-----------|------|
 | Save a decision or pattern for future sessions | `ruvos_memory_store` / `ruvos_memory_search` |
