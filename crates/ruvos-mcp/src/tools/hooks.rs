@@ -9,6 +9,33 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// Task-type tag under which `hooks_post` work is persisted in the durable
+/// task queue, and replayed by `replay_hooks_post_task` after a crash.
+pub const HOOKS_POST_TASK_TYPE: &str = "hooks_post";
+
+/// Re-execute a persisted `hooks_post` task payload (crash recovery path).
+/// The payload shape matches what `HooksPostHandler` persists on enqueue.
+pub async fn replay_hooks_post_task(payload: Value) -> std::result::Result<Value, String> {
+    let kind = match payload["kind"].as_str() {
+        Some("task") => HookKind::Task,
+        Some("edit") => HookKind::Edit,
+        Some("command") => HookKind::Command,
+        Some("session") => HookKind::Session,
+        other => return Err(format!("unknown hook kind in persisted task: {other:?}")),
+    };
+    let hook_payload = payload["payload"].clone();
+    let outcome = HookOutcome {
+        success: payload["outcome"]["success"].as_bool().unwrap_or(false),
+        message: payload["outcome"]["message"].as_str().map(String::from),
+        metadata: payload["outcome"]["metadata"].clone(),
+    };
+    HookDispatcher::new()
+        .dispatch_post(kind, hook_payload, outcome)
+        .await
+        .map(|r| json!({"status": r.status}))
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookPayload {
     pub kind: String,
@@ -470,11 +497,24 @@ impl ToolHandler for HooksPostHandler {
             };
 
             if !flush {
-                // ADR-029: fire-and-forget via task queue — does not block MCP path.
+                // ADR-029: fire-and-forget via the durable task queue — does
+                // not block the MCP path, and survives a crash: the persisted
+                // payload is replayed by recover_pending() at next startup.
                 let task_id_str = kind_str.to_string();
                 let queue = crate::task_queue::TaskQueue::new();
-                let task = crate::task_queue::QueuedTask::new(
+                let durable_payload = json!({
+                    "kind": kind_str,
+                    "payload": payload,
+                    "outcome": {
+                        "success": outcome.success,
+                        "message": outcome.message,
+                        "metadata": outcome.metadata,
+                    },
+                });
+                let task = crate::task_queue::QueuedTask::durable(
                     format!("hooks.post.{kind_str}"),
+                    HOOKS_POST_TASK_TYPE,
+                    durable_payload,
                     move || {
                         let d = dispatcher.clone();
                         let hk = hook_kind;

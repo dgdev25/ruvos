@@ -157,6 +157,24 @@ pub async fn serve() -> anyhow::Result<()> {
         "ruvos MCP server (rmcp) initializing with {} tools",
         crate::tools::tool_registry().len()
     );
+    // ADR-029: replay any hook work a previous process enqueued but never
+    // completed (the durable-queue guarantee — bug #1766 class).
+    let recovered = crate::task_queue::TaskQueue::new()
+        .recover_pending(|task_type, payload| {
+            let task_type = task_type.to_string();
+            Box::pin(async move {
+                match task_type.as_str() {
+                    crate::tools::hooks::HOOKS_POST_TASK_TYPE => {
+                        crate::tools::hooks::replay_hooks_post_task(payload).await
+                    }
+                    other => Err(format!("no recovery executor for task type '{other}'")),
+                }
+            })
+        })
+        .await;
+    if recovered > 0 {
+        tracing::info!("recovered {recovered} pending task(s) from durable queue");
+    }
     let registry = create_registry();
     let handler = RuvosServerHandler::new(registry);
     // serve_server completes the MCP handshake and returns a RunningService.
