@@ -20,8 +20,8 @@ pub struct CveScanCommand {
 }
 
 pub async fn run_cve_scan(cmd: CveScanCommand) -> Result<()> {
-    let min_severity = cmd.min_severity.as_deref().and_then(parse_severity);
-    let fail_threshold = cmd.fail_on.as_deref().and_then(parse_severity);
+    let min_severity = parse_optional_severity(cmd.min_severity.as_deref(), "--min-severity")?;
+    let fail_threshold = parse_optional_severity(cmd.fail_on.as_deref(), "--fail-on")?;
 
     let opts = ScanOptions {
         offline: cmd.offline,
@@ -53,13 +53,19 @@ pub async fn run_cve_scan(cmd: CveScanCommand) -> Result<()> {
     Ok(())
 }
 
-fn parse_severity(s: &str) -> Option<Severity> {
+fn parse_optional_severity(value: Option<&str>, flag_name: &str) -> Result<Option<Severity>> {
+    value.map(|s| parse_severity(s, flag_name)).transpose()
+}
+
+fn parse_severity(s: &str, flag_name: &str) -> Result<Severity> {
     match s.to_lowercase().as_str() {
-        "critical" => Some(Severity::Critical),
-        "high" => Some(Severity::High),
-        "medium" => Some(Severity::Medium),
-        "low" => Some(Severity::Low),
-        _ => None,
+        "critical" => Ok(Severity::Critical),
+        "high" => Ok(Severity::High),
+        "medium" => Ok(Severity::Medium),
+        "low" => Ok(Severity::Low),
+        _ => Err(anyhow::anyhow!(
+            "invalid value for {flag_name}: {s} (expected low, medium, high, or critical)"
+        )),
     }
 }
 
@@ -70,5 +76,23 @@ fn severity_order(sev: &Severity) -> u8 {
         Severity::Medium => 2,
         Severity::Low => 1,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_severity_accepts_valid_values() {
+        assert_eq!(
+            parse_severity("high", "--fail-on").unwrap(),
+            Severity::High
+        );
+    }
+
+    #[test]
+    fn parse_severity_rejects_invalid_values() {
+        assert!(parse_severity("oops", "--fail-on").is_err());
     }
 }

@@ -75,11 +75,15 @@ impl ToolHandler for GovCveLookupHandler {
             }
 
             let cache_path = paths::data_root().join("cve").join("osv-cache.json");
+            let min_severity = match min_severity {
+                Some(value) => Some(parse_severity(value)?),
+                None => None,
+            };
             let opts = ScanOptions {
                 offline,
                 prod_only,
                 cache_path: Some(cache_path),
-                min_severity: min_severity.and_then(parse_severity),
+                min_severity,
                 ..ScanOptions::default()
             };
 
@@ -107,13 +111,15 @@ impl ToolHandler for GovCveLookupHandler {
     }
 }
 
-fn parse_severity(s: &str) -> Option<Severity> {
+fn parse_severity(s: &str) -> Result<Severity> {
     match s.to_lowercase().as_str() {
-        "critical" => Some(Severity::Critical),
-        "high" => Some(Severity::High),
-        "medium" => Some(Severity::Medium),
-        "low" => Some(Severity::Low),
-        _ => None,
+        "critical" => Ok(Severity::Critical),
+        "high" => Ok(Severity::High),
+        "medium" => Ok(Severity::Medium),
+        "low" => Ok(Severity::Low),
+        _ => Err(RuvosError::InvalidParams(
+            "expected one of: low, medium, high, critical".to_string(),
+        )),
     }
 }
 
@@ -139,5 +145,10 @@ mod tests {
     fn validate_accepts_valid_params() {
         let h = GovCveLookupHandler;
         assert!(h.validate(&json!({ "project_path": "/tmp" })).is_ok());
+    }
+
+    #[test]
+    fn parse_severity_rejects_invalid_values() {
+        assert!(parse_severity("oops").is_err());
     }
 }

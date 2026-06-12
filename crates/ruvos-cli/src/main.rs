@@ -412,9 +412,7 @@ async fn main() -> anyhow::Result<()> {
                 let (tx, rx) = tokio::sync::watch::channel(false);
                 // Graceful shutdown on Ctrl-C / SIGTERM.
                 tokio::spawn(async move {
-                    tokio::signal::ctrl_c()
-                        .await
-                        .expect("failed to listen for ctrl-c");
+                    wait_for_shutdown_signal().await;
                     let _ = tx.send(true);
                 });
                 let cfg = ruvos_mcp::daemon::DaemonConfig {
@@ -457,4 +455,24 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut sigterm = signal(SignalKind::terminate()).expect("failed to listen for SIGTERM");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = sigterm.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for ctrl-c");
+    }
 }
