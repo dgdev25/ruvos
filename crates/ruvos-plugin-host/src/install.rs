@@ -69,11 +69,22 @@ pub fn install_tarball(
 }
 
 fn unpack_checked(tarball_bytes: &[u8], staging: &Path) -> Result<()> {
+    use tar::EntryType;
     let gz = flate2::read::GzDecoder::new(tarball_bytes);
     let mut archive = tar::Archive::new(gz);
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.into_owned();
+        // Reject symlink/hardlink entries outright — they can point outside
+        // the staging directory or alias later entries to arbitrary targets.
+        let kind = entry.header().entry_type();
+        if matches!(kind, EntryType::Symlink | EntryType::Link) {
+            bail!(
+                "archive entry '{}' is a {:?} link — plugins may not contain links",
+                path.display(),
+                kind
+            );
+        }
         // Reject absolute paths and any `..` component.
         if path.is_absolute()
             || path
@@ -85,7 +96,8 @@ fn unpack_checked(tarball_bytes: &[u8], staging: &Path) -> Result<()> {
                 path.display()
             );
         }
-        entry.unpack(staging.join(&path))?;
+        // Defense-in-depth: unpack_in re-validates containment within staging.
+        entry.unpack_in(staging)?;
     }
     Ok(())
 }
@@ -174,6 +186,43 @@ authors = ["t"]
         .unwrap_err();
         assert!(err.to_string().contains("escapes"));
         assert!(!work.path().join("escape").exists());
+    }
+
+    /// Build a gzipped tar containing a symlink entry pointing outside the
+    /// staging directory.
+    fn make_symlink_tarball(dir: &std::path::Path) -> std::path::PathBuf {
+        let tar_path = dir.join("link.tar.gz");
+        let file = std::fs::File::create(&tar_path).unwrap();
+        let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(enc);
+
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_path("evil-link").unwrap();
+        // tar::Header link-name setters can refuse `..` targets, so write the
+        // bytes directly (same raw-header technique as the evil-entry test).
+        let link = b"../escape";
+        header.as_gnu_mut().unwrap().linkname[..link.len()].copy_from_slice(link);
+        header.set_cksum();
+        builder.append(&header, std::io::empty()).unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+        tar_path
+    }
+
+    #[test]
+    fn rejects_symlink_entries() {
+        let work = tempfile::tempdir().unwrap();
+        let tarball = make_symlink_tarball(work.path());
+        let checksum = sha256_file(&tarball);
+        let dest_root = work.path().join("plugins");
+        let err = install_tarball(&tarball, &checksum, None, "demo", &dest_root).unwrap_err();
+        assert!(err.to_string().contains("link"), "got: {err}");
+        // Nothing created outside staging, and staging itself was cleaned up.
+        assert!(!work.path().join("escape").exists());
+        assert!(!dest_root.join("demo").exists());
+        assert!(!dest_root.join("demo/evil-link").exists());
     }
 
     #[test]

@@ -1,7 +1,10 @@
 //! `ruvos plugin install` — fetch + verify + install plugin tarballs.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
+
+/// Maximum tarball size we are willing to download (64 MiB).
+const MAX_PLUGIN_BYTES: u64 = 64 * 1024 * 1024;
 
 pub struct Fetched {
     /// Local path of the tarball (original file or downloaded temp file).
@@ -21,14 +24,30 @@ pub async fn fetch(source: &str) -> Result<Fetched> {
         }
         let tmp = tempfile::tempdir()?;
         let tarball = tmp.path().join("plugin.tar.gz");
-        let bytes = reqwest::get(source)
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+        let mut resp = reqwest::get(source).await?.error_for_status()?;
+        if let Some(len) = resp.content_length() {
+            if len > MAX_PLUGIN_BYTES {
+                bail!("plugin tarball is {len} bytes, exceeding the {MAX_PLUGIN_BYTES}-byte limit");
+            }
+        }
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut total: u64 = 0;
+        while let Some(chunk) = resp.chunk().await? {
+            total += chunk.len() as u64;
+            if total > MAX_PLUGIN_BYTES {
+                bail!(
+                    "plugin tarball download exceeded the {MAX_PLUGIN_BYTES}-byte limit; aborting"
+                );
+            }
+            bytes.extend_from_slice(&chunk);
+        }
         std::fs::write(&tarball, &bytes)?;
-        let sha256 = fetch_sidecar(&format!("{source}.sha256")).await;
-        let signature = fetch_sidecar(&format!("{source}.sig")).await;
+        let sha256 = fetch_sidecar(&format!("{source}.sha256"))
+            .await
+            .context("failed to fetch checksum sidecar")?;
+        let signature = fetch_sidecar(&format!("{source}.sig"))
+            .await
+            .context("failed to fetch signature sidecar")?;
         Ok(Fetched {
             tarball,
             sha256,
@@ -84,9 +103,16 @@ pub async fn run_install(name: &str, source: &str, dest_root: &std::path::Path) 
     Ok(())
 }
 
-async fn fetch_sidecar(url: &str) -> Option<String> {
-    let resp = reqwest::get(url).await.ok()?.error_for_status().ok()?;
-    Some(resp.text().await.ok()?.trim().to_string())
+/// Fetch a sidecar file. A 404 means the sidecar is genuinely absent
+/// (`Ok(None)`); any other failure (network error, 5xx, …) propagates so the
+/// caller can report it instead of silently treating it as "no checksum".
+async fn fetch_sidecar(url: &str) -> Result<Option<String>> {
+    let resp = reqwest::get(url).await?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let resp = resp.error_for_status()?;
+    Ok(Some(resp.text().await?.trim().to_string()))
 }
 
 fn read_sidecar(path: &str) -> Option<String> {
