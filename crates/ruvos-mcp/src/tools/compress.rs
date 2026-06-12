@@ -36,16 +36,24 @@ impl ToolHandler for CompressRunHandler {
                 "session_id": {
                     "type": "string",
                     "description": "Optional session UUID to attach the compressed output to"
+                },
+                "retrieve_ref": {
+                    "type": "string",
+                    "description": "Retrieve the full original content for a previously returned original_ref instead of compressing (content is ignored)"
                 }
             },
-            "required": ["content"]
+            "required": []
         })
     }
 
     fn validate(&self, params: &Value) -> Result<()> {
-        if params.get("content").and_then(|v| v.as_str()).is_none() {
+        let retrieving = params
+            .get("retrieve_ref")
+            .and_then(|v| v.as_str())
+            .is_some();
+        if !retrieving && params.get("content").and_then(|v| v.as_str()).is_none() {
             return Err(RuvosError::InvalidParams(
-                "missing 'content' field (string)".to_string(),
+                "missing 'content' field (string) — or pass 'retrieve_ref'".to_string(),
             ));
         }
         if let Some(session_id) = params.get("session_id") {
@@ -60,6 +68,21 @@ impl ToolHandler for CompressRunHandler {
 
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
+            // Retrieval mode: hand back the original content for a reference
+            // returned by a prior compression (in-memory or disk spill).
+            if let Some(reference) = params.get("retrieve_ref").and_then(|v| v.as_str()) {
+                return match compress::retrieve_original(reference) {
+                    Some(original) => Ok(json!({
+                        "retrieved": true,
+                        "original_ref": reference,
+                        "content": original,
+                    })),
+                    None => Err(RuvosError::InvalidParams(format!(
+                        "no original found for ref '{reference}' (expired or unknown)"
+                    ))),
+                };
+            }
+
             let content = params
                 .get("content")
                 .and_then(|v| v.as_str())
@@ -151,6 +174,43 @@ mod tests {
     use super::*;
     use crate::paths;
     use ruvos_session::{read_session, write_session, Session};
+
+    #[tokio::test]
+    async fn retrieve_ref_returns_the_original_content() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::paths::set_test_root(dir.path().to_path_buf());
+        paths::ensure_root().unwrap();
+
+        let handler = CompressRunHandler;
+        let input = (0..80)
+            .map(|i| format!("retrieval line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let output = handler
+            .execute(json!({
+                "content": input,
+                "kind": "text",
+                "min_bytes": 1,
+                "keep_head_lines": 2,
+                "keep_tail_lines": 2,
+            }))
+            .await
+            .unwrap();
+        assert!(output["changed"].as_bool().unwrap());
+        let reference = output["original_ref"].as_str().unwrap().to_string();
+
+        let retrieved = handler
+            .execute(json!({"retrieve_ref": reference}))
+            .await
+            .unwrap();
+        assert_eq!(retrieved["retrieved"], true);
+        assert_eq!(retrieved["content"].as_str().unwrap(), input);
+
+        let missing = handler
+            .execute(json!({"retrieve_ref": "deadbeefdeadbeefdead"}))
+            .await;
+        assert!(missing.is_err());
+    }
 
     #[tokio::test]
     async fn compress_roundtrip_persists_original_into_session() {

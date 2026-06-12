@@ -83,7 +83,9 @@ impl ServerHandler for RuvosServerHandler {
                 let raw_text =
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
 
-                let compression = if name.starts_with("compress.") {
+                // Never re-compress the compress tool's own output — that
+                // would garble the compressed payload it returns.
+                let compression = if name == "ruvos_compress_run" {
                     None
                 } else {
                     let compressed = compress_content(
@@ -134,6 +136,8 @@ impl ServerHandler for RuvosServerHandler {
                             "compression_ratio": c.compression_ratio,
                             "tokens_before": c.tokens_before,
                             "tokens_after": c.tokens_after,
+                            // Retrievable via ruvos_compress_run {retrieve_ref}
+                            "original_ref": c.original_ref,
                         }),
                     );
                     cr.meta = Some(rmcp::model::Meta(meta_map));
