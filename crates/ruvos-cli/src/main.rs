@@ -181,10 +181,10 @@ enum SkillsCommand {
     /// Audit the source corpus and write a deterministic manifest.
     Audit {
         /// Path to the source corpus root.
-        #[arg(long, default_value = "/mnt/datadisk/dev/skillbase")]
+        #[arg(long, env = "RUVOS_SKILLBASE_ROOT")]
         corpus_root: PathBuf,
-        /// Path to the source SQLite corpus database.
-        #[arg(long, default_value = "/mnt/datadisk/dev/skillbase/data/skills.db")]
+        /// Path to the source SQLite corpus database (typically <corpus-root>/data/skills.db).
+        #[arg(long, env = "RUVOS_SKILLBASE_DB")]
         db: PathBuf,
         /// Output path for the manifest.
         #[arg(long, default_value = "generated/skills-audit.json")]
@@ -211,7 +211,7 @@ enum SkillsPackCommand {
         #[arg(long, default_value = "docs/skills/selected-300-ruvos.json")]
         selection_manifest: PathBuf,
         /// Path to the source SQLite corpus database.
-        #[arg(long, default_value = "/mnt/datadisk/dev/skillbase/data/skills.db")]
+        #[arg(long, env = "RUVOS_SKILLBASE_DB")]
         db: PathBuf,
         /// Output path for the redb pack.
         #[arg(long, default_value = "generated/skills.redb")]
