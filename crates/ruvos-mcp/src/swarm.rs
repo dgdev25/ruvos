@@ -108,9 +108,16 @@ fn save(state: &SwarmState) -> Result<()> {
     paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("data dir: {e}")))?;
     let bytes = serde_json::to_vec_pretty(state)
         .map_err(|e| RuvosError::InternalError(format!("serialize swarm: {e}")))?;
-    std::fs::write(swarm_path(), bytes)
+    paths::atomic_write(&swarm_path(), &bytes)
         .map_err(|e| RuvosError::InternalError(format!("write swarm: {e}")))?;
     Ok(())
+}
+
+/// Cross-process lock guarding swarm state read-modify-write cycles. Acquire
+/// before `current()` and hold until after `store()` so concurrent sessions
+/// (CLI + MCP server + relay peers) can't lose each other's updates.
+pub fn state_lock() -> Result<paths::StoreLock> {
+    paths::lock_store("swarm").map_err(|e| RuvosError::InternalError(format!("swarm lock: {e}")))
 }
 
 fn load_policy() -> SwarmPolicy {
@@ -124,7 +131,7 @@ fn save_policy(policy: &SwarmPolicy) -> Result<()> {
     paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("data dir: {e}")))?;
     let bytes = serde_json::to_vec_pretty(policy)
         .map_err(|e| RuvosError::InternalError(format!("serialize swarm policy: {e}")))?;
-    std::fs::write(policy_path(), bytes)
+    paths::atomic_write(&policy_path(), &bytes)
         .map_err(|e| RuvosError::InternalError(format!("write swarm policy: {e}")))?;
     Ok(())
 }
@@ -132,7 +139,7 @@ fn save_policy(policy: &SwarmPolicy) -> Result<()> {
 fn save_learning_state(engine: &SonaEngine) -> Result<()> {
     paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("data dir: {e}")))?;
     let serialized = engine.coordinator().serialize_state();
-    std::fs::write(learning_path(), serialized)
+    paths::atomic_write(&learning_path(), serialized.as_bytes())
         .map_err(|e| RuvosError::InternalError(format!("write swarm learning: {e}")))?;
     Ok(())
 }
@@ -148,7 +155,7 @@ fn save_history(history: &SwarmRunHistory) -> Result<()> {
     paths::ensure_root().map_err(|e| RuvosError::InternalError(format!("data dir: {e}")))?;
     let bytes = serde_json::to_vec_pretty(history)
         .map_err(|e| RuvosError::InternalError(format!("serialize swarm history: {e}")))?;
-    std::fs::write(history_path(), bytes)
+    paths::atomic_write(&history_path(), &bytes)
         .map_err(|e| RuvosError::InternalError(format!("write swarm history: {e}")))?;
     Ok(())
 }

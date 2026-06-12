@@ -288,6 +288,7 @@ fn finalize_swarm(
     learning_detail: &str,
     mut payload: Value,
 ) -> Result<swarm::SwarmState> {
+    let _state_lock = swarm::state_lock()?;
     let mut state = load_active_swarm(requested_swarm_id)?;
     state.status = status.to_string();
     state.updated_at = chrono::Utc::now().to_rfc3339();
@@ -519,6 +520,7 @@ impl ToolHandler for SwarmCreateHandler {
                 .and_then(|v| v.as_u64())
                 .map(|n| n as u32);
 
+            let _state_lock = swarm::state_lock()?;
             let state = swarm::SwarmState {
                 id: swarm_id.clone(),
                 objective: objective.clone(),
@@ -696,6 +698,7 @@ impl ToolHandler for SwarmAssignHandler {
                         .collect()
                 })
                 .unwrap_or_default();
+            let _state_lock = swarm::state_lock()?;
             let mut state = load_active_swarm(requested_swarm_id)?;
 
             // ADR-023: register task in the swarm dependency graph.
@@ -828,6 +831,7 @@ impl ToolHandler for SwarmHeartbeatHandler {
         Box::pin(async move {
             let requested_swarm_id = params.get("swarm_id").and_then(|v| v.as_str());
             let agent_id = params["agent_id"].as_str().unwrap_or_default().to_string();
+            let _state_lock = swarm::state_lock()?;
             let mut state = load_active_swarm(requested_swarm_id)?;
             let now = chrono::Utc::now().to_rfc3339();
 
@@ -1296,6 +1300,7 @@ impl ToolHandler for SwarmRebalanceHandler {
     fn execute(&self, params: Value) -> ExecuteFuture {
         Box::pin(async move {
             let requested_swarm_id = params.get("swarm_id").and_then(|v| v.as_str());
+            let _state_lock = swarm::state_lock()?;
             let mut state = load_active_swarm(requested_swarm_id)?;
             let now = chrono::Utc::now();
             let live_member_indices = live_member_indices(&state, now);
@@ -1445,6 +1450,7 @@ impl ToolHandler for SwarmJoinHandler {
                 })
                 .unwrap_or_default();
             let now = chrono::Utc::now().to_rfc3339();
+            let _state_lock = swarm::state_lock()?;
             let mut state = load_active_swarm(requested_swarm_id)?;
             let mut existed = false;
 
@@ -1537,6 +1543,7 @@ impl ToolHandler for SwarmLeaveHandler {
                 .get("force")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            let _state_lock = swarm::state_lock()?;
             let mut state = load_active_swarm(requested_swarm_id)?;
             let now = chrono::Utc::now().to_rfc3339();
 

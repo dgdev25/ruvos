@@ -87,7 +87,7 @@ pub fn scale_budget(base_tokens: u64, agent_count: u32, max_tokens: u64) -> Opti
 /// Integer ceiling division: `⌈a / b⌉`.
 pub fn ceil_div(a: u64, b: NonZeroU64) -> u64 {
     let b_val = b.get();
-    a / b_val + u64::from(a % b_val != 0)
+    a / b_val + u64::from(!a.is_multiple_of(b_val))
 }
 
 #[cfg(test)]

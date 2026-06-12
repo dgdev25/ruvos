@@ -119,6 +119,51 @@ pub fn issues_db() -> PathBuf {
     data_root().join("issues.db")
 }
 
+/// Write `bytes` to `path` atomically: temp file in the same directory plus
+/// rename, so readers never observe a torn/partial file after a crash.
+pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let tmp = parent.join(format!(
+        ".{}.tmp.{}",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("store"),
+        std::process::id()
+    ));
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
+/// Cross-process advisory lock for a named store. Held for the duration of a
+/// read-modify-write cycle so the CLI, MCP server, and relay instances can't
+/// silently overwrite each other's updates. Released on drop (and by the OS
+/// if the process dies). The in-process `Mutex` guards remain responsible for
+/// intra-process serialization.
+pub struct StoreLock {
+    file: std::fs::File,
+}
+
+impl Drop for StoreLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
+}
+
+/// Acquire (blocking) the cross-process lock for store `name`.
+/// Lock files live under `$RUVOS_HOME/locks/`.
+pub fn lock_store(name: &str) -> std::io::Result<StoreLock> {
+    let dir = data_root().join("locks");
+    std::fs::create_dir_all(&dir)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(format!("{name}.lock")))?;
+    file.lock()?;
+    Ok(StoreLock { file })
+}
+
 /// Ensure the data root exists, returning it.
 pub fn ensure_root() -> std::io::Result<PathBuf> {
     let root = data_root();

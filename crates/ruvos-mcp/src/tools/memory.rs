@@ -183,6 +183,8 @@ pub fn record_memory_signal(
     tags: &[String],
 ) -> Result<()> {
     let _guard = FILE_LOCK.lock().unwrap();
+    let _xlock = paths::lock_store("memory")
+        .map_err(|e| RuvosError::InternalError(format!("memory lock: {e}")))?;
     let mut store = load_store();
     let entry = MemoryEntry {
         key: key.to_string(),
@@ -353,6 +355,8 @@ impl ToolHandler for MemoryStoreHandler {
             };
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("memory")
+                .map_err(|e| RuvosError::InternalError(format!("memory lock: {e}")))?;
             let mut store = load_store();
             store
                 .entry(namespace.clone())
@@ -435,6 +439,8 @@ impl ToolHandler for MemoryRetrieveHandler {
                 .to_string();
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("memory")
+                .map_err(|e| RuvosError::InternalError(format!("memory lock: {e}")))?;
             let store = load_store();
             let found = store.get(&namespace).and_then(|ns| ns.get(&key)).cloned();
             publish_event(RuntimeEvent {
@@ -502,6 +508,8 @@ impl ToolHandler for MemoryListHandler {
                 .to_string();
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("memory")
+                .map_err(|e| RuvosError::InternalError(format!("memory lock: {e}")))?;
             let store = load_store();
             let entries: Vec<Value> = store
                 .get(&namespace)
@@ -615,6 +623,8 @@ impl ToolHandler for MemorySearchHandler {
             });
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("memory")
+                .map_err(|e| RuvosError::InternalError(format!("memory lock: {e}")))?;
             let store = load_store();
 
             // Bandit feedback (ADR-005): `feedback:[{key, useful}]` records which

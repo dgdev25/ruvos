@@ -110,7 +110,16 @@ pub fn maybe_create(prose: &str, explicit_sprint_id: Option<&str>) -> AutoSwarmR
         };
     }
 
-    // Attach to existing active swarm when one is live.
+    // Attach to existing active swarm when one is live. Cross-process lock
+    // held for the whole check-then-create cycle so two sessions can't both
+    // create a swarm.
+    let Ok(_state_lock) = swarm::state_lock() else {
+        return AutoSwarmResult {
+            swarm_id: String::new(),
+            sprint_id: String::new(),
+            action: "skipped",
+        };
+    };
     if let Some(existing) = swarm::current() {
         if existing.status == "active" {
             return AutoSwarmResult {

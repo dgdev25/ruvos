@@ -120,6 +120,8 @@ pub fn record_intent_signal(
     confidence: f64,
 ) -> Result<()> {
     let _guard = FILE_LOCK.lock().unwrap();
+    let _xlock = paths::lock_store("intel")
+        .map_err(|e| RuvosError::InternalError(format!("intel lock: {e}")))?;
     let mut intents = load_intents();
     intents.push(IntentRecord {
         id: Uuid::new_v4().to_string(),
@@ -387,6 +389,8 @@ impl ToolHandler for IntelPatternStoreHandler {
             };
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("intel")
+                .map_err(|e| RuvosError::InternalError(format!("intel lock: {e}")))?;
             let mut patterns = load();
             patterns.push(pattern.clone());
             let total = patterns.len();
@@ -446,6 +450,8 @@ impl ToolHandler for IntelPatternSearchHandler {
             let query_vec = tf(&tokenize(&query));
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("intel")
+                .map_err(|e| RuvosError::InternalError(format!("intel lock: {e}")))?;
             let patterns = load();
 
             // --- TF-cosine pass (disk store) ---
@@ -644,6 +650,8 @@ impl ToolHandler for IntelIntentStoreHandler {
             };
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("intel")
+                .map_err(|e| RuvosError::InternalError(format!("intel lock: {e}")))?;
             let mut intents = load_intents();
             intents.push(record.clone());
             let total = intents.len();
@@ -712,6 +720,8 @@ impl ToolHandler for IntelIntentSearchHandler {
                 query_tokens.iter().cloned().collect();
 
             let _guard = FILE_LOCK.lock().unwrap();
+            let _xlock = paths::lock_store("intel")
+                .map_err(|e| RuvosError::InternalError(format!("intel lock: {e}")))?;
             let intents = load_intents();
 
             let mut scored: Vec<(f64, &IntentRecord)> = intents
