@@ -30,14 +30,24 @@ impl CliRouter {
     }
 
     pub fn detect_with_config(config: RouterConfig) -> Option<Self> {
+        let openrouter_key = std::env::var("OPENROUTER_API_KEY").ok();
+        Self::detect_with_config_and_key(config, openrouter_key.as_deref())
+    }
+
+    /// Provider-selection logic with the OpenRouter key supplied explicitly.
+    /// Separated from the env read so tests can exercise selection without
+    /// mutating the process-global `OPENROUTER_API_KEY` (which would race
+    /// concurrent tests that read it).
+    pub(crate) fn detect_with_config_and_key(
+        config: RouterConfig,
+        openrouter_key: Option<&str>,
+    ) -> Option<Self> {
         for name in &config.priority {
             let provider = match name.as_str() {
                 "claude" if which_exe("claude").is_some() => LlmProvider::ClaudeCli,
                 "gemini" if which_exe("gemini").is_some() => LlmProvider::GeminiCli,
                 "codex" if which_exe("codex").is_some() => LlmProvider::CodexCli,
-                "openrouter" if std::env::var("OPENROUTER_API_KEY").is_ok() => {
-                    LlmProvider::OpenRouter
-                }
+                "openrouter" if openrouter_key.is_some() => LlmProvider::OpenRouter,
                 _ => continue,
             };
             return Some(Self { provider, config });
@@ -246,8 +256,16 @@ pub(super) fn parse_codex_output(stdout: &str) -> Result<String> {
 
 /// Find an executable in PATH without the `which` crate.
 pub fn which_exe(name: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+    which_exe_in(name, std::env::var_os("PATH"))
+}
+
+/// Resolve `name` against an explicit PATH-style search list. Separated from
+/// the global-env read in [`which_exe`] so tests can exercise PATH resolution
+/// without mutating the process-global `PATH` — mutating it races every
+/// concurrent test that spawns a bare-named subprocess (it would fail their
+/// PATH lookup with ENOENT).
+pub(crate) fn which_exe_in(name: &str, path: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    path.map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
         .unwrap_or_default()
         .into_iter()
         .map(|dir| dir.join(name))

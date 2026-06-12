@@ -12,6 +12,8 @@ mod config;
 mod router;
 
 pub use config::RouterConfig;
+#[cfg(test)]
+pub(crate) use router::which_exe_in;
 pub use router::{which_exe, CliRouter};
 
 // ── Provider enum ────────────────────────────────────────────────────────────
@@ -294,22 +296,19 @@ mod tests {
         assert!(CliRouter::detect_with_config(cfg).is_none());
     }
 
+    // These selection/resolution tests inject the OpenRouter key and the PATH
+    // search list directly instead of mutating the process environment. The
+    // old env-mutating versions raced every concurrent test that read PATH or
+    // OPENROUTER_API_KEY — in particular subprocess spawns failed with ENOENT
+    // while PATH was swapped out.
+
     #[test]
     fn detect_openrouter_without_api_key_returns_none() {
-        let key = "OPENROUTER_API_KEY";
-        let old = std::env::var(key).ok();
-        std::env::remove_var(key);
-
         let cfg = RouterConfig {
             priority: vec!["openrouter".into()],
             ..Default::default()
         };
-        let result = CliRouter::detect_with_config(cfg);
-
-        if let Some(v) = old {
-            std::env::set_var(key, v)
-        }
-
+        let result = CliRouter::detect_with_config_and_key(cfg, None);
         assert!(
             result.is_none(),
             "openrouter without API key must not be detected"
@@ -318,21 +317,11 @@ mod tests {
 
     #[test]
     fn detect_openrouter_with_api_key_returns_openrouter_provider() {
-        let key = "OPENROUTER_API_KEY";
-        let old = std::env::var(key).ok();
-        std::env::set_var(key, "test-key-abc");
-
         let cfg = RouterConfig {
             priority: vec!["openrouter".into()],
             ..Default::default()
         };
-        let result = CliRouter::detect_with_config(cfg);
-
-        match old {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-
+        let result = CliRouter::detect_with_config_and_key(cfg, Some("test-key-abc"));
         let router = result.expect("openrouter with API key must be detected");
         assert_eq!(router.provider, LlmProvider::OpenRouter);
         assert_eq!(router.provider_name(), "openrouter");
@@ -340,10 +329,6 @@ mod tests {
 
     #[test]
     fn detect_picks_first_available_from_priority() {
-        let key = "OPENROUTER_API_KEY";
-        let old = std::env::var(key).ok();
-        std::env::set_var(key, "key-xyz");
-
         let cfg = RouterConfig {
             priority: vec![
                 "nonexistent_cli_a".into(),
@@ -352,13 +337,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let result = CliRouter::detect_with_config(cfg);
-
-        match old {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-
+        let result = CliRouter::detect_with_config_and_key(cfg, Some("key-xyz"));
         let router = result.expect("should fall through to openrouter");
         assert_eq!(router.provider, LlmProvider::OpenRouter);
     }
@@ -369,27 +348,19 @@ mod tests {
         let fake_dir = dir.path().join("fake_binary_dir");
         std::fs::create_dir(&fake_dir).unwrap();
 
-        let old_path = std::env::var_os("PATH").unwrap_or_default();
-        let mut paths = std::env::split_paths(&old_path).collect::<Vec<_>>();
-        paths.insert(0, dir.path().to_path_buf());
-        std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
-
-        let found = which_exe("fake_binary_dir");
-
-        std::env::set_var("PATH", old_path);
-        assert!(found.is_none());
+        // A directory named like the binary must not count as an executable.
+        let path = std::env::join_paths([dir.path().to_path_buf()]).unwrap();
+        assert!(which_exe_in("fake_binary_dir", Some(path)).is_none());
     }
 
     #[test]
     fn which_exe_with_nonexistent_path_dirs_returns_none() {
-        let old = std::env::var_os("PATH").unwrap_or_default();
-        std::env::set_var(
-            "PATH",
-            "/nonexistent_ruvos_dir_1/bin:/nonexistent_ruvos_dir_2",
+        let path =
+            std::ffi::OsString::from("/nonexistent_ruvos_dir_1/bin:/nonexistent_ruvos_dir_2");
+        assert!(
+            which_exe_in("sh", Some(path)).is_none(),
+            "all PATH dirs nonexistent → sh not found"
         );
-        let result = which_exe("sh");
-        std::env::set_var("PATH", old);
-        assert!(result.is_none(), "all PATH dirs nonexistent → sh not found");
     }
 
     #[test]
