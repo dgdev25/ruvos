@@ -94,6 +94,14 @@ enum Commands {
         #[command(subcommand)]
         command: CveCommand,
     },
+    /// Dispatch a hook event (called by Claude Code hook bindings; reads JSON from stdin)
+    Hook {
+        /// Hook kind: task|edit|command|session
+        kind: String,
+        /// Hook phase
+        #[arg(long, default_value = "pre")]
+        phase: String,
+    },
     /// Relay daemon — persistent bus listener for the agent execution bridge.
     Daemon {
         #[command(subcommand)]
@@ -406,6 +414,9 @@ async fn main() -> anyhow::Result<()> {
                 ruvos_cli::commands::mcp::serve().await?;
             }
         },
+        Commands::Hook { kind, phase } => {
+            ruvos_cli::commands::hook::run_from_stdin(&kind, &phase).await?;
+        }
         Commands::Daemon { command } => match command {
             DaemonCommand::Watch { agent_id, poll_ms } => {
                 info!("Starting relay daemon (agent_id={agent_id}, poll_ms={poll_ms})");

@@ -118,6 +118,7 @@ mod tests {
 
     #[tokio::test]
     async fn cli_roundtrip_persists_original_into_session() {
+        let _guard = crate::commands::ruvos_home_lock().await;
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("RUVOS_HOME", dir.path());
         ruvos_mcp::paths::ensure_root().unwrap();
