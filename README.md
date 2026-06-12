@@ -278,6 +278,18 @@ Sessions are signed `.rvf` containers (HMAC-SHA256 + SHAKE-256 witness chain). F
 └── commands/*.md      # slash commands
 ```
 
+**Installing plugins** ([ADR-040](docs/spec/adr-040-plugin-install.md)) — fetch, verify, and unpack a plugin tarball in one step:
+
+```bash
+ruvos plugin install demo --from https://example.com/demo.tar.gz   # or a local path
+```
+
+A `.sha256` sidecar next to the tarball is **required**; an HMAC-SHA256 `.sig` sidecar is verified when `RUVOS_PLUGIN_KEY` is set. Publishing convention:
+
+```bash
+tar -czf demo.tar.gz -C plugin-dir . && sha256sum demo.tar.gz > demo.tar.gz.sha256
+```
+
 ### `gov` — health, CVE scanning, audit
 
 ```jsonc
